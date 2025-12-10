@@ -15,6 +15,51 @@ interface SearchRequest {
   locations: Location[];
 }
 
+function extractWhatsApp(phone: string, website: string, links: any[]): string {
+  // Check if website is a WhatsApp link
+  if (website && website.includes('wa.me')) {
+    return website;
+  }
+  
+  // Check in links array
+  if (links && Array.isArray(links)) {
+    for (const link of links) {
+      if (link.link?.includes('wa.me')) {
+        return link.link;
+      }
+    }
+  }
+  
+  // Generate WhatsApp link from phone number (Brazilian format)
+  if (phone) {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length >= 10 && cleanPhone.length <= 13) {
+      const fullNumber = cleanPhone.startsWith('55') ? cleanPhone : '55' + cleanPhone;
+      return `https://wa.me/${fullNumber}`;
+    }
+  }
+  
+  return '';
+}
+
+function extractInstagram(website: string, links: any[]): string {
+  // Check if website is Instagram
+  if (website && website.includes('instagram.com')) {
+    return website;
+  }
+  
+  // Check in links array
+  if (links && Array.isArray(links)) {
+    for (const link of links) {
+      if (link.link?.includes('instagram.com')) {
+        return link.link;
+      }
+    }
+  }
+  
+  return '';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -68,16 +113,27 @@ serve(async (req) => {
       console.log(`Found ${localResults.length} results for ${location.city}`);
 
       for (const result of localResults) {
+        const phone = result.phone || '';
+        const website = result.website || '';
+        const links = result.links || [];
+        
+        const whatsapp = extractWhatsApp(phone, website, links);
+        const instagram = extractInstagram(website, links);
+        
+        console.log(`Business: ${result.title}, Phone: ${phone}, WhatsApp: ${whatsapp}, Instagram: ${instagram}`);
+
         allResults.push({
           name: result.title || '',
           address: result.address || '',
-          phone: result.phone || '',
-          website: result.website || '',
+          phone: phone,
+          website: website,
           rating: result.rating || null,
           reviews: result.reviews || null,
           city: location.city,
           state: location.state,
           place_id: result.place_id || '',
+          whatsapp: whatsapp,
+          instagram: instagram,
         });
       }
     }
