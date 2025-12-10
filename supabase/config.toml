@@ -1,1 +1,4 @@
 project_id = "vorehtfxwvsbbivnskeq"
+
+[functions.search-businesses]
+verify_jwt = false
