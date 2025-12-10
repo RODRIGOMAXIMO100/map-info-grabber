@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Location, BRAZILIAN_STATES } from '@/types/business';
 
 interface LocationSelectorProps {
@@ -33,22 +34,25 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
 
   return (
     <div className="space-y-4">
+      {/* Campo de cidade - linha inteira */}
+      <Input
+        placeholder="Digite o nome da cidade"
+        value={city}
+        onChange={(e) => setCity(e.target.value)}
+        onKeyDown={handleKeyDown}
+        className="w-full text-base"
+      />
+
+      {/* UF + Botão */}
       <div className="flex gap-2">
-        <Input
-          placeholder="Cidade"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="flex-[3] min-w-[200px]"
-        />
         <Select value={state} onValueChange={setState}>
-          <SelectTrigger className="w-32">
-            <SelectValue placeholder="UF" />
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Selecione UF" />
           </SelectTrigger>
           <SelectContent className="bg-background border">
             {BRAZILIAN_STATES.map((s) => (
               <SelectItem key={s.value} value={s.value}>
-                {s.value}
+                {s.value} - {s.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -57,28 +61,38 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
           type="button" 
           onClick={handleAdd} 
           disabled={!city.trim() || !state}
-          size="icon"
+          className="gap-2"
         >
           <Plus className="h-4 w-4" />
+          Adicionar
         </Button>
       </div>
 
-      {locations.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {locations.map((loc, index) => (
-            <Badge key={index} variant="secondary" className="flex items-center gap-1 py-1 px-2">
-              {loc.city}, {loc.state}
-              <button
-                type="button"
-                onClick={() => onRemove(index)}
-                className="ml-1 hover:text-destructive"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
+      {/* Área de cidades selecionadas */}
+      <div className="border rounded-md p-3 min-h-[120px] max-h-[200px] bg-muted/30">
+        {locations.length === 0 ? (
+          <p className="text-muted-foreground text-sm text-center py-8">
+            Nenhuma localização adicionada
+          </p>
+        ) : (
+          <ScrollArea className="h-full max-h-[176px]">
+            <div className="flex flex-wrap gap-2">
+              {locations.map((loc, index) => (
+                <Badge key={index} variant="secondary" className="flex items-center gap-1 py-1.5 px-3 text-sm">
+                  {loc.city}, {loc.state}
+                  <button
+                    type="button"
+                    onClick={() => onRemove(index)}
+                    className="ml-1 hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
     </div>
   );
 }
