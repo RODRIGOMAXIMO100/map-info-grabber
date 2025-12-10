@@ -42,7 +42,7 @@ function extractWhatsApp(phone: string, website: string, links: any[]): string {
   return '';
 }
 
-function extractInstagram(website: string, links: any[]): string {
+function extractInstagram(website: string, links: any[], result: any): string {
   // Check if website is Instagram
   if (website && website.includes('instagram.com')) {
     return website;
@@ -55,6 +55,29 @@ function extractInstagram(website: string, links: any[]): string {
         return link.link;
       }
     }
+  }
+  
+  // Check in social profiles (some results have this)
+  if (result.social_links && Array.isArray(result.social_links)) {
+    for (const social of result.social_links) {
+      if (social.link?.includes('instagram.com')) {
+        return social.link;
+      }
+    }
+  }
+  
+  // Check in profiles array
+  if (result.profiles && Array.isArray(result.profiles)) {
+    for (const profile of result.profiles) {
+      if (profile.link?.includes('instagram.com') || profile.url?.includes('instagram.com')) {
+        return profile.link || profile.url;
+      }
+    }
+  }
+  
+  // Check in place_info if available
+  if (result.place_info?.instagram) {
+    return result.place_info.instagram;
   }
   
   return '';
@@ -118,7 +141,12 @@ serve(async (req) => {
         const links = result.links || [];
         
         const whatsapp = extractWhatsApp(phone, website, links);
-        const instagram = extractInstagram(website, links);
+        const instagram = extractInstagram(website, links, result);
+        
+        // Log detailed info for debugging Instagram detection
+        if (!instagram && (result.links?.length > 0 || result.social_links || result.profiles)) {
+          console.log(`[DEBUG] ${result.title} - links: ${JSON.stringify(result.links)}, social_links: ${JSON.stringify(result.social_links)}, profiles: ${JSON.stringify(result.profiles)}`);
+        }
         
         console.log(`Business: ${result.title}, Phone: ${phone}, WhatsApp: ${whatsapp}, Instagram: ${instagram}`);
 

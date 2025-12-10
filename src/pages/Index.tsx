@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Search, Download, Loader2, MapPin, CheckCircle2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,6 +76,13 @@ export default function Index() {
   };
 
   const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
+
+  const stats = useMemo(() => ({
+    whatsapp: results.filter(r => r.whatsapp).length,
+    instagram: results.filter(r => r.instagram).length,
+    phone: results.filter(r => r.phone).length,
+    website: results.filter(r => r.website && r.website.startsWith('http') && !r.website.includes('wa.me') && !r.website.includes('instagram.com')).length,
+  }), [results]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted/30 p-4 md:p-8">
@@ -188,6 +195,18 @@ export default function Index() {
                 {results.length} empresa{results.length !== 1 ? 's' : ''} encontrada{results.length !== 1 ? 's' : ''}
                 {isLoading && ' (buscando mais...)'}
               </CardDescription>
+              {results.length > 0 && (
+                <div className="flex flex-wrap gap-4 mt-3 text-sm">
+                  <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+                    <MessageCircle className="h-4 w-4" />
+                    <span>{stats.whatsapp} com WhatsApp</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-pink-600 dark:text-pink-400">
+                    <Instagram className="h-4 w-4" />
+                    <span>{stats.instagram} com Instagram</span>
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               <ResultsTable results={results} />
