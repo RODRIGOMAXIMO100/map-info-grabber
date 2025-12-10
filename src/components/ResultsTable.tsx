@@ -84,7 +84,11 @@ export function ResultsTable({ results }: ResultsTableProps) {
                 </Button>
               )}
               
-              {business.website && !business.website.includes('wa.me') && !business.website.includes('instagram.com') && (
+              {business.website && 
+               business.website.trim() !== '' && 
+               business.website.startsWith('http') &&
+               !business.website.includes('wa.me') && 
+               !business.website.includes('instagram.com') && (
                 <Button
                   variant="outline"
                   size="sm"
