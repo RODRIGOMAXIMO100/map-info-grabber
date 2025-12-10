@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Search, Download, Loader2, MapPin } from 'lucide-react';
+import { Search, Download, Loader2, MapPin, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { LocationSelector } from '@/components/LocationSelector';
 import { ResultsTable } from '@/components/ResultsTable';
@@ -13,7 +14,7 @@ import { Location } from '@/types/business';
 export default function Index() {
   const [keyword, setKeyword] = useState('');
   const [locations, setLocations] = useState<Location[]>([]);
-  const { search, results, isLoading, error } = useBusinessSearch();
+  const { search, results, isLoading, error, progress } = useBusinessSearch();
   const { toast } = useToast();
 
   const handleAddLocation = (location: Location) => {
@@ -74,6 +75,8 @@ export default function Index() {
     });
   };
 
+  const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted/30 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -132,7 +135,7 @@ export default function Index() {
                   type="button"
                   variant="outline"
                   onClick={handleExport}
-                  disabled={results.length === 0}
+                  disabled={results.length === 0 || isLoading}
                 >
                   <Download className="h-4 w-4 mr-2" />
                   Exportar CSV
@@ -142,6 +145,33 @@ export default function Index() {
           </CardContent>
         </Card>
 
+        {isLoading && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <div className="text-center space-y-1">
+                  <p className="font-medium">
+                    Buscando {progress.current} de {progress.total} cidade{progress.total !== 1 ? 's' : ''}...
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {progress.currentCity}
+                  </p>
+                  {results.length > 0 && (
+                    <p className="text-sm text-green-600 dark:text-green-400 mt-2 flex items-center justify-center gap-1">
+                      <CheckCircle2 className="h-4 w-4" />
+                      {results.length} empresa{results.length !== 1 ? 's' : ''} encontrada{results.length !== 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+                <div className="w-full max-w-xs">
+                  <Progress value={progressPercent} className="h-2" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {error && (
           <Card className="border-destructive">
             <CardContent className="pt-6">
@@ -150,12 +180,13 @@ export default function Index() {
           </Card>
         )}
 
-        {results.length > 0 && (
+        {(results.length > 0 || isLoading) && (
           <Card>
             <CardHeader>
               <CardTitle>Resultados</CardTitle>
               <CardDescription>
                 {results.length} empresa{results.length !== 1 ? 's' : ''} encontrada{results.length !== 1 ? 's' : ''}
+                {isLoading && ' (buscando mais...)'}
               </CardDescription>
             </CardHeader>
             <CardContent>
