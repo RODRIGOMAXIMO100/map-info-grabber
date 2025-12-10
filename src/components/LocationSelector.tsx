@@ -31,7 +31,7 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
   const handleAddMultiple = () => {
     if (multipleCities.trim() && bulkState) {
       const cities = multipleCities
-        .split('\n')
+        .split(/[\n,]+/)
         .map(c => c.trim())
         .filter(c => c.length > 0);
       
@@ -93,7 +93,7 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
 
         <TabsContent value="multiple" className="space-y-3 mt-3">
           <Textarea
-            placeholder="Digite uma cidade por linha:&#10;São Paulo&#10;Campinas&#10;Santos"
+            placeholder="Separe por vírgula ou linha:&#10;São Paulo, Campinas, Santos&#10;ou uma por linha"
             value={multipleCities}
             onChange={(e) => setMultipleCities(e.target.value)}
             className="min-h-[100px] text-base"
