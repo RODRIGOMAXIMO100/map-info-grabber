@@ -39,7 +39,7 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
           value={city}
           onChange={(e) => setCity(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="flex-1"
+          className="flex-[3] min-w-[200px]"
         />
         <Select value={state} onValueChange={setState}>
           <SelectTrigger className="w-32">
