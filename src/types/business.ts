@@ -13,6 +13,8 @@ export interface Business {
   city: string;
   state: string;
   place_id: string;
+  whatsapp?: string;
+  instagram?: string;
 }
 
 export const BRAZILIAN_STATES = [
