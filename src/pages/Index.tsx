@@ -17,18 +17,20 @@ export default function Index() {
   const { toast } = useToast();
 
   const handleAddLocation = (location: Location) => {
-    const exists = locations.some(
-      (l) => l.city.toLowerCase() === location.city.toLowerCase() && l.state === location.state
-    );
-    if (exists) {
-      toast({
-        title: 'Localização já adicionada',
-        description: `${location.city}, ${location.state} já está na lista.`,
-        variant: 'destructive',
-      });
-      return;
-    }
-    setLocations([...locations, location]);
+    setLocations(prev => {
+      const exists = prev.some(
+        (l) => l.city.toLowerCase() === location.city.toLowerCase() && l.state === location.state
+      );
+      if (exists) {
+        toast({
+          title: 'Localização já adicionada',
+          description: `${location.city}, ${location.state} já está na lista.`,
+          variant: 'destructive',
+        });
+        return prev;
+      }
+      return [...prev, location];
+    });
   };
 
   const handleRemoveLocation = (index: number) => {
