@@ -13,6 +13,7 @@ interface Location {
 interface SearchRequest {
   keyword: string;
   locations: Location[];
+  maxResults?: number;
 }
 
 function extractWhatsApp(phone: string, website: string, links: any[]): string {
@@ -89,7 +90,7 @@ serve(async (req) => {
   }
 
   try {
-    const { keyword, locations } = await req.json() as SearchRequest;
+    const { keyword, locations, maxResults = 20 } = await req.json() as SearchRequest;
     const serpApiKey = Deno.env.get('SERPAPI_KEY');
 
     if (!serpApiKey) {
@@ -107,7 +108,9 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Searching for "${keyword}" in ${locations.length} locations`);
+    // Calculate how many pages to fetch (each page has ~20 results)
+    const pagesToFetch = Math.ceil(maxResults / 20);
+    console.log(`Searching for "${keyword}" in ${locations.length} locations, maxResults: ${maxResults}, pages: ${pagesToFetch}`);
 
     const allResults: any[] = [];
 
@@ -115,25 +118,50 @@ serve(async (req) => {
       const query = `${keyword} em ${location.city}, ${location.state}`;
       console.log(`Searching: ${query}`);
 
-      const params = new URLSearchParams({
-        engine: 'google_maps',
-        q: query,
-        type: 'search',
-        api_key: serpApiKey,
-        hl: 'pt-br',
-        gl: 'br',
-      });
+      let locationResults: any[] = [];
 
-      const response = await fetch(`https://serpapi.com/search?${params}`);
-      const data = await response.json();
+      for (let page = 0; page < pagesToFetch; page++) {
+        // Stop if we already have enough results for this location
+        if (locationResults.length >= maxResults) {
+          console.log(`Reached maxResults (${maxResults}) for ${location.city}`);
+          break;
+        }
 
-      if (data.error) {
-        console.error(`SerpAPI error for ${location.city}: ${data.error}`);
-        continue;
+        const params = new URLSearchParams({
+          engine: 'google_maps',
+          q: query,
+          type: 'search',
+          api_key: serpApiKey,
+          hl: 'pt-br',
+          gl: 'br',
+          start: String(page * 20),
+        });
+
+        console.log(`Fetching page ${page + 1} for ${location.city} (start: ${page * 20})`);
+        const response = await fetch(`https://serpapi.com/search?${params}`);
+        const data = await response.json();
+
+        if (data.error) {
+          console.error(`SerpAPI error for ${location.city} page ${page + 1}: ${data.error}`);
+          break;
+        }
+
+        const pageResults = data.local_results || [];
+        console.log(`Page ${page + 1}: Found ${pageResults.length} results for ${location.city}`);
+
+        if (pageResults.length === 0) {
+          console.log(`No more results for ${location.city} at page ${page + 1}`);
+          break;
+        }
+
+        locationResults.push(...pageResults);
       }
 
-      const localResults = data.local_results || [];
-      console.log(`Found ${localResults.length} results for ${location.city}`);
+      // Limit to maxResults per location
+      locationResults = locationResults.slice(0, maxResults);
+      console.log(`Total for ${location.city}: ${locationResults.length} results`);
+
+      const localResults = locationResults;
 
       for (const result of localResults) {
         const phone = result.phone || '';
