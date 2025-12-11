@@ -14,6 +14,7 @@ import { Location } from '@/types/business';
 export default function Index() {
   const [keyword, setKeyword] = useState('');
   const [locations, setLocations] = useState<Location[]>([]);
+  const [maxResults, setMaxResults] = useState(20);
   const { search, results, isLoading, error, progress } = useBusinessSearch();
   const { toast } = useToast();
 
@@ -56,7 +57,7 @@ export default function Index() {
       });
       return;
     }
-    await search(keyword, locations);
+    await search(keyword, locations, maxResults);
   };
 
   const handleExport = () => {
@@ -122,6 +123,23 @@ export default function Index() {
                   onAdd={handleAddLocation}
                   onRemove={handleRemoveLocation}
                 />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block">Quantidade de contatos por cidade</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={maxResults}
+                    onChange={(e) => setMaxResults(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
+                    className="w-32"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    (máx. 200 por cidade)
+                  </span>
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">

@@ -20,7 +20,7 @@ export function useBusinessSearch() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>({ current: 0, total: 0, currentCity: '' });
 
-  const search = async (keyword: string, locations: Location[]) => {
+  const search = async (keyword: string, locations: Location[], maxResults: number = 20) => {
     setIsLoading(true);
     setError(null);
     setResults([]);
@@ -36,7 +36,7 @@ export function useBusinessSearch() {
         });
 
         const { data, error: fnError } = await supabase.functions.invoke<SearchResult>('search-businesses', {
-          body: { keyword, locations: [location] },
+          body: { keyword, locations: [location], maxResults },
         });
 
         if (fnError) {
