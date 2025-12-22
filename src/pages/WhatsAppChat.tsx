@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, GripVertical } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils';
 import type { WhatsAppConversation, WhatsAppMessage, WhatsAppLabel } from '@/types/whatsapp';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+
+type FilterType = 'all' | 'no_reply' | 'unread' | 'ai_paused' | 'waiting';
 
 interface WhatsAppInstance {
   id: string;
@@ -41,6 +43,7 @@ export default function WhatsAppChat() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
   useEffect(() => {
     loadInstances();
@@ -289,14 +292,56 @@ export default function WhatsAppChat() {
     return colors[label?.color || 0];
   };
 
-  const filteredConversations = conversations.filter(conv => {
-    const matchesSearch = conv.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      conv.phone.includes(searchTerm);
-    
-    const matchesInstance = selectedInstance === 'all' || conv.config_id === selectedInstance;
-    
-    return matchesSearch && matchesInstance;
-  });
+  // Filter counts for badges
+  const filterCounts = useMemo(() => {
+    const baseFiltered = conversations.filter(conv => {
+      const matchesSearch = conv.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        conv.phone.includes(searchTerm);
+      const matchesInstance = selectedInstance === 'all' || conv.config_id === selectedInstance;
+      return matchesSearch && matchesInstance;
+    });
+
+    return {
+      all: baseFiltered.length,
+      no_reply: baseFiltered.filter(c => !c.last_lead_message_at).length,
+      unread: baseFiltered.filter(c => (c.unread_count ?? 0) > 0).length,
+      ai_paused: baseFiltered.filter(c => c.ai_paused).length,
+      waiting: baseFiltered.filter(c => {
+        // Last message was outgoing and no reply for 1+ hour
+        if (!c.last_message_at) return false;
+        const lastMsg = new Date(c.last_message_at).getTime();
+        const lastLead = c.last_lead_message_at ? new Date(c.last_lead_message_at).getTime() : 0;
+        return lastMsg > lastLead && (Date.now() - lastMsg) > 3600000;
+      }).length,
+    };
+  }, [conversations, searchTerm, selectedInstance]);
+
+  const filteredConversations = useMemo(() => {
+    return conversations.filter(conv => {
+      const matchesSearch = conv.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        conv.phone.includes(searchTerm);
+      
+      const matchesInstance = selectedInstance === 'all' || conv.config_id === selectedInstance;
+      
+      if (!matchesSearch || !matchesInstance) return false;
+
+      switch (activeFilter) {
+        case 'no_reply':
+          return !conv.last_lead_message_at;
+        case 'unread':
+          return (conv.unread_count ?? 0) > 0;
+        case 'ai_paused':
+          return conv.ai_paused;
+        case 'waiting':
+          if (!conv.last_message_at) return false;
+          const lastMsg = new Date(conv.last_message_at).getTime();
+          const lastLead = conv.last_lead_message_at ? new Date(conv.last_lead_message_at).getTime() : 0;
+          return lastMsg > lastLead && (Date.now() - lastMsg) > 3600000;
+        default:
+          return true;
+      }
+    });
+  }, [conversations, searchTerm, selectedInstance, activeFilter]);
 
   const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -376,7 +421,7 @@ export default function WhatsAppChat() {
           "border-r flex flex-col bg-background min-w-0 overflow-hidden w-full",
           selectedConversation ? "hidden" : "flex"
         )}>
-          <div className="p-3 border-b">
+          <div className="p-3 border-b space-y-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -385,6 +430,65 @@ export default function WhatsAppChat() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9"
               />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Button
+                variant={activeFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('all')}
+                className="h-7 text-xs px-2"
+              >
+                Todos
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.all}</Badge>
+              </Button>
+              <Button
+                variant={activeFilter === 'no_reply' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('no_reply')}
+                className="h-7 text-xs px-2"
+              >
+                <MessageSquareOff className="h-3 w-3 mr-1" />
+                Sem Resposta
+                {filterCounts.no_reply > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.no_reply}</Badge>
+                )}
+              </Button>
+              <Button
+                variant={activeFilter === 'unread' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('unread')}
+                className="h-7 text-xs px-2"
+              >
+                <Mail className="h-3 w-3 mr-1" />
+                Não Lidas
+                {filterCounts.unread > 0 && (
+                  <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.unread}</Badge>
+                )}
+              </Button>
+              <Button
+                variant={activeFilter === 'ai_paused' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('ai_paused')}
+                className="h-7 text-xs px-2"
+              >
+                <BotOff className="h-3 w-3 mr-1" />
+                IA Pausada
+                {filterCounts.ai_paused > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px] bg-orange-500/20 text-orange-600">{filterCounts.ai_paused}</Badge>
+                )}
+              </Button>
+              <Button
+                variant={activeFilter === 'waiting' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('waiting')}
+                className="h-7 text-xs px-2"
+              >
+                <Clock className="h-3 w-3 mr-1" />
+                Aguardando
+                {filterCounts.waiting > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.waiting}</Badge>
+                )}
+              </Button>
             </div>
           </div>
 
@@ -563,7 +667,7 @@ export default function WhatsAppChat() {
                 )}
               </div>
 
-              <div className="p-3 border-b">
+              <div className="p-3 border-b space-y-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -572,6 +676,65 @@ export default function WhatsAppChat() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-9"
                   />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Button
+                    variant={activeFilter === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setActiveFilter('all')}
+                    className="h-7 text-xs px-2"
+                  >
+                    Todos
+                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.all}</Badge>
+                  </Button>
+                  <Button
+                    variant={activeFilter === 'no_reply' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setActiveFilter('no_reply')}
+                    className="h-7 text-xs px-2"
+                  >
+                    <MessageSquareOff className="h-3 w-3 mr-1" />
+                    Sem Resposta
+                    {filterCounts.no_reply > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.no_reply}</Badge>
+                    )}
+                  </Button>
+                  <Button
+                    variant={activeFilter === 'unread' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setActiveFilter('unread')}
+                    className="h-7 text-xs px-2"
+                  >
+                    <Mail className="h-3 w-3 mr-1" />
+                    Não Lidas
+                    {filterCounts.unread > 0 && (
+                      <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.unread}</Badge>
+                    )}
+                  </Button>
+                  <Button
+                    variant={activeFilter === 'ai_paused' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setActiveFilter('ai_paused')}
+                    className="h-7 text-xs px-2"
+                  >
+                    <BotOff className="h-3 w-3 mr-1" />
+                    IA Pausada
+                    {filterCounts.ai_paused > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px] bg-orange-500/20 text-orange-600">{filterCounts.ai_paused}</Badge>
+                    )}
+                  </Button>
+                  <Button
+                    variant={activeFilter === 'waiting' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setActiveFilter('waiting')}
+                    className="h-7 text-xs px-2"
+                  >
+                    <Clock className="h-3 w-3 mr-1" />
+                    Aguardando
+                    {filterCounts.waiting > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.waiting}</Badge>
+                    )}
+                  </Button>
                 </div>
               </div>
 

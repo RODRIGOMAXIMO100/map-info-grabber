@@ -19,6 +19,9 @@ export interface WhatsAppConversation {
   tags: string[];
   last_message_at: string;
   last_message_preview?: string;
+  last_lead_message_at?: string;
+  last_followup_at?: string;
+  followup_count?: number;
   unread_count: number;
   pinned: boolean;
   muted_until?: string;
