@@ -105,7 +105,9 @@ const isWithinBusinessHours = (settings: ProtectionSettings): boolean => {
 
 // Check if instance is in warmup period
 const isInWarmup = (config: WhatsAppConfig, settings: ProtectionSettings): boolean => {
-  if (!config.warmup_started_at) return true;
+  // If warmup_started_at is NULL, treat as warmed up (legacy instances)
+  // New instances will always have warmup_started_at set to NOW() on creation
+  if (!config.warmup_started_at) return false;
   
   const warmupStart = new Date(config.warmup_started_at);
   const now = new Date();

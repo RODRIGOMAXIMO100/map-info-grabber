@@ -20,6 +20,7 @@ interface WhatsAppInstance {
   admin_token: string;
   instance_phone: string;
   is_active: boolean;
+  warmup_started_at: string | null;
   testResult?: 'success' | 'error' | null;
   testing?: boolean;
 }
@@ -69,6 +70,7 @@ export default function WhatsAppConfig() {
         admin_token: d.admin_token || '',
         instance_phone: d.instance_phone || '',
         is_active: d.is_active ?? true,
+        warmup_started_at: d.warmup_started_at || null,
       })));
     } catch (error) {
       console.error('Error loading instances:', error);
@@ -87,9 +89,56 @@ export default function WhatsAppConfig() {
       admin_token: '',
       instance_phone: '',
       is_active: true,
+      warmup_started_at: new Date().toISOString(), // New instances start warmup now
     };
     setSelectedInstance(newInstance);
     setIsEditing(true);
+  };
+
+  // Calculate warmup status
+  const getWarmupStatus = (instance: WhatsAppInstance) => {
+    if (!instance.warmup_started_at) return { inWarmup: false, daysRemaining: 0 };
+    const warmupDays = 7; // Default warmup days
+    const warmupStart = new Date(instance.warmup_started_at);
+    const now = new Date();
+    const daysSinceStart = Math.floor((now.getTime() - warmupStart.getTime()) / (1000 * 60 * 60 * 24));
+    const daysRemaining = Math.max(0, warmupDays - daysSinceStart);
+    return { inWarmup: daysRemaining > 0, daysRemaining };
+  };
+
+  const handleMarkAsWarmedUp = async (instanceId: string) => {
+    try {
+      // Set warmup_started_at to 30 days ago to mark as warmed up
+      await supabase
+        .from('whatsapp_config')
+        .update({ warmup_started_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() })
+        .eq('id', instanceId);
+      
+      toast({
+        title: 'Número marcado como aquecido',
+        description: 'Esta instância agora usa o limite normal de mensagens.',
+      });
+      loadInstances();
+    } catch (error) {
+      console.error('Error marking as warmed up:', error);
+    }
+  };
+
+  const handleResetWarmup = async (instanceId: string) => {
+    try {
+      await supabase
+        .from('whatsapp_config')
+        .update({ warmup_started_at: new Date().toISOString() })
+        .eq('id', instanceId);
+      
+      toast({
+        title: 'Warmup reiniciado',
+        description: 'O período de aquecimento começou novamente.',
+      });
+      loadInstances();
+    } catch (error) {
+      console.error('Error resetting warmup:', error);
+    }
   };
 
   const handleEdit = (instance: WhatsAppInstance) => {
@@ -364,6 +413,55 @@ export default function WhatsAppConfig() {
                       <p>{instance.instance_phone || '-'}</p>
                     </div>
                   </div>
+                  
+                  {/* Warmup Status */}
+                  <div className="mt-3 pt-3 border-t">
+                    {(() => {
+                      const status = getWarmupStatus(instance);
+                      return (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {status.inWarmup ? (
+                              <>
+                                <span className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded">
+                                  🔥 Warmup ({status.daysRemaining} dias restantes)
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMarkAsWarmedUp(instance.id);
+                                  }}
+                                >
+                                  Marcar como aquecido
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-xs bg-green-500/20 text-green-600 dark:text-green-400 px-2 py-0.5 rounded">
+                                  ✅ Aquecido
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleResetWarmup(instance.id);
+                                  }}
+                                >
+                                  Reiniciar warmup
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  
                   <div className="mt-3 pt-3 border-t">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">Webhook:</span>
