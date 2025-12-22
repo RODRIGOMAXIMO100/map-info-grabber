@@ -6,6 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// SDR Funnel Stages - IA controla STAGE_1 a STAGE_4
+const FUNNEL_LABELS = ['16', '13', '14', '20']; // Labels que a IA controla
+const HANDOFF_LABEL = '21'; // STAGE_5 - Vendedor assume
+
 // Process AI response in background
 async function processAIResponse(
   supabaseUrl: string,
@@ -30,18 +34,7 @@ async function processAIResponse(
       return;
     }
 
-    // Check working hours
-    const now = new Date();
-    const currentTime = now.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour12: false });
-    const startTime = aiConfig.working_hours_start || '00:00';
-    const endTime = aiConfig.working_hours_end || '23:59';
-
-    // Handle 24h mode (00:01 - 00:00)
-    const is24hMode = startTime === '00:01' && endTime === '00:00';
-    if (!is24hMode && (currentTime < startTime || currentTime > endTime)) {
-      console.log('[AI] Outside working hours:', currentTime, 'vs', startTime, '-', endTime);
-      return;
-    }
+    // IA funciona 24 horas quando ativa - removida verificação de horário
 
     // Wait for the configured delay (simulates human reading time)
     const delaySeconds = aiConfig.auto_reply_delay_seconds || 5;
@@ -54,14 +47,14 @@ async function processAIResponse(
       .select('direction, content')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
-      .limit(10);
+      .limit(20);
 
     // Get current stage from tags
-    const FUNNEL_LABELS = ['16', '13', '14'];
-    const currentStageId = tags.find(tag => FUNNEL_LABELS.includes(tag)) || '16';
+    const allStageLabels = ['16', '13', '14', '20', '21', '22', '23'];
+    const currentStageId = tags.find(tag => allStageLabels.includes(tag)) || '16';
 
     // Call AI agent
-    console.log('[AI] Calling AI agent for conversation:', conversationId);
+    console.log('[AI] Calling AI agent for conversation:', conversationId, 'Stage:', currentStageId);
     
     const aiResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-ai-agent`, {
       method: 'POST',
@@ -86,8 +79,9 @@ async function processAIResponse(
     const aiResult = await aiResponse.json();
     console.log('[AI] Agent response:', aiResult);
 
-    if (aiResult.error) {
-      console.error('[AI] Agent returned error:', aiResult.error);
+    // Se IA indicou que não deve responder (handoff ou erro)
+    if (aiResult.error || aiResult.should_respond === false) {
+      console.log('[AI] Agent indicated no response needed:', aiResult.error || aiResult.message);
       return;
     }
 
@@ -119,13 +113,22 @@ async function processAIResponse(
       if (aiResult.label_id && aiResult.label_id !== currentStageId) {
         console.log('[AI] Updating label to:', aiResult.label_id);
         
-        // Update tags in database
-        const newTags = tags.filter(t => !FUNNEL_LABELS.includes(t));
+        // Update tags in database - remove old stage labels, add new one
+        const newTags = tags.filter(t => !allStageLabels.includes(t));
         newTags.push(aiResult.label_id);
+        
+        const updateData: Record<string, unknown> = { tags: newTags };
+        
+        // Se for handoff, pausar IA e registrar motivo
+        if (aiResult.should_handoff || aiResult.label_id === HANDOFF_LABEL) {
+          updateData.ai_paused = true;
+          updateData.ai_handoff_reason = aiResult.handoff_reason || 'Lead qualificado para vendedor';
+          console.log('[AI] Handoff triggered:', aiResult.handoff_reason);
+        }
         
         await supabase
           .from('whatsapp_conversations')
-          .update({ tags: newTags })
+          .update(updateData)
           .eq('id', conversationId);
 
         // Update label in WhatsApp (UAZAPI)
@@ -142,7 +145,7 @@ async function processAIResponse(
         });
       }
 
-      // Send video if AI suggests
+      // Send video if AI suggests (usually STAGE_2 or STAGE_3)
       if (aiResult.should_send_video && aiResult.video_url) {
         console.log('[AI] Sending video');
         await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
@@ -167,7 +170,7 @@ async function processAIResponse(
           .eq('id', conversationId);
       }
 
-      // Send site if AI suggests
+      // Send site if AI suggests (usually STAGE_3 or STAGE_4)
       if (aiResult.should_send_site && aiResult.site_url) {
         console.log('[AI] Sending site link');
         await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
@@ -179,7 +182,7 @@ async function processAIResponse(
           body: JSON.stringify({
             conversation_id: conversationId,
             phone: senderPhone,
-            message: `Acesse nosso site: ${aiResult.site_url}`
+            message: `📊 Conheça nossos cases de sucesso: ${aiResult.site_url}`
           })
         });
 
@@ -277,12 +280,15 @@ serve(async (req) => {
       if (type === 'image' || messageData.message?.imageMessage) {
         messageType = 'image';
         messageContent = messageContent || '[Imagem]';
-      } else if (type === 'audio' || messageData.message?.audioMessage) {
+      } else if (type === 'audio' || type === 'ptt' || messageData.message?.audioMessage) {
         messageType = 'audio';
         messageContent = '[Áudio]';
       } else if (type === 'video' || messageData.message?.videoMessage) {
         messageType = 'video';
         messageContent = messageContent || '[Vídeo]';
+      } else if (type === 'document' || messageData.message?.documentMessage) {
+        messageType = 'document';
+        messageContent = '[Documento/PDF]';
       }
     }
 
@@ -317,6 +323,7 @@ serve(async (req) => {
     // Find or create conversation
     let conversationId: string;
     let conversationTags: string[] = [];
+    let aiPaused = false;
     
     const { data: existingConv } = await supabase
       .from('whatsapp_conversations')
@@ -329,6 +336,7 @@ serve(async (req) => {
     if (existingConv) {
       conversationId = existingConv.id;
       conversationTags = existingConv.tags || [];
+      aiPaused = existingConv.ai_paused === true;
       
       const updateData: Record<string, unknown> = {
         last_message_at: new Date().toISOString(),
@@ -384,16 +392,14 @@ serve(async (req) => {
         status: isFromMe ? 'sent' : 'received'
       });
 
-    // AI Integration - Process in background for incoming messages from funnel leads
-    const FUNNEL_LABELS = ['16', '13', '14'];
-    const isInFunnel = conversationTags.some(tag => FUNNEL_LABELS.includes(tag));
-    const aiPaused = existingConv?.ai_paused === true;
+    // AI Integration - Process in background for incoming messages
+    // IA controla apenas leads nos estágios STAGE_1 a STAGE_4 (labels 16, 13, 14, 20)
+    const isInAIControlledStage = conversationTags.some(tag => FUNNEL_LABELS.includes(tag));
 
-    if (!isFromMe && !isGroup && messageContent && isInFunnel && !aiPaused) {
+    if (!isFromMe && !isGroup && messageContent && isInAIControlledStage && !aiPaused) {
       console.log('[AI] Triggering background AI processing for conversation:', conversationId);
       
       // Process AI in background (fire and forget - doesn't block webhook response)
-      // We don't await this promise, so it runs in background
       processAIResponse(
         supabaseUrl,
         supabaseServiceKey,
@@ -402,6 +408,8 @@ serve(async (req) => {
         senderPhone,
         conversationTags
       ).catch(err => console.error('[AI] Background processing failed:', err));
+    } else {
+      console.log('[AI] Skipping AI:', { isFromMe, isGroup, hasContent: !!messageContent, isInAIControlledStage, aiPaused });
     }
 
     return new Response(
