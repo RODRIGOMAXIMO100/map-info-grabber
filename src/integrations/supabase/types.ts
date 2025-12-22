@@ -73,6 +73,7 @@ export type Database = {
           failed_count: number | null
           id: string
           image_url: string | null
+          invalid_count: number | null
           lead_data: Json | null
           message_template: string | null
           name: string
@@ -81,6 +82,8 @@ export type Database = {
           sent_count: number | null
           status: string
           updated_at: string | null
+          valid_count: number | null
+          validated_at: string | null
         }
         Insert: {
           created_at?: string | null
@@ -89,6 +92,7 @@ export type Database = {
           failed_count?: number | null
           id?: string
           image_url?: string | null
+          invalid_count?: number | null
           lead_data?: Json | null
           message_template?: string | null
           name: string
@@ -97,6 +101,8 @@ export type Database = {
           sent_count?: number | null
           status?: string
           updated_at?: string | null
+          valid_count?: number | null
+          validated_at?: string | null
         }
         Update: {
           created_at?: string | null
@@ -105,6 +111,7 @@ export type Database = {
           failed_count?: number | null
           id?: string
           image_url?: string | null
+          invalid_count?: number | null
           lead_data?: Json | null
           message_template?: string | null
           name?: string
@@ -113,6 +120,8 @@ export type Database = {
           sent_count?: number | null
           status?: string
           updated_at?: string | null
+          valid_count?: number | null
+          validated_at?: string | null
         }
         Relationships: [
           {
