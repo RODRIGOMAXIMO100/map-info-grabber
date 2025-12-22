@@ -9,6 +9,7 @@ const corsHeaders = {
 // SDR Funnel Stages - IA controla STAGE_1 a STAGE_4
 const FUNNEL_LABELS = ['16', '13', '14', '20'];
 const HANDOFF_LABEL = '21';
+const INITIAL_STAGE = '16'; // Lead Novo
 
 // Process AI response in background
 async function processAIResponse(
@@ -214,6 +215,55 @@ async function processAIResponse(
   }
 }
 
+// Check if phone received a broadcast message recently (fallback CRM detection)
+async function checkIfBroadcastLead(
+  supabase: any,
+  phone: string
+): Promise<{ isBroadcastLead: boolean; dnaId: string | null; configId: string | null }> {
+  try {
+    // Normalize phone for comparison
+    let normalizedPhone = phone.replace(/\D/g, '');
+    if (!normalizedPhone.startsWith('55') && (normalizedPhone.length === 10 || normalizedPhone.length === 11)) {
+      normalizedPhone = '55' + normalizedPhone;
+    }
+
+    // Check whatsapp_queue for recent sent messages to this phone (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const { data: queueItems } = await supabase
+      .from('whatsapp_queue')
+      .select('id, config_id, broadcast_list_id')
+      .eq('status', 'sent')
+      .gte('processed_at', thirtyDaysAgo.toISOString())
+      .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
+      .limit(1);
+
+    if (queueItems && queueItems.length > 0) {
+      const queueItem = queueItems[0] as { id: string; config_id: string | null; broadcast_list_id: string | null };
+      let dnaId: string | null = null;
+
+      // Get DNA from broadcast list if exists
+      if (queueItem.broadcast_list_id) {
+        const { data: broadcastList } = await supabase
+          .from('broadcast_lists')
+          .select('dna_id')
+          .eq('id', queueItem.broadcast_list_id)
+          .maybeSingle();
+        dnaId = (broadcastList as { dna_id: string | null } | null)?.dna_id || null;
+      }
+
+      console.log(`[CRM Detection] Found broadcast history for phone ${phone}, marking as CRM lead`);
+      return { isBroadcastLead: true, dnaId, configId: queueItem.config_id };
+    }
+
+    return { isBroadcastLead: false, dnaId: null, configId: null };
+  } catch (error) {
+    console.error('[CRM Detection] Error checking broadcast history:', error);
+    return { isBroadcastLead: false, dnaId: null, configId: null };
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -248,8 +298,6 @@ serve(async (req) => {
     console.log('Event type:', payload.event || payload.EventType);
 
     // Extract the receiving instance phone number from UAZAPI payload
-    // UAZAPI sends the owner phone (the instance phone) in the 'owner' field
-    // Also check chat.owner and message.owner as fallbacks
     const instancePhone = 
       payload.owner ||
       payload.chat?.owner ||
@@ -280,21 +328,17 @@ serve(async (req) => {
 
     // If no instance from URL param, try to find by the receiving phone number
     if (!configId && instancePhone) {
-      // Normalize phone for comparison (remove non-digits)
       const normalizedInstancePhone = instancePhone.replace(/\D/g, '');
       
-      // Try exact match first
       const { data: configByPhone } = await supabase
         .from('whatsapp_config')
         .select('id, instance_phone')
         .eq('is_active', true);
       
       if (configByPhone && configByPhone.length > 0) {
-        // Find config where instance_phone matches (with normalization)
         const matchedConfig = configByPhone.find(config => {
           if (!config.instance_phone) return false;
           const normalizedConfigPhone = config.instance_phone.replace(/\D/g, '');
-          // Check if either contains the other (handles country code variations)
           return normalizedConfigPhone.includes(normalizedInstancePhone) || 
                  normalizedInstancePhone.includes(normalizedConfigPhone) ||
                  normalizedConfigPhone === normalizedInstancePhone;
@@ -418,11 +462,11 @@ serve(async (req) => {
     let conversationTags: string[] = [];
     let aiPaused = false;
     let existingConfigId: string | null = null;
-    let isCrmLead = false; // Flag definitiva: só true para leads do broadcast/CRM
+    let isCrmLead = false;
     
     const { data: existingConv } = await supabase
       .from('whatsapp_conversations')
-      .select('id, tags, unread_count, ai_paused, config_id, is_crm_lead')
+      .select('id, tags, unread_count, ai_paused, config_id, is_crm_lead, dna_id')
       .eq('phone', senderPhone)
       .maybeSingle();
 
@@ -436,7 +480,51 @@ serve(async (req) => {
       conversationTags = existingConv.tags || [];
       aiPaused = existingConv.ai_paused === true;
       existingConfigId = existingConv.config_id;
-      isCrmLead = existingConv.is_crm_lead === true; // Usa o campo persistido
+      isCrmLead = existingConv.is_crm_lead === true;
+      
+      // ===== FALLBACK: Auto-detect CRM lead if not already marked =====
+      // Se is_crm_lead é false mas a pessoa recebeu um broadcast, marca como CRM lead
+      if (!isCrmLead && !isFromMe) {
+        const broadcastCheck = await checkIfBroadcastLead(supabase, senderPhone);
+        
+        if (broadcastCheck.isBroadcastLead) {
+          console.log(`[CRM Fallback] Marking ${senderPhone} as CRM lead (found in broadcast history)`);
+          isCrmLead = true;
+          
+          // Se não tem tags de funil, coloca no estágio inicial
+          const hasAnyFunnelTag = conversationTags.some(tag => 
+            ['16', '13', '14', '20', '21', '22', '23'].includes(tag)
+          );
+          
+          if (!hasAnyFunnelTag) {
+            conversationTags = [INITIAL_STAGE]; // Lead Novo
+          }
+          
+          // Update conversation with CRM lead status
+          const updateCrmData: Record<string, unknown> = {
+            is_crm_lead: true,
+            tags: conversationTags
+          };
+          
+          // Set DNA if not already set
+          if (!existingConv.dna_id && broadcastCheck.dnaId) {
+            updateCrmData.dna_id = broadcastCheck.dnaId;
+          }
+          
+          // Set config_id if not already set
+          if (!existingConfigId && broadcastCheck.configId) {
+            updateCrmData.config_id = broadcastCheck.configId;
+            existingConfigId = broadcastCheck.configId;
+          }
+          
+          await supabase
+            .from('whatsapp_conversations')
+            .update(updateCrmData)
+            .eq('id', conversationId);
+          
+          console.log(`[CRM Fallback] Updated conversation ${conversationId}:`, updateCrmData);
+        }
+      }
       
       const updateData: Record<string, unknown> = {
         last_message_at: new Date().toISOString(),
@@ -464,10 +552,23 @@ serve(async (req) => {
         .update(updateData)
         .eq('id', conversationId);
     } else {
-      // NOVA CONVERSA: NÃO é do CRM por padrão
-      // Tags vazias = não está no funil, is_crm_lead = false
-      conversationTags = []; // NÃO coloca no funil automaticamente
-      isCrmLead = false;
+      // NOVA CONVERSA: Verifica se é do broadcast antes de criar
+      let newConvDnaId: string | null = null;
+      let newConvConfigId: string | null = configId;
+      
+      // Check if this is a broadcast lead responding for the first time
+      if (!isFromMe) {
+        const broadcastCheck = await checkIfBroadcastLead(supabase, senderPhone);
+        if (broadcastCheck.isBroadcastLead) {
+          console.log(`[New Conv] Phone ${senderPhone} is a broadcast lead, marking as CRM`);
+          isCrmLead = true;
+          conversationTags = [INITIAL_STAGE]; // Lead Novo
+          newConvDnaId = broadcastCheck.dnaId;
+          if (!newConvConfigId && broadcastCheck.configId) {
+            newConvConfigId = broadcastCheck.configId;
+          }
+        }
+      }
       
       const { data: newConv, error: createError } = await supabase
         .from('whatsapp_conversations')
@@ -475,27 +576,27 @@ serve(async (req) => {
           phone: senderPhone,
           name: isGroup ? 'Grupo' : (senderName || null),
           is_group: isGroup,
-          tags: conversationTags, // Vazio - não está no funil
-          is_crm_lead: false, // NÃO é lead do CRM
+          tags: conversationTags,
+          is_crm_lead: isCrmLead,
+          dna_id: newConvDnaId,
           last_message_at: new Date().toISOString(),
           last_message_preview: isFromMe ? `Você: ${messagePreview}` : messagePreview,
           last_lead_message_at: isFromMe ? null : new Date().toISOString(),
           unread_count: isFromMe ? 0 : 1,
           status: 'active',
           followup_count: 0,
-          config_id: configId
+          config_id: newConvConfigId
         })
         .select()
         .single();
 
       if (createError) throw createError;
       conversationId = newConv.id;
-      existingConfigId = configId;
+      existingConfigId = newConvConfigId;
+      
+      console.log(`[New Conv] Created conversation ${conversationId}: is_crm_lead=${isCrmLead}, tags=${conversationTags}`);
     }
 
-    // Save message
-    await supabase
-      .from('whatsapp_messages')
     // === AUTO BLACKLIST: Detect opt-out keywords ===
     if (!isFromMe && messageContent) {
       const optOutKeywords = [
@@ -540,6 +641,9 @@ serve(async (req) => {
               ai_handoff_reason: `Usuário solicitou opt-out: "${matchedKeyword}"`
             })
             .eq('id', conversationId);
+          
+          // Update aiPaused flag for the trigger check below
+          aiPaused = true;
         }
       }
     }
@@ -566,7 +670,10 @@ serve(async (req) => {
       isCrmLead, 
       isInAIControlledStage,
       aiPaused,
-      tags: conversationTags
+      tags: conversationTags,
+      hasValidContent,
+      isFromMe,
+      isGroup
     });
 
     // IA SÓ responde se:
