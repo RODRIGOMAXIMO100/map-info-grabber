@@ -45,10 +45,35 @@ const AVAILABLE_VARIABLES = [
   { key: '{website}', label: 'Website', field: 'website' },
 ];
 
+// Extrai o nome real do estabelecimento (parte depois do " - ")
+const extractRealName = (title: string): string => {
+  if (!title) return '';
+  
+  // Se tiver " - ", pega a parte DEPOIS (nome real do profissional/estabelecimento)
+  if (title.includes(' - ')) {
+    const parts = title.split(' - ');
+    if (parts[1] && parts[1].trim().length > 3) {
+      return parts[1].trim();
+    }
+  }
+  
+  // Se tiver " | ", pega a parte DEPOIS
+  if (title.includes(' | ')) {
+    const parts = title.split(' | ');
+    if (parts[1] && parts[1].trim().length > 3) {
+      return parts[1].trim();
+    }
+  }
+  
+  // Fallback: retorna o título original
+  return title;
+};
+
 const replaceVariables = (message: string, lead: LeadData | null): string => {
   if (!lead) return message;
   let result = message;
-  result = result.replace(/{nome_empresa}/g, String(lead.name || 'sua empresa'));
+  const cleanName = extractRealName(String(lead.name || 'sua empresa'));
+  result = result.replace(/{nome_empresa}/g, cleanName);
   result = result.replace(/{cidade}/g, String(lead.city || ''));
   result = result.replace(/{estado}/g, String(lead.state || ''));
   result = result.replace(/{rating}/g, String(lead.rating || ''));
