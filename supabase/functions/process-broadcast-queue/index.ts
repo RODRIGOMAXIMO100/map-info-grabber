@@ -163,6 +163,61 @@ const isInnocentError = (errorMessage: string): boolean => {
   return innocentKeywords.some(keyword => lowerError.includes(keyword));
 };
 
+// Check if a phone number exists on WhatsApp using UAZAPI
+const checkNumberOnWhatsApp = async (
+  serverUrl: string,
+  token: string,
+  phone: string
+): Promise<{ exists: boolean; formattedNumber: string | null }> => {
+  try {
+    // Format phone for checking
+    let formattedPhone = phone.replace(/\D/g, '');
+    if (!formattedPhone.startsWith('55') && (formattedPhone.length === 10 || formattedPhone.length === 11)) {
+      formattedPhone = '55' + formattedPhone;
+    }
+
+    // Quick validation: landline numbers typically have 10 digits (with DDD) and don't start with 9 in the local part
+    // Mobile numbers in Brazil have 11 digits (with DDD) and local part starts with 9
+    const localNumber = formattedPhone.startsWith('55') ? formattedPhone.slice(4) : formattedPhone.slice(2);
+    if (localNumber.length === 8 && !localNumber.startsWith('9')) {
+      console.log(`[NumberCheck] ${phone} appears to be a landline (8 digits, no 9 prefix)`);
+      return { exists: false, formattedNumber: null };
+    }
+
+    // Call UAZAPI to check if number exists
+    const checkUrl = `${serverUrl}/contact/check`;
+    const response = await fetch(checkUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'token': token
+      },
+      body: JSON.stringify({ number: formattedPhone })
+    });
+
+    if (!response.ok) {
+      console.log(`[NumberCheck] API error for ${phone}: ${response.status}`);
+      // If API fails, assume number exists to avoid false negatives
+      return { exists: true, formattedNumber: formattedPhone };
+    }
+
+    const result = await response.json();
+    
+    // UAZAPI returns { exists: true/false, jid: "number@s.whatsapp.net" }
+    const exists = result.exists === true || result.numberExists === true || result.onWhatsApp === true;
+    
+    console.log(`[NumberCheck] ${phone} -> exists: ${exists}`);
+    return { 
+      exists, 
+      formattedNumber: exists ? (result.jid?.split('@')[0] || formattedPhone) : null 
+    };
+  } catch (error) {
+    console.error(`[NumberCheck] Error checking ${phone}:`, error);
+    // On error, assume exists to avoid false negatives
+    return { exists: true, formattedNumber: phone.replace(/\D/g, '') };
+  }
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -335,6 +390,7 @@ serve(async (req) => {
     let sentCount = 0;
     let failedCount = 0;
     let skippedBlacklist = 0;
+    let skippedInvalidNumber = 0;
     let configIndex = 0;
 
     for (const queueItem of pendingMessages || []) {
@@ -374,7 +430,7 @@ serve(async (req) => {
       }
       // ============= END DUPLICATE CHECK =============
 
-      // Round-robin: select config
+      // Round-robin: select config FIRST (needed for number verification)
       const selectedConfig = availableConfigs[configIndex % availableConfigs.length];
       configIndex++;
 
@@ -387,6 +443,44 @@ serve(async (req) => {
         console.log(`[Broadcast] Instance ${selectedConfig.name} hit limit during batch, skipping`);
         continue;
       }
+
+      // ============= NUMBER VERIFICATION =============
+      // Check if number exists on WhatsApp BEFORE sending
+      const numberCheck = await checkNumberOnWhatsApp(
+        selectedConfig.server_url,
+        selectedConfig.instance_token,
+        queueItem.phone
+      );
+
+      if (!numberCheck.exists) {
+        console.log(`[Broadcast] ⚠️ Skipping ${queueItem.phone} - number not on WhatsApp`);
+        await supabase
+          .from('whatsapp_queue')
+          .update({ 
+            status: 'failed', 
+            error_message: 'Número não encontrado no WhatsApp',
+            processed_at: new Date().toISOString()
+          })
+          .eq('id', queueItem.id);
+        
+        // Update broadcast list counter
+        if (queueItem.broadcast_list_id) {
+          const { data: list } = await supabase
+            .from('broadcast_lists')
+            .select('failed_count')
+            .eq('id', queueItem.broadcast_list_id)
+            .single();
+          
+          await supabase
+            .from('broadcast_lists')
+            .update({ failed_count: (list?.failed_count || 0) + 1 })
+            .eq('id', queueItem.broadcast_list_id);
+        }
+
+        skippedInvalidNumber++;
+        continue;
+      }
+      // ============= END NUMBER VERIFICATION =============
 
       console.log(`[Broadcast] Sending via ${selectedConfig.name || selectedConfig.instance_phone} (${limit.messages_sent + 1}/${dailyLimit})`);
 
@@ -686,7 +780,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[Broadcast] Summary: ${sentCount} sent, ${failedCount} failed, ${skippedBlacklist} blacklisted`);
+    console.log(`[Broadcast] Summary: ${sentCount} sent, ${failedCount} failed, ${skippedBlacklist} blacklisted, ${skippedInvalidNumber} invalid numbers`);
 
     return new Response(
       JSON.stringify({ 
@@ -694,6 +788,7 @@ serve(async (req) => {
         sent: sentCount, 
         failed: failedCount,
         skipped_blacklist: skippedBlacklist,
+        skipped_invalid_number: skippedInvalidNumber,
         instances_used: availableConfigs.length
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
