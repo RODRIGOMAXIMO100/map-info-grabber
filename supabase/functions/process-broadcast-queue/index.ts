@@ -382,9 +382,10 @@ serve(async (req) => {
         processedMessage = processSpintax(processedMessage);
         processedMessage = addInvisibleVariation(processedMessage);
 
-        // Format phone number
+        // Format phone number - normalize to always have 55 prefix
         let formattedPhone = queueItem.phone.replace(/\D/g, '');
-        if (formattedPhone.length === 11 && !formattedPhone.startsWith('55')) {
+        // Brazilian numbers: 10 digits (landline) or 11 digits (mobile) without country code
+        if (!formattedPhone.startsWith('55') && (formattedPhone.length === 10 || formattedPhone.length === 11)) {
           formattedPhone = '55' + formattedPhone;
         }
 
