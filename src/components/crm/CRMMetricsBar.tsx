@@ -114,15 +114,13 @@ export function CRMMetricsBar({ conversations }: CRMMetricsBarProps) {
         value={metrics.convertedToday}
         color="text-green-500"
       />
-      {metrics.pendingReminders > 0 && (
-        <MetricCard
-          icon={Bell}
-          label="Lembretes"
-          value={metrics.pendingReminders}
-          color="text-yellow-500"
-          highlight
-        />
-      )}
+      <MetricCard
+        icon={Bell}
+        label="Lembretes"
+        value={metrics.pendingReminders}
+        color="text-amber-500"
+        highlight={metrics.pendingReminders > 0}
+      />
       <MetricCard
         icon={TrendingUp}
         label="Taxa Resposta"

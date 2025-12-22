@@ -3,14 +3,12 @@ import {
   Phone, 
   MessageCircle, 
   Bell, 
+  BellRing,
   Clock, 
   MoreVertical,
   Tag,
   DollarSign,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
-  HelpCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,11 +17,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { WhatsAppConversation } from '@/types/whatsapp';
+import { format, isPast, isToday, isTomorrow } from 'date-fns';
 
 interface LeadCardProps {
   conv: WhatsAppConversation;
@@ -151,8 +155,25 @@ export function LeadCard({
     );
   };
 
-  const hasReminder = conv.reminder_at && new Date(conv.reminder_at) > new Date();
-  const hasOverdueReminder = conv.reminder_at && new Date(conv.reminder_at) <= new Date();
+  // Reminder status helpers
+  const reminderDate = conv.reminder_at ? new Date(conv.reminder_at) : null;
+  const hasReminder = !!reminderDate;
+  const isOverdue = reminderDate ? isPast(reminderDate) : false;
+  const isTodayReminder = reminderDate ? isToday(reminderDate) : false;
+  
+  const formatReminderLabel = () => {
+    if (!reminderDate) return 'Agendar lembrete';
+    if (isToday(reminderDate)) return `Hoje ${format(reminderDate, 'HH:mm')}`;
+    if (isTomorrow(reminderDate)) return `Amanhã ${format(reminderDate, 'HH:mm')}`;
+    return format(reminderDate, "dd/MM HH:mm");
+  };
+
+  const getReminderButtonStyle = () => {
+    if (!hasReminder) return 'text-muted-foreground hover:text-foreground';
+    if (isOverdue) return 'text-amber-500 animate-pulse';
+    if (isTodayReminder) return 'text-primary';
+    return 'text-primary/70';
+  };
 
   return (
     <Card
@@ -163,7 +184,7 @@ export function LeadCard({
         'cursor-pointer hover:shadow-md transition-all border-l-4 relative group',
         getUrgencyColor(conv.last_message_at),
         isDragging && 'opacity-50 ring-2 ring-primary',
-        hasOverdueReminder && 'ring-2 ring-yellow-500/50 animate-pulse',
+        isOverdue && 'ring-2 ring-yellow-500/50',
         conv.ai_handoff_reason && 'ring-1 ring-orange-400/50'
       )}
     >
@@ -200,6 +221,26 @@ export function LeadCard({
             >
               <Phone className="h-3.5 w-3.5 text-blue-600" />
             </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    className={cn("h-6 w-6", getReminderButtonStyle())}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSetReminder();
+                    }}
+                  >
+                    {isOverdue ? <BellRing className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {formatReminderLabel()}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button 
@@ -212,10 +253,6 @@ export function LeadCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-popover">
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSetReminder(); }}>
-                  <Bell className="h-4 w-4 mr-2" />
-                  Agendar lembrete
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddTag(); }}>
                   <Tag className="h-4 w-4 mr-2" />
                   Adicionar tag
@@ -251,16 +288,6 @@ export function LeadCard({
             {(conv.unread_count ?? 0) > 0 && (
               <Badge className="text-[9px] h-4 px-1 bg-red-500 text-white">
                 {conv.unread_count}
-              </Badge>
-            )}
-            {hasReminder && (
-              <Badge variant="outline" className="text-[9px] h-4 px-1 border-purple-400 text-purple-600">
-                🔔
-              </Badge>
-            )}
-            {hasOverdueReminder && (
-              <Badge variant="outline" className="text-[9px] h-4 px-1 border-yellow-500 text-yellow-700 bg-yellow-50 dark:bg-yellow-950/30">
-                ⏰ Lembrete!
               </Badge>
             )}
             {getNextActionBadge()}
