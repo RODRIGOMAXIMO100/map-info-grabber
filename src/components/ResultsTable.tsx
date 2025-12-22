@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Star, Phone, MapPin, MessageCircle, Instagram, Check } from 'lucide-react';
+import { ExternalLink, Star, Phone, MapPin, MessageCircle, Instagram, Map, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,21 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Business } from '@/types/business';
 import type { BroadcastList, LeadData } from '@/types/whatsapp';
+
+// Render score stars
+function ScoreStars({ score }: { score?: number }) {
+  if (!score) return null;
+  
+  const fullStars = Math.min(score, 5);
+  
+  return (
+    <div className="flex items-center gap-0.5" title={`Qualidade: ${score}/5`}>
+      {[...Array(fullStars)].map((_, i) => (
+        <Sparkles key={i} className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+      ))}
+    </div>
+  );
+}
 
 interface ResultsTableProps {
   results: Business[];
@@ -238,9 +253,23 @@ export function ResultsTable({ results }: ResultsTableProps) {
                 <span className="line-clamp-2">{business.address}</span>
               </div>
               
-              <Badge variant="secondary" className="w-fit text-xs">
-                {business.city}, {business.state}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs">
+                  {business.city}, {business.state}
+                </Badge>
+                
+                {business.source && (
+                  <Badge variant="outline" className="text-xs gap-1">
+                    {business.source === 'google_maps' ? (
+                      <><Map className="h-3 w-3" /> Maps</>
+                    ) : (
+                      <><Instagram className="h-3 w-3" /> IG</>
+                    )}
+                  </Badge>
+                )}
+                
+                <ScoreStars score={business.score} />
+              </div>
 
               <div className="flex flex-wrap gap-2 mt-auto pt-2">
                 {business.whatsapp && (
