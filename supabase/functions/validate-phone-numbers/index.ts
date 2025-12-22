@@ -65,51 +65,40 @@ const checkNumberOnWhatsApp = async (
   try {
     const formattedPhone = formatPhoneForWhatsApp(phone);
     
-    // UAZAPI endpoint to check number
-    const response = await fetch(`${serverUrl}/chat/whatsappNumbers/${formattedPhone}`, {
-      method: 'GET',
+    console.log(`[Validate] Checking number: ${formattedPhone}`);
+    
+    // UAZAPI endpoint correto: POST /contact/check
+    const response = await fetch(`${serverUrl}/contact/check`, {
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'token': token,  // Header correto da UAZAPI
       },
+      body: JSON.stringify({ number: formattedPhone }),
     });
     
     if (!response.ok) {
-      // Try alternative endpoint
-      const altResponse = await fetch(`${serverUrl}/misc/onWhatsApp`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ number: formattedPhone }),
-      });
-      
-      if (!altResponse.ok) {
-        return { exists: false, formattedNumber: null, error: 'API error' };
-      }
-      
-      const altData = await altResponse.json();
-      return {
-        exists: altData.exists === true || altData.onWhatsApp === true,
-        formattedNumber: altData.jid || formattedPhone,
-      };
+      const errorText = await response.text();
+      console.error(`[Validate] API error for ${formattedPhone}: ${response.status} - ${errorText}`);
+      // Em caso de erro da API, assumir que existe para evitar falsos negativos
+      return { exists: true, formattedNumber: formattedPhone, error: `API error: ${response.status}` };
     }
     
     const data = await response.json();
+    console.log(`[Validate] Response for ${formattedPhone}:`, JSON.stringify(data));
     
-    // Different API response formats
-    const exists = data.exists === true || 
-                   data.onWhatsApp === true || 
-                   (Array.isArray(data) && data.length > 0 && data[0]?.exists);
+    // UAZAPI retorna { exists: true/false, jid: "5511999999999@s.whatsapp.net" }
+    const exists = data.exists === true || data.numberExists === true;
+    const jid = data.jid || data.number || formattedPhone;
     
     return {
       exists,
-      formattedNumber: data.jid || data.number || formattedPhone,
+      formattedNumber: jid.split('@')[0] || formattedPhone,
     };
   } catch (error) {
-    console.error(`Error checking number ${phone}:`, error);
-    return { exists: false, formattedNumber: null, error: String(error) };
+    console.error(`[Validate] Exception checking number ${phone}:`, error);
+    // Em caso de erro, assumir que existe para evitar falsos negativos
+    return { exists: true, formattedNumber: null, error: String(error) };
   }
 };
 
