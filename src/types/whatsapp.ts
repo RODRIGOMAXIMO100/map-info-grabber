@@ -123,6 +123,7 @@ export interface LeadData {
   whatsapp?: string;
   instagram?: string;
   website?: string;
+  [key: string]: string | number | undefined;
 }
 
 export interface CRMStage {
