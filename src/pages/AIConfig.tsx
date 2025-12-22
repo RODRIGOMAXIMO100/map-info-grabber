@@ -1,59 +1,75 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, Bot, Clock, Link, Video } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Bot, Clock, Dna } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import type { WhatsAppAIConfig } from '@/types/whatsapp';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+interface AIConfig {
+  id: string;
+  is_active: boolean;
+  auto_reply_delay_seconds: number;
+  default_dna_id: string | null;
+}
+
+interface DNAOption {
+  id: string;
+  name: string;
+  persona_name: string | null;
+}
 
 export default function AIConfig() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [dnas, setDnas] = useState<DNAOption[]>([]);
   
-  const [config, setConfig] = useState<Partial<WhatsAppAIConfig>>({
+  const [config, setConfig] = useState<AIConfig>({
     id: '',
     is_active: false,
-    system_prompt: '',
-    video_url: '',
-    payment_link: '',
-    site_url: '',
     auto_reply_delay_seconds: 5,
+    default_dna_id: null,
   });
 
   useEffect(() => {
-    loadConfig();
+    loadData();
   }, []);
 
-  const loadConfig = async () => {
+  const loadData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('whatsapp_ai_config')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
+      // Load config and DNAs in parallel
+      const [configResult, dnasResult] = await Promise.all([
+        supabase.from('whatsapp_ai_config').select('*').limit(1).maybeSingle(),
+        supabase.from('ai_dnas').select('id, name, persona_name').eq('is_active', true).order('name'),
+      ]);
 
-      if (error) throw error;
-      if (data) {
+      if (configResult.error) throw configResult.error;
+      if (dnasResult.error) throw dnasResult.error;
+
+      if (configResult.data) {
         setConfig({
-          id: data.id,
-          is_active: data.is_active ?? false,
-          system_prompt: data.system_prompt || '',
-          video_url: data.video_url || '',
-          payment_link: data.payment_link || '',
-          site_url: data.site_url || '',
-          auto_reply_delay_seconds: data.auto_reply_delay_seconds || 5,
+          id: configResult.data.id,
+          is_active: configResult.data.is_active ?? false,
+          auto_reply_delay_seconds: configResult.data.auto_reply_delay_seconds || 5,
+          default_dna_id: configResult.data.default_dna_id || null,
         });
       }
+
+      setDnas(dnasResult.data || []);
     } catch (error) {
-      console.error('Error loading config:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -67,11 +83,8 @@ export default function AIConfig() {
           .from('whatsapp_ai_config')
           .update({
             is_active: config.is_active,
-            system_prompt: config.system_prompt,
-            video_url: config.video_url || null,
-            payment_link: config.payment_link || null,
-            site_url: config.site_url || null,
             auto_reply_delay_seconds: config.auto_reply_delay_seconds,
+            default_dna_id: config.default_dna_id,
             updated_at: new Date().toISOString(),
           })
           .eq('id', config.id);
@@ -82,11 +95,9 @@ export default function AIConfig() {
           .from('whatsapp_ai_config')
           .insert({
             is_active: config.is_active,
-            system_prompt: config.system_prompt || 'Você é um assistente de vendas.',
-            video_url: config.video_url || null,
-            payment_link: config.payment_link || null,
-            site_url: config.site_url || null,
+            system_prompt: 'Você é um assistente de vendas.',
             auto_reply_delay_seconds: config.auto_reply_delay_seconds,
+            default_dna_id: config.default_dna_id,
           })
           .select()
           .single();
@@ -118,6 +129,8 @@ export default function AIConfig() {
       </div>
     );
   }
+
+  const selectedDna = dnas.find(d => d.id === config.default_dna_id);
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -151,75 +164,66 @@ export default function AIConfig() {
           </CardHeader>
         </Card>
 
-        {/* System Prompt */}
+        {/* DNA Padrão */}
         <Card>
           <CardHeader>
-            <CardTitle>Prompt do Sistema</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Dna className="h-5 w-5" />
+              DNA Padrão
+            </CardTitle>
             <CardDescription>
-              Instruções que definem a personalidade e comportamento do agente
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              placeholder="Você é um assistente de vendas amigável..."
-              value={config.system_prompt}
-              onChange={(e) => setConfig(prev => ({ ...prev, system_prompt: e.target.value }))}
-              rows={8}
-              className="font-mono text-sm"
-            />
-          </CardContent>
-        </Card>
-
-        {/* URLs */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Links de Conversão</CardTitle>
-            <CardDescription>
-              URLs que o agente pode enviar durante a conversa
+              Selecione o DNA que será usado quando uma conversa não tiver um DNA específico atribuído
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Video className="h-4 w-4" />
-                URL do Vídeo
-              </Label>
-              <Input
-                placeholder="https://youtube.com/watch?v=..."
-                value={config.video_url}
-                onChange={(e) => setConfig(prev => ({ ...prev, video_url: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Enviado quando o lead demonstra interesse inicial
-              </p>
-            </div>
+            <Select
+              value={config.default_dna_id || 'none'}
+              onValueChange={(value) => setConfig(prev => ({ 
+                ...prev, 
+                default_dna_id: value === 'none' ? null : value 
+              }))}
+            >
+              <SelectTrigger className="h-12">
+                <SelectValue placeholder="Selecione um DNA padrão" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  <span className="text-muted-foreground">Nenhum DNA padrão</span>
+                </SelectItem>
+                {dnas.map((dna) => (
+                  <SelectItem key={dna.id} value={dna.id}>
+                    <div className="flex items-center gap-2">
+                      <span>{dna.name}</span>
+                      {dna.persona_name && (
+                        <span className="text-muted-foreground text-sm">
+                          ({dna.persona_name})
+                        </span>
+                      )}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Link className="h-4 w-4" />
-                URL do Site/Página de Vendas
-              </Label>
-              <Input
-                placeholder="https://seusite.com/oferta"
-                value={config.site_url}
-                onChange={(e) => setConfig(prev => ({ ...prev, site_url: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Enviado quando o lead quer comprar
-              </p>
-            </div>
+            {dnas.length === 0 && (
+              <div className="text-sm text-muted-foreground bg-muted/50 p-4 rounded-lg">
+                Nenhum DNA ativo encontrado. 
+                <Button 
+                  variant="link" 
+                  className="px-1 h-auto" 
+                  onClick={() => navigate('/dnas/new')}
+                >
+                  Crie um DNA
+                </Button>
+                para começar.
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Link className="h-4 w-4" />
-                Link de Pagamento
-              </Label>
-              <Input
-                placeholder="https://pay.seusite.com/checkout"
-                value={config.payment_link}
-                onChange={(e) => setConfig(prev => ({ ...prev, payment_link: e.target.value }))}
-              />
-            </div>
+            {selectedDna && (
+              <div className="text-sm text-muted-foreground">
+                O DNA "{selectedDna.name}" será usado como personalidade padrão do agente.
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -231,25 +235,25 @@ export default function AIConfig() {
               Delay de Resposta
             </CardTitle>
             <CardDescription>
-              Quando ativo, o agente funciona 24 horas por dia
+              Tempo de espera antes de enviar a resposta automática
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <Label>Tempo de espera</Label>
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm font-medium">
                 {config.auto_reply_delay_seconds} segundos
               </span>
             </div>
             <Slider
-              value={[config.auto_reply_delay_seconds || 5]}
+              value={[config.auto_reply_delay_seconds]}
               onValueChange={([value]) => setConfig(prev => ({ ...prev, auto_reply_delay_seconds: value }))}
               min={1}
               max={30}
               step={1}
             />
             <p className="text-xs text-muted-foreground">
-              Tempo de espera antes de enviar a resposta automática
+              Simula tempo de digitação para parecer mais natural
             </p>
           </CardContent>
         </Card>
