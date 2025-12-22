@@ -44,7 +44,7 @@ export default function BroadcastManager() {
       const typedData = (data || []).map(item => ({
         ...item,
         status: item.status as BroadcastList['status'],
-        lead_data: Array.isArray(item.lead_data) ? item.lead_data as BroadcastList['lead_data'] : [],
+        lead_data: (Array.isArray(item.lead_data) ? item.lead_data : []) as unknown as BroadcastList['lead_data'],
       }));
       
       setLists(typedData);
