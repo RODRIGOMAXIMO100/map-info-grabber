@@ -11,6 +11,36 @@ const FUNNEL_LABELS = ['16', '13', '14', '20'];
 const HANDOFF_LABEL = '21';
 const INITIAL_STAGE = '16'; // Lead Novo
 
+// ============= PHONE NORMALIZATION =============
+// Normaliza telefones brasileiros para formato consistente: 55 + DDD + 9 + número
+// Isso resolve problemas de matching quando o telefone vem sem o 9 ou sem o 55
+function normalizePhone(phone: string): string {
+  // Remove tudo que não é número
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // Se não começa com 55, adiciona (telefone brasileiro)
+  if (!cleaned.startsWith('55') && cleaned.length >= 10) {
+    cleaned = '55' + cleaned;
+  }
+  
+  // Celulares brasileiros modernos têm 13 dígitos: 55 + DDD(2) + 9 + número(8)
+  // Se tem 12 dígitos (55 + DDD + 8), provavelmente está faltando o 9
+  if (cleaned.startsWith('55') && cleaned.length === 12) {
+    const ddd = cleaned.substring(2, 4);
+    const number = cleaned.substring(4);
+    
+    // Se o número tem 8 dígitos e não começa com 9, é um celular antigo
+    // DDDs de celular no Brasil: geralmente começam com 6, 7, 8, 9
+    const firstDigit = number.charAt(0);
+    if (number.length === 8 && ['6', '7', '8'].includes(firstDigit)) {
+      cleaned = '55' + ddd + '9' + number;
+      console.log(`[Phone Normalize] Added 9 digit: ${phone} → ${cleaned}`);
+    }
+  }
+  
+  return cleaned;
+}
+
 // Process AI response in background
 async function processAIResponse(
   supabaseUrl: string,
@@ -221,11 +251,8 @@ async function checkIfBroadcastLead(
   phone: string
 ): Promise<{ isBroadcastLead: boolean; dnaId: string | null; configId: string | null }> {
   try {
-    // Normalize phone for comparison
-    let normalizedPhone = phone.replace(/\D/g, '');
-    if (!normalizedPhone.startsWith('55') && (normalizedPhone.length === 10 || normalizedPhone.length === 11)) {
-      normalizedPhone = '55' + normalizedPhone;
-    }
+    // Use the same normalization function for consistent matching
+    const normalizedPhone = normalizePhone(phone);
 
     // Check whatsapp_queue for recent sent messages to this phone (last 30 days)
     const thirtyDaysAgo = new Date();
@@ -387,13 +414,11 @@ serve(async (req) => {
 
     const chatId = payload.chat?.wa_chatid || messageData.chatid || messageData.key?.remoteJid || '';
     const isGroup = payload.chat?.wa_isGroup === true || messageData.isGroup === true || chatId.includes('@g.us');
-    let senderPhone = chatId.replace(/@s\.whatsapp\.net|@c\.us|@lid|@g\.us/g, '');
+    let rawPhone = chatId.replace(/@s\.whatsapp\.net|@c\.us|@lid|@g\.us/g, '');
     
-    // Normalize phone number to always have 55 prefix (same as broadcast)
-    senderPhone = senderPhone.replace(/\D/g, '');
-    if (!senderPhone.startsWith('55') && (senderPhone.length === 10 || senderPhone.length === 11)) {
-      senderPhone = '55' + senderPhone;
-    }
+    // Normalize phone using the new function that handles missing 9 digit
+    const senderPhone = normalizePhone(rawPhone);
+    console.log(`[Phone] Raw: ${rawPhone} → Normalized: ${senderPhone}`);
     
     const senderName = payload.chat?.wa_name || payload.chat?.name || messageData.senderName || messageData.pushName || '';
     
