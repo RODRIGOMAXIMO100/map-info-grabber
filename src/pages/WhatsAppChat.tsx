@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,7 @@ interface ConversationWithInstance extends WhatsAppConversation {
 }
 
 export default function WhatsAppChat() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -82,6 +84,22 @@ export default function WhatsAppChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Auto-select conversation from URL phone parameter
+  useEffect(() => {
+    const phoneParam = searchParams.get('phone');
+    if (phoneParam && conversations.length > 0 && !selectedConversation) {
+      const normalizedParam = normalizePhone(phoneParam);
+      const targetConv = conversations.find(c => 
+        normalizePhone(c.phone) === normalizedParam
+      );
+      if (targetConv) {
+        setSelectedConversation(targetConv);
+        // Clear the param after selecting
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [conversations, searchParams, selectedConversation]);
 
   const loadInstances = async () => {
     try {

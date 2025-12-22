@@ -238,7 +238,7 @@ export default function CRMKanban() {
                             size="sm"
                             variant="ghost"
                             className="h-6 px-1.5"
-                            onClick={() => navigate('/whatsapp/chat')}
+                            onClick={() => navigate(`/whatsapp/chat?phone=${encodeURIComponent(conv.phone)}`)}
                           >
                             <MessageCircle className="h-3 w-3" />
                           </Button>
@@ -320,7 +320,7 @@ export default function CRMKanban() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-6 px-1.5"
-                                onClick={() => navigate('/whatsapp/chat')}
+                                onClick={() => navigate(`/whatsapp/chat?phone=${encodeURIComponent(conv.phone)}`)}
                               >
                                 <MessageCircle className="h-3 w-3" />
                               </Button>
