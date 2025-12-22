@@ -398,6 +398,7 @@ export type Database = {
         Row: {
           attempts: number | null
           broadcast_list_id: string | null
+          config_id: string | null
           created_at: string | null
           error_message: string | null
           id: string
@@ -412,6 +413,7 @@ export type Database = {
         Insert: {
           attempts?: number | null
           broadcast_list_id?: string | null
+          config_id?: string | null
           created_at?: string | null
           error_message?: string | null
           id?: string
@@ -426,6 +428,7 @@ export type Database = {
         Update: {
           attempts?: number | null
           broadcast_list_id?: string | null
+          config_id?: string | null
           created_at?: string | null
           error_message?: string | null
           id?: string
@@ -438,6 +441,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_queue_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_config"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_queue_schedule_id_fkey"
             columns: ["schedule_id"]
