@@ -371,7 +371,7 @@ export default function WhatsAppChat() {
       <div className="flex flex-1 overflow-hidden">
         {/* Conversations List - hidden on mobile when conversation selected */}
         <div className={cn(
-          "border-r flex flex-col bg-background",
+          "border-r flex flex-col bg-background min-w-0 overflow-hidden",
           "w-full md:w-80 lg:w-96",
           selectedConversation ? "hidden md:flex" : "flex"
         )}>
@@ -423,7 +423,7 @@ export default function WhatsAppChat() {
                   selectedConversation?.id === conv.id && 'bg-muted'
                 )}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className="relative flex-shrink-0">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback className="text-sm">
