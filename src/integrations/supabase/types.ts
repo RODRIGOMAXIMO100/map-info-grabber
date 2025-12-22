@@ -311,6 +311,7 @@ export type Database = {
           followup_count: number | null
           group_name: string | null
           id: string
+          is_crm_lead: boolean | null
           is_group: boolean | null
           last_followup_at: string | null
           last_lead_message_at: string | null
@@ -344,6 +345,7 @@ export type Database = {
           followup_count?: number | null
           group_name?: string | null
           id?: string
+          is_crm_lead?: boolean | null
           is_group?: boolean | null
           last_followup_at?: string | null
           last_lead_message_at?: string | null
@@ -377,6 +379,7 @@ export type Database = {
           followup_count?: number | null
           group_name?: string | null
           id?: string
+          is_crm_lead?: boolean | null
           is_group?: boolean | null
           last_followup_at?: string | null
           last_lead_message_at?: string | null

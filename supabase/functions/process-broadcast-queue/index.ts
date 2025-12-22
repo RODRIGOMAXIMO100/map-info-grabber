@@ -436,38 +436,56 @@ serve(async (req) => {
               config_id: selectedConfig.id
             });
 
-          // Create/update conversation
+          // Create/update conversation - MARCA COMO CRM LEAD
           const { data: existingConv } = await supabase
             .from('whatsapp_conversations')
-            .select('id')
+            .select('id, is_crm_lead')
             .eq('phone', formattedPhone)
             .maybeSingle();
 
           let conversationId: string;
           const leadData = queueItem.lead_data as Record<string, unknown> | null;
 
+          // Buscar o dna_id da broadcast list se existir
+          let dnaId: string | null = null;
+          if (queueItem.broadcast_list_id) {
+            const { data: broadcastList } = await supabase
+              .from('broadcast_lists')
+              .select('dna_id')
+              .eq('id', queueItem.broadcast_list_id)
+              .maybeSingle();
+            dnaId = broadcastList?.dna_id || null;
+          }
+
           if (existingConv) {
             conversationId = existingConv.id;
+            // Se já existe, marca como CRM lead e atualiza
             await supabase
               .from('whatsapp_conversations')
               .update({
                 last_message_at: new Date().toISOString(),
                 last_message_preview: processedMessage.substring(0, 100),
                 config_id: selectedConfig.id,
+                is_crm_lead: true, // MARCA COMO CRM LEAD
+                tags: ['16'], // Coloca no funil - Lead Novo
+                dna_id: dnaId || undefined,
                 updated_at: new Date().toISOString()
               })
               .eq('id', conversationId);
           } else {
+            // Nova conversa do broadcast = é CRM lead
             const { data: newConv } = await supabase
               .from('whatsapp_conversations')
               .insert({
                 phone: formattedPhone,
                 name: leadData?.name ? String(leadData.name) : null,
                 config_id: selectedConfig.id,
+                is_crm_lead: true, // MARCA COMO CRM LEAD
+                tags: ['16'], // Coloca no funil - Lead Novo
+                dna_id: dnaId,
                 last_message_at: new Date().toISOString(),
                 last_message_preview: processedMessage.substring(0, 100),
-                status: 'active',
-                tags: ['broadcast']
+                status: 'active'
               })
               .select('id')
               .single();

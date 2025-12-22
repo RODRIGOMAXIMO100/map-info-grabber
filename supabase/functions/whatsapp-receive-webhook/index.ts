@@ -411,20 +411,25 @@ serve(async (req) => {
     let conversationTags: string[] = [];
     let aiPaused = false;
     let existingConfigId: string | null = null;
+    let isCrmLead = false; // Flag definitiva: só true para leads do broadcast/CRM
     
     const { data: existingConv } = await supabase
       .from('whatsapp_conversations')
-      .select('id, tags, unread_count, ai_paused, config_id')
+      .select('id, tags, unread_count, ai_paused, config_id, is_crm_lead')
       .eq('phone', senderPhone)
       .maybeSingle();
 
-    const messagePreview = messageContent.substring(0, 100);
+    // Correção do bug: garantir que messageContent é string antes de substring
+    const messagePreview = typeof messageContent === 'string' 
+      ? messageContent.substring(0, 100) 
+      : '[Mídia]';
 
     if (existingConv) {
       conversationId = existingConv.id;
       conversationTags = existingConv.tags || [];
       aiPaused = existingConv.ai_paused === true;
       existingConfigId = existingConv.config_id;
+      isCrmLead = existingConv.is_crm_lead === true; // Usa o campo persistido
       
       const updateData: Record<string, unknown> = {
         last_message_at: new Date().toISOString(),
@@ -452,7 +457,10 @@ serve(async (req) => {
         .update(updateData)
         .eq('id', conversationId);
     } else {
-      conversationTags = ['16'];
+      // NOVA CONVERSA: NÃO é do CRM por padrão
+      // Tags vazias = não está no funil, is_crm_lead = false
+      conversationTags = []; // NÃO coloca no funil automaticamente
+      isCrmLead = false;
       
       const { data: newConv, error: createError } = await supabase
         .from('whatsapp_conversations')
@@ -460,14 +468,15 @@ serve(async (req) => {
           phone: senderPhone,
           name: isGroup ? 'Grupo' : (senderName || null),
           is_group: isGroup,
-          tags: conversationTags,
+          tags: conversationTags, // Vazio - não está no funil
+          is_crm_lead: false, // NÃO é lead do CRM
           last_message_at: new Date().toISOString(),
           last_message_preview: isFromMe ? `Você: ${messagePreview}` : messagePreview,
           last_lead_message_at: isFromMe ? null : new Date().toISOString(),
           unread_count: isFromMe ? 0 : 1,
           status: 'active',
           followup_count: 0,
-          config_id: configId // Link to instance
+          config_id: configId
         })
         .select()
         .single();
@@ -541,44 +550,27 @@ serve(async (req) => {
         status: isFromMe ? 'sent' : 'received'
       });
 
-    // AI Integration
+    // AI Integration - usa is_crm_lead como gate DEFINITIVO
     const isInAIControlledStage = conversationTags.some(tag => FUNNEL_LABELS.includes(tag));
-
-    // Broadcast filter
-    const { data: broadcastLists } = await supabase
-      .from('broadcast_lists')
-      .select('phones');
-
-    const { data: queueItems } = await supabase
-      .from('whatsapp_queue')
-      .select('phone');
-
-    const broadcastPhones = new Set<string>();
-
-    broadcastLists?.forEach(list => {
-      (list.phones as string[] || []).forEach((phone: string) => {
-        broadcastPhones.add(phone.replace(/\D/g, ''));
-      });
-    });
-
-    queueItems?.forEach(item => {
-      broadcastPhones.add(item.phone.replace(/\D/g, ''));
-    });
-
-    const senderNormalized = senderPhone.replace(/\D/g, '');
-    const isFromBroadcast = broadcastPhones.has(senderNormalized);
-
-    console.log('[AI] Broadcast check:', { 
-      senderPhone: senderNormalized, 
-      isFromBroadcast, 
-      totalBroadcastPhones: broadcastPhones.size 
-    });
-
-    // IA só responde para leads que vieram do broadcast (funil)
     const hasValidContent = typeof messageContent === 'string' && messageContent.trim().length > 0;
-    
-    if (!isFromMe && !isGroup && hasValidContent && isInAIControlledStage && !aiPaused && isFromBroadcast) {
-      console.log('[AI] Triggering background AI processing for conversation:', conversationId);
+
+    console.log('[AI] CRM Lead check:', { 
+      senderPhone, 
+      isCrmLead, 
+      isInAIControlledStage,
+      aiPaused,
+      tags: conversationTags
+    });
+
+    // IA SÓ responde se:
+    // 1. is_crm_lead = true (veio do broadcast/CRM)
+    // 2. Está em estágio controlado pela IA
+    // 3. Não está pausado
+    // 4. Não é grupo
+    // 5. Não é mensagem própria
+    // 6. Tem conteúdo válido
+    if (!isFromMe && !isGroup && hasValidContent && isInAIControlledStage && !aiPaused && isCrmLead) {
+      console.log('[AI] ✅ Triggering AI for CRM lead:', conversationId);
       
       processAIResponse(
         supabaseUrl,
@@ -590,13 +582,14 @@ serve(async (req) => {
         existingConfigId
       ).catch(err => console.error('[AI] Background processing failed:', err));
     } else {
-      console.log('[AI] Skipping AI:', { 
+      console.log('[AI] ❌ Skipping AI:', { 
         isFromMe, 
         isGroup, 
         hasValidContent, 
         isInAIControlledStage, 
         aiPaused,
-        isFromBroadcast
+        isCrmLead,
+        reason: !isCrmLead ? 'NOT_CRM_LEAD' : !isInAIControlledStage ? 'NOT_IN_FUNNEL' : aiPaused ? 'AI_PAUSED' : 'OTHER'
       });
     }
 
