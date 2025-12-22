@@ -16,7 +16,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { conversation_id, phone, message, media_url, media_type } = await req.json();
+    const { conversation_id, phone, message, media_url, media_type, config_id } = await req.json();
 
     if (!message && !media_url) {
       return new Response(
@@ -25,32 +25,72 @@ serve(async (req) => {
       );
     }
 
-    // Get WhatsApp config
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('is_active', true)
-      .single();
+    // Determine which config to use
+    let configToUse = null;
+    let conversationId = conversation_id;
+    let targetPhone = phone;
 
-    if (configError || !config) {
-      return new Response(
-        JSON.stringify({ error: 'WhatsApp not configured' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Priority: 1. Explicit config_id, 2. Conversation's config_id, 3. First active config
+    if (config_id) {
+      const { data: explicitConfig } = await supabase
+        .from('whatsapp_config')
+        .select('*')
+        .eq('id', config_id)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (explicitConfig) {
+        configToUse = explicitConfig;
+        console.log('[Send] Using explicit config:', config_id);
+      }
     }
 
-    // Get phone number
-    let targetPhone = phone;
-    let conversationId = conversation_id;
-
-    if (conversation_id && !phone) {
+    // If we have conversation_id, get phone and possibly config from it
+    if (conversation_id) {
       const { data: conversation } = await supabase
         .from('whatsapp_conversations')
-        .select('phone')
+        .select('phone, config_id')
         .eq('id', conversation_id)
         .single();
       
-      if (conversation) targetPhone = conversation.phone;
+      if (conversation) {
+        if (!targetPhone) targetPhone = conversation.phone;
+        
+        // Use conversation's config if we don't have one yet
+        if (!configToUse && conversation.config_id) {
+          const { data: convConfig } = await supabase
+            .from('whatsapp_config')
+            .select('*')
+            .eq('id', conversation.config_id)
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (convConfig) {
+            configToUse = convConfig;
+            console.log('[Send] Using conversation config:', conversation.config_id);
+          }
+        }
+      }
+    }
+
+    // Fallback to first active config
+    if (!configToUse) {
+      const { data: fallbackConfig, error: configError } = await supabase
+        .from('whatsapp_config')
+        .select('*')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (configError || !fallbackConfig) {
+        return new Response(
+          JSON.stringify({ error: 'WhatsApp not configured' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      configToUse = fallbackConfig;
+      console.log('[Send] Using fallback config:', fallbackConfig.id);
     }
 
     // Format phone (add 55 for Brazilian numbers)
@@ -60,7 +100,7 @@ serve(async (req) => {
     }
 
     // Send via UAZAPI
-    const serverUrl = config.server_url.replace(/\/$/, '');
+    const serverUrl = configToUse.server_url.replace(/\/$/, '');
     let sendEndpoint: string;
     let payload: Record<string, unknown>;
 
@@ -72,19 +112,20 @@ serve(async (req) => {
       payload = { number: formattedPhone, text: message };
     }
 
-    console.log('Sending message to:', sendEndpoint, payload);
+    console.log('[Send] Sending message via instance:', configToUse.name || configToUse.id);
+    console.log('[Send] Endpoint:', sendEndpoint, 'Payload:', payload);
 
     const response = await fetch(sendEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'token': config.instance_token,
+        'token': configToUse.instance_token,
       },
       body: JSON.stringify(payload)
     });
 
     const result = await response.json();
-    console.log('UAZAPI response:', result);
+    console.log('[Send] UAZAPI response:', result);
     
     if (!response.ok) throw new Error(result.message || 'Failed to send message');
 
@@ -94,7 +135,7 @@ serve(async (req) => {
         .from('whatsapp_conversations')
         .select('id')
         .eq('phone', formattedPhone)
-        .single();
+        .maybeSingle();
 
       if (existingConv) {
         conversationId = existingConv.id;
@@ -105,7 +146,8 @@ serve(async (req) => {
             phone: formattedPhone,
             status: 'active',
             last_message_at: new Date().toISOString(),
-            last_message_preview: message?.substring(0, 100)
+            last_message_preview: message?.substring(0, 100),
+            config_id: configToUse.id // Link to instance
           })
           .select()
           .single();
@@ -143,7 +185,7 @@ serve(async (req) => {
     );
 
   } catch (error: unknown) {
-    console.error('Error sending message:', error);
+    console.error('[Send] Error sending message:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ error: errorMessage }),

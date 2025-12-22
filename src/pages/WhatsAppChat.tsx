@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MoreVertical, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -10,14 +10,30 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import type { WhatsAppConversation, WhatsAppMessage, WhatsAppLabel } from '@/types/whatsapp';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+interface WhatsAppInstance {
+  id: string;
+  name: string;
+  color: string;
+  instance_phone: string;
+  is_active: boolean;
+}
+
+interface ConversationWithInstance extends WhatsAppConversation {
+  config_id?: string;
+  instance?: WhatsAppInstance;
+}
 
 export default function WhatsAppChat() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<WhatsAppConversation | null>(null);
+  const [conversations, setConversations] = useState<ConversationWithInstance[]>([]);
+  const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
+  const [selectedInstance, setSelectedInstance] = useState<string>('all');
+  const [selectedConversation, setSelectedConversation] = useState<ConversationWithInstance | null>(null);
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [labels, setLabels] = useState<WhatsAppLabel[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -26,10 +42,10 @@ export default function WhatsAppChat() {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
+    loadInstances();
     loadConversations();
     loadLabels();
     
-    // Subscribe to realtime updates
     const conversationsChannel = supabase
       .channel('conversations-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_conversations' }, () => {
@@ -47,7 +63,6 @@ export default function WhatsAppChat() {
       loadMessages(selectedConversation.id);
       markAsRead(selectedConversation.id);
 
-      // Subscribe to messages for selected conversation
       const messagesChannel = supabase
         .channel('messages-changes')
         .on('postgres_changes', { 
@@ -70,6 +85,26 @@ export default function WhatsAppChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const loadInstances = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('whatsapp_config')
+        .select('id, name, color, instance_phone, is_active')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setInstances((data || []).map(d => ({
+        id: d.id,
+        name: d.name || 'Principal',
+        color: d.color || '#10B981',
+        instance_phone: d.instance_phone || '',
+        is_active: d.is_active ?? true,
+      })));
+    } catch (error) {
+      console.error('Error loading instances:', error);
+    }
+  };
+
   const loadConversations = async () => {
     try {
       // 1. Buscar telefones da fila de disparos
@@ -85,21 +120,17 @@ export default function WhatsAppChat() {
       // 3. Extrair todos os telefones de broadcast
       const broadcastPhones = new Set<string>();
       
-      // Telefones da queue
       queuePhones?.forEach(q => broadcastPhones.add(q.phone));
       
-      // Telefones das listas (lead_data e phones)
       lists?.forEach(list => {
-        // lead_data é um array de objetos com phone
         const leadData = list.lead_data as Array<{ phone?: string }> | null;
         leadData?.forEach(lead => {
           if (lead.phone) broadcastPhones.add(lead.phone);
         });
-        // phones é um array direto de telefones
         list.phones?.forEach(phone => broadcastPhones.add(phone));
       });
 
-      // 4. Buscar todas as conversas
+      // 4. Buscar todas as conversas com config_id
       const { data: allConversations, error } = await supabase
         .from('whatsapp_conversations')
         .select('*')
@@ -107,10 +138,27 @@ export default function WhatsAppChat() {
 
       if (error) throw error;
 
-      // 5. Filtrar apenas conversas com números de broadcast
-      const filtered = allConversations?.filter(conv => 
-        broadcastPhones.has(conv.phone)
-      ) || [];
+      // 5. Buscar instâncias
+      const { data: instancesData } = await supabase
+        .from('whatsapp_config')
+        .select('id, name, color, instance_phone, is_active');
+
+      const instanceMap = new Map<string, WhatsAppInstance>();
+      instancesData?.forEach(i => instanceMap.set(i.id, {
+        id: i.id,
+        name: i.name || 'Principal',
+        color: i.color || '#10B981',
+        instance_phone: i.instance_phone || '',
+        is_active: i.is_active ?? true,
+      }));
+
+      // 6. Filtrar apenas conversas com números de broadcast e adicionar instância
+      const filtered = (allConversations || [])
+        .filter(conv => broadcastPhones.has(conv.phone))
+        .map(conv => ({
+          ...conv,
+          instance: conv.config_id ? instanceMap.get(conv.config_id) : undefined,
+        })) as ConversationWithInstance[];
 
       setConversations(filtered);
     } catch (error) {
@@ -164,6 +212,7 @@ export default function WhatsAppChat() {
         body: {
           conversation_id: selectedConversation.id,
           message: newMessage.trim(),
+          config_id: selectedConversation.config_id, // Use the conversation's instance
         },
       });
 
@@ -181,7 +230,7 @@ export default function WhatsAppChat() {
     }
   };
 
-  const toggleAI = async (conversation: WhatsAppConversation) => {
+  const toggleAI = async (conversation: ConversationWithInstance) => {
     try {
       await supabase
         .from('whatsapp_conversations')
@@ -212,10 +261,14 @@ export default function WhatsAppChat() {
     return colors[label?.color || 0];
   };
 
-  const filteredConversations = conversations.filter(conv =>
-    conv.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    conv.phone.includes(searchTerm)
-  );
+  const filteredConversations = conversations.filter(conv => {
+    const matchesSearch = conv.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      conv.phone.includes(searchTerm);
+    
+    const matchesInstance = selectedInstance === 'all' || conv.config_id === selectedInstance;
+    
+    return matchesSearch && matchesInstance;
+  });
 
   const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -248,6 +301,30 @@ export default function WhatsAppChat() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-xl font-bold">Chat WhatsApp</h1>
+        {instances.length > 1 && (
+          <div className="ml-auto flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filtrar instância" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as instâncias</SelectItem>
+                {instances.map(instance => (
+                  <SelectItem key={instance.id} value={instance.id}>
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-2 h-2 rounded-full" 
+                        style={{ backgroundColor: instance.color }}
+                      />
+                      {instance.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -276,11 +353,20 @@ export default function WhatsAppChat() {
                 )}
               >
                 <div className="flex items-start gap-3">
-                  <Avatar className="h-10 w-10">
-                    <AvatarFallback>
-                      {conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="relative">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>
+                        {conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    {conv.instance && (
+                      <div 
+                        className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
+                        style={{ backgroundColor: conv.instance.color }}
+                        title={conv.instance.name}
+                      />
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <span className="font-medium truncate">
@@ -294,7 +380,16 @@ export default function WhatsAppChat() {
                       {conv.last_message_preview}
                     </p>
                     <div className="flex items-center gap-1 mt-1">
-                      {conv.tags?.slice(0, 2).map((tag) => (
+                      {conv.instance && instances.length > 1 && (
+                        <Badge 
+                          variant="outline" 
+                          className="text-xs px-1.5 py-0"
+                          style={{ borderColor: conv.instance.color, color: conv.instance.color }}
+                        >
+                          {conv.instance.name}
+                        </Badge>
+                      )}
+                      {conv.tags?.slice(0, 1).map((tag) => (
                         <Badge key={tag} variant="secondary" className={cn('text-xs', getLabelColor(tag))}>
                           {getLabelName(tag)}
                         </Badge>
@@ -326,11 +421,19 @@ export default function WhatsAppChat() {
               {/* Chat Header */}
               <div className="border-b p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback>
-                      {selectedConversation.name?.charAt(0).toUpperCase() || selectedConversation.phone.slice(-2)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="relative">
+                    <Avatar>
+                      <AvatarFallback>
+                        {selectedConversation.name?.charAt(0).toUpperCase() || selectedConversation.phone.slice(-2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    {selectedConversation.instance && (
+                      <div 
+                        className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
+                        style={{ backgroundColor: selectedConversation.instance.color }}
+                      />
+                    )}
+                  </div>
                   <div>
                     <h2 className="font-medium">
                       {selectedConversation.name || selectedConversation.phone}
@@ -340,6 +443,15 @@ export default function WhatsAppChat() {
                       <span className="text-sm text-muted-foreground">
                         {selectedConversation.phone}
                       </span>
+                      {selectedConversation.instance && (
+                        <Badge 
+                          variant="outline" 
+                          className="text-xs"
+                          style={{ borderColor: selectedConversation.instance.color, color: selectedConversation.instance.color }}
+                        >
+                          via {selectedConversation.instance.name}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
