@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -16,7 +16,11 @@ import {
   CheckCircle,
   XCircle,
   HelpCircle,
-  Loader2
+  Loader2,
+  Calendar,
+  MessageSquare,
+  ArrowDownLeft,
+  ArrowUpRight
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -46,42 +50,68 @@ interface AILog {
   created_at: string | null;
 }
 
+interface Message {
+  id: string;
+  content: string | null;
+  direction: string;
+  message_type: string;
+  created_at: string | null;
+}
+
 export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }: LeadDetailsSheetProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [aiLogs, setAiLogs] = useState<AILog[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [messageCount, setMessageCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [assuming, setAssuming] = useState(false);
 
   useEffect(() => {
     if (conversation && open) {
-      loadAILogs();
+      loadData();
     }
   }, [conversation?.id, open]);
 
-  const loadAILogs = async () => {
+  const loadData = async () => {
     if (!conversation) return;
     setLoading(true);
     
     try {
-      const { data, error } = await supabase
-        .from('whatsapp_ai_logs')
-        .select('*')
-        .eq('conversation_id', conversation.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      // Load AI logs, messages, and message count in parallel
+      const [aiLogsResult, messagesResult, countResult] = await Promise.all([
+        supabase
+          .from('whatsapp_ai_logs')
+          .select('*')
+          .eq('conversation_id', conversation.id)
+          .order('created_at', { ascending: false })
+          .limit(10),
+        supabase
+          .from('whatsapp_messages')
+          .select('id, content, direction, message_type, created_at')
+          .eq('conversation_id', conversation.id)
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('whatsapp_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('conversation_id', conversation.id)
+      ]);
 
-      if (error) throw error;
+      if (aiLogsResult.error) throw aiLogsResult.error;
+      if (messagesResult.error) throw messagesResult.error;
       
       // Type assertion for bant_score
-      const typedLogs = (data || []).map(log => ({
+      const typedLogs = (aiLogsResult.data || []).map(log => ({
         ...log,
         bant_score: log.bant_score as AILog['bant_score']
       }));
       
       setAiLogs(typedLogs);
+      setMessages(messagesResult.data || []);
+      setMessageCount(countResult.count || 0);
     } catch (error) {
-      console.error('Error loading AI logs:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -201,14 +231,36 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
     return <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />;
   };
 
+  const getTimeSinceFirstContact = () => {
+    if (!conversation?.created_at) return null;
+    const created = new Date(conversation.created_at);
+    const now = new Date();
+    const diffMs = now.getTime() - created.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    
+    if (diffDays > 0) {
+      return `${diffDays} dia${diffDays > 1 ? 's' : ''}`;
+    }
+    if (diffHours > 0) {
+      return `${diffHours} hora${diffHours > 1 ? 's' : ''}`;
+    }
+    return 'Agora mesmo';
+  };
+
+  const hasAIInteraction = aiLogs.length > 0;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md">
+      <SheetContent className="w-full sm:max-w-md" aria-describedby="lead-details-description">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             {conversation.name || formatPhone(conversation.phone)}
           </SheetTitle>
+          <SheetDescription id="lead-details-description" className="sr-only">
+            Detalhes do lead e histórico de conversa
+          </SheetDescription>
         </SheetHeader>
 
         <ScrollArea className="h-[calc(100vh-140px)] mt-4">
@@ -225,6 +277,16 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
                 <span>Última interação: {formatDate(conversation.last_message_at)}</span>
               </div>
 
+              <div className="flex items-center gap-2 text-sm">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span>Primeiro contato: {getTimeSinceFirstContact()} atrás</span>
+              </div>
+
+              <div className="flex items-center gap-2 text-sm">
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                <span>{messageCount} mensagens trocadas</span>
+              </div>
+
               {currentStage && (
                 <div className="flex items-center gap-2 text-sm">
                   <Badge variant="secondary">{currentStage.name}</Badge>
@@ -233,12 +295,16 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
 
               <div className="flex items-center gap-2 text-sm">
                 {conversation.ai_paused ? (
-                  <Badge variant="outline" className="gap-1">
+                  <Badge variant="outline" className="gap-1 border-orange-300 text-orange-700 dark:border-orange-700 dark:text-orange-300">
                     <User className="h-3 w-3" /> Atendimento Manual
                   </Badge>
-                ) : (
+                ) : hasAIInteraction ? (
                   <Badge variant="secondary" className="gap-1">
                     <Bot className="h-3 w-3" /> IA Ativa
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300">
+                    <Bot className="h-3 w-3" /> Lead Novo (sem interação IA)
                   </Badge>
                 )}
               </div>
@@ -316,7 +382,7 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
               </>
             )}
 
-            {/* Resumo da IA */}
+            {/* Resumo da IA ou Últimas Mensagens */}
             {loading ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -329,12 +395,12 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
                     <div key={log.id} className="text-xs bg-muted/50 rounded p-2 space-y-1">
                       {log.incoming_message && (
                         <p className="text-muted-foreground">
-                          <span className="font-medium">Lead:</span> {log.incoming_message.slice(0, 100)}...
+                          <span className="font-medium">Lead:</span> {log.incoming_message.slice(0, 100)}{log.incoming_message.length > 100 ? '...' : ''}
                         </p>
                       )}
                       {log.ai_response && (
                         <p>
-                          <span className="font-medium text-primary">IA:</span> {log.ai_response.slice(0, 100)}...
+                          <span className="font-medium text-primary">IA:</span> {log.ai_response.slice(0, 100)}{log.ai_response.length > 100 ? '...' : ''}
                         </p>
                       )}
                       {log.confidence_score && (
@@ -346,10 +412,48 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
                   ))}
                 </div>
               </div>
+            ) : messages.length > 0 ? (
+              <div>
+                <h4 className="font-medium text-sm mb-2">💬 Últimas Mensagens</h4>
+                <div className="space-y-2">
+                  {messages.map((msg) => (
+                    <div 
+                      key={msg.id} 
+                      className={`text-xs rounded p-2 ${
+                        msg.direction === 'incoming' 
+                          ? 'bg-muted/50' 
+                          : 'bg-primary/10'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1 mb-1 text-muted-foreground">
+                        {msg.direction === 'incoming' ? (
+                          <ArrowDownLeft className="h-3 w-3" />
+                        ) : (
+                          <ArrowUpRight className="h-3 w-3" />
+                        )}
+                        <span className="font-medium">
+                          {msg.direction === 'incoming' ? 'Lead' : 'Você'}
+                        </span>
+                        <span className="ml-auto text-[10px]">
+                          {formatDate(msg.created_at)}
+                        </span>
+                      </div>
+                      <p className={msg.direction === 'incoming' ? 'text-foreground' : 'text-primary'}>
+                        {msg.message_type === 'text' 
+                          ? (msg.content?.slice(0, 150) || '[Mensagem vazia]') + (msg.content && msg.content.length > 150 ? '...' : '')
+                          : `[${msg.message_type}]`
+                        }
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                Nenhum registro de IA encontrado
-              </p>
+              <div className="text-center py-6 text-muted-foreground">
+                <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Nenhuma mensagem ainda</p>
+                <p className="text-xs mt-1">Este lead ainda não iniciou conversa</p>
+              </div>
             )}
           </div>
         </ScrollArea>
