@@ -343,7 +343,14 @@ serve(async (req) => {
 
     const chatId = payload.chat?.wa_chatid || messageData.chatid || messageData.key?.remoteJid || '';
     const isGroup = payload.chat?.wa_isGroup === true || messageData.isGroup === true || chatId.includes('@g.us');
-    const senderPhone = chatId.replace(/@s\.whatsapp\.net|@c\.us|@lid|@g\.us/g, '');
+    let senderPhone = chatId.replace(/@s\.whatsapp\.net|@c\.us|@lid|@g\.us/g, '');
+    
+    // Normalize phone number to always have 55 prefix (same as broadcast)
+    senderPhone = senderPhone.replace(/\D/g, '');
+    if (!senderPhone.startsWith('55') && (senderPhone.length === 10 || senderPhone.length === 11)) {
+      senderPhone = '55' + senderPhone;
+    }
+    
     const senderName = payload.chat?.wa_name || payload.chat?.name || messageData.senderName || messageData.pushName || '';
     
     const isFromMe = messageData.fromMe === true || messageData.key?.fromMe === true;
