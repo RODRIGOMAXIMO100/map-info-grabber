@@ -214,10 +214,14 @@ export function useInstagramSearch() {
           });
           
           setResults(updatedResults);
+        } else {
+          // No scraping needed, set final results
+          setResults(allResults);
         }
+      } else {
+        // No profiles to scrape, set final results
+        setResults(allResults);
       }
-
-      setResults(allResults);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(message);
