@@ -496,11 +496,28 @@ serve(async (req) => {
     let existingConfigId: string | null = null;
     let isCrmLead = false;
     
+    // Use last 8 digits for flexible matching to handle different phone formats
+    // e.g., 553183360707 should match 5531983360707 (same physical number)
+    const phoneDigits = senderPhone.replace(/\D/g, '').slice(-8);
+    console.log(`[Conversation Search] Looking for phone ending in: ${phoneDigits}`);
+
     const { data: existingConv } = await supabase
       .from('whatsapp_conversations')
-      .select('id, tags, unread_count, ai_paused, config_id, is_crm_lead, dna_id')
-      .eq('phone', senderPhone)
+      .select('id, tags, unread_count, ai_paused, config_id, is_crm_lead, dna_id, phone')
+      .ilike('phone', `%${phoneDigits}%`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
+    
+    // Log the match result
+    if (existingConv) {
+      console.log(`[Conversation Search] Found existing conversation: ${existingConv.id} (phone: ${existingConv.phone})`);
+      if (existingConv.phone !== senderPhone) {
+        console.log(`[Phone Format] Incoming: ${senderPhone} vs Stored: ${existingConv.phone} - Same physical number, different format`);
+      }
+    } else {
+      console.log(`[Conversation Search] No existing conversation found for ${senderPhone}`);
+    }
 
     // Correção do bug: garantir que messageContent é string antes de substring
     const messagePreview = typeof messageContent === 'string' 
