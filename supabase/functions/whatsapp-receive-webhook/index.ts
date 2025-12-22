@@ -574,7 +574,10 @@ serve(async (req) => {
       totalBroadcastPhones: broadcastPhones.size 
     });
 
-    if (!isFromMe && !isGroup && messageContent && isInAIControlledStage && !aiPaused && isFromBroadcast) {
+    // Processa IA para TODOS os leads (removido filtro isFromBroadcast)
+    const hasValidContent = typeof messageContent === 'string' && messageContent.trim().length > 0;
+    
+    if (!isFromMe && !isGroup && hasValidContent && isInAIControlledStage && !aiPaused) {
       console.log('[AI] Triggering background AI processing for conversation:', conversationId);
       
       processAIResponse(
@@ -590,10 +593,9 @@ serve(async (req) => {
       console.log('[AI] Skipping AI:', { 
         isFromMe, 
         isGroup, 
-        hasContent: !!messageContent, 
+        hasValidContent, 
         isInAIControlledStage, 
-        aiPaused,
-        isFromBroadcast
+        aiPaused
       });
     }
 
