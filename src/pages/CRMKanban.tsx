@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Phone, MessageCircle, RefreshCw } from 'lucide-react';
+import { Loader2, Phone, MessageCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
@@ -178,7 +178,7 @@ export default function CRMKanban() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
@@ -187,35 +187,30 @@ export default function CRMKanban() {
   const unclassified = getUnclassifiedConversations();
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      {/* Header */}
-      <div className="border-b p-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">CRM Kanban</h1>
-            <p className="text-muted-foreground">
-              {conversations.length} leads no funil
-            </p>
-          </div>
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-background">
+      {/* Header compacto */}
+      <div className="border-b p-3 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold">CRM Kanban</h1>
+          <Badge variant="secondary" className="text-xs">
+            {conversations.length} leads
+          </Badge>
         </div>
-        <Button variant="outline" size="sm" onClick={loadConversations} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={loadConversations} className="gap-1">
           <RefreshCw className="h-4 w-4" />
-          Atualizar
+          <span className="hidden sm:inline">Atualizar</span>
         </Button>
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex-1 overflow-x-auto p-4">
-        <div className="flex gap-4 min-w-max h-full">
+      {/* Kanban Board - scroll horizontal */}
+      <div className="flex-1 overflow-x-auto overflow-y-hidden">
+        <div className="flex gap-3 p-3 h-full min-w-max">
           {/* Unclassified Column */}
           {unclassified.length > 0 && (
-            <div className="w-80 flex flex-col">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-semibold text-muted-foreground">Não Classificados</h3>
-                <Badge variant="secondary">{unclassified.length}</Badge>
+            <div className="w-64 sm:w-72 md:w-80 flex-shrink-0 flex flex-col">
+              <div className="mb-2 flex items-center justify-between px-1">
+                <h3 className="font-medium text-sm text-muted-foreground">Não Classificados</h3>
+                <Badge variant="secondary" className="text-xs">{unclassified.length}</Badge>
               </div>
               <ScrollArea className="flex-1">
                 <div className="space-y-2 pr-2">
@@ -226,29 +221,29 @@ export default function CRMKanban() {
                       onDragStart={() => handleDragStart(conv)}
                       className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
                     >
-                      <CardContent className="p-3">
-                        <div className="flex items-start justify-between mb-2">
-                          <span className="font-medium truncate">
+                      <CardContent className="p-2.5">
+                        <div className="flex items-start justify-between mb-1.5">
+                          <span className="font-medium text-sm truncate max-w-[70%]">
                             {conv.name || conv.phone}
                           </span>
                           <span className="text-xs text-muted-foreground">
                             {formatTime(conv.last_message_at)}
                           </span>
                         </div>
-                        <p className="text-sm text-muted-foreground truncate mb-2">
+                        <p className="text-xs text-muted-foreground truncate mb-2">
                           {conv.last_message_preview}
                         </p>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 px-2"
+                            className="h-6 px-1.5"
                             onClick={() => navigate('/whatsapp/chat')}
                           >
                             <MessageCircle className="h-3 w-3" />
                           </Button>
                           <a href={`tel:${conv.phone}`}>
-                            <Button size="sm" variant="ghost" className="h-7 px-2">
+                            <Button size="sm" variant="ghost" className="h-6 px-1.5">
                               <Phone className="h-3 w-3" />
                             </Button>
                           </a>
@@ -268,25 +263,25 @@ export default function CRMKanban() {
             return (
               <div
                 key={stage.id}
-                className="w-80 flex flex-col"
+                className="w-64 sm:w-72 md:w-80 flex-shrink-0 flex flex-col"
                 onDragOver={handleDragOver}
                 onDrop={() => handleDrop(stage)}
               >
                 <div className={cn(
-                  'mb-3 flex items-center justify-between p-3 rounded-lg border-t-4 bg-muted/50',
+                  'mb-2 flex items-center justify-between p-2.5 rounded-lg border-t-4 bg-muted/50',
                   getStageColor(stage)
                 )}>
                   <div className="flex flex-col">
-                    <h3 className="font-semibold">{stage.name}</h3>
+                    <h3 className="font-medium text-sm">{stage.name}</h3>
                     <span className="text-xs text-muted-foreground">
                       {isAIControlled(stage) ? '🤖 IA' : '👤 Vendedor'}
                     </span>
                   </div>
-                  <Badge>{stageConversations.length}</Badge>
+                  <Badge className="text-xs">{stageConversations.length}</Badge>
                 </div>
 
                 <ScrollArea className="flex-1">
-                  <div className="space-y-2 pr-2 min-h-[200px]">
+                  <div className="space-y-2 pr-2 min-h-[120px]">
                     {stageConversations.map((conv) => (
                       <Card
                         key={conv.id}
@@ -297,40 +292,40 @@ export default function CRMKanban() {
                           draggedItem?.id === conv.id && 'opacity-50'
                         )}
                       >
-                        <CardContent className="p-3">
-                          <div className="flex items-start justify-between mb-2">
-                            <span className="font-medium truncate">
+                        <CardContent className="p-2.5">
+                          <div className="flex items-start justify-between mb-1.5">
+                            <span className="font-medium text-sm truncate max-w-[70%]">
                               {conv.name || conv.phone}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {formatTime(conv.last_message_at)}
                             </span>
                           </div>
-                          <p className="text-sm text-muted-foreground truncate mb-2">
+                          <p className="text-xs text-muted-foreground truncate mb-2">
                             {conv.last_message_preview}
                           </p>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1">
                               {conv.ai_paused ? (
-                                <Badge variant="outline" className="text-xs">Manual</Badge>
+                                <Badge variant="outline" className="text-xs px-1.5 py-0">Manual</Badge>
                               ) : (
-                                <Badge variant="secondary" className="text-xs">IA</Badge>
+                                <Badge variant="secondary" className="text-xs px-1.5 py-0">IA</Badge>
                               )}
                               {conv.unread_count > 0 && (
-                                <Badge className="text-xs">{conv.unread_count}</Badge>
+                                <Badge className="text-xs px-1.5 py-0">{conv.unread_count}</Badge>
                               )}
                             </div>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-0.5">
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 px-2"
+                                className="h-6 px-1.5"
                                 onClick={() => navigate('/whatsapp/chat')}
                               >
                                 <MessageCircle className="h-3 w-3" />
                               </Button>
                               <a href={`tel:${conv.phone}`}>
-                                <Button size="sm" variant="ghost" className="h-7 px-2">
+                                <Button size="sm" variant="ghost" className="h-6 px-1.5">
                                   <Phone className="h-3 w-3" />
                                 </Button>
                               </a>
@@ -341,7 +336,7 @@ export default function CRMKanban() {
                     ))}
 
                     {stageConversations.length === 0 && (
-                      <div className="flex items-center justify-center h-32 border-2 border-dashed rounded-lg text-muted-foreground text-sm">
+                      <div className="flex items-center justify-center h-24 border-2 border-dashed rounded-lg text-muted-foreground text-xs">
                         Arraste leads aqui
                       </div>
                     )}
