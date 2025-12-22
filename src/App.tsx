@@ -11,6 +11,7 @@ import WhatsAppChat from "./pages/WhatsAppChat";
 import BroadcastManager from "./pages/BroadcastManager";
 import CRMKanban from "./pages/CRMKanban";
 import AIConfig from "./pages/AIConfig";
+import AILogs from "./pages/AILogs";
 import Dashboard from "./pages/Dashboard";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/whatsapp/broadcast" element={<BroadcastManager />} />
             <Route path="/crm" element={<CRMKanban />} />
             <Route path="/ai-config" element={<AIConfig />} />
+            <Route path="/ai-logs" element={<AILogs />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
