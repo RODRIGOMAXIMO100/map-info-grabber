@@ -239,7 +239,19 @@ serve(async (req) => {
     console.log('=== WEBHOOK PARSED ===');
     console.log('Event type:', payload.event || payload.EventType);
 
-    // Validate instance exists if provided
+    // Extract the receiving instance phone number from UAZAPI payload
+    // UAZAPI sends the instance phone in different fields depending on the event
+    const instancePhone = 
+      payload.instance?.phone || 
+      payload.instance?.wuid?.replace(/@.*/, '') ||
+      payload.to?.replace(/@.*/, '') ||
+      payload.data?.to?.replace(/@.*/, '') ||
+      payload.key?.remoteJid?.replace(/@.*/, '') ||
+      null;
+    
+    console.log('[Webhook] Extracted instance phone:', instancePhone);
+
+    // Validate instance exists if provided via URL param
     let configId: string | null = instanceId;
     if (instanceId) {
       const { data: configData } = await supabase
@@ -249,12 +261,41 @@ serve(async (req) => {
         .maybeSingle();
       
       if (!configData) {
-        console.log('[Webhook] Instance not found, will try to find active one');
+        console.log('[Webhook] Instance ID not found, will try to find by phone');
         configId = null;
       }
     }
 
-    // If no instance specified or not found, try to find by matching criteria or use first active
+    // If no instance from URL param, try to find by the receiving phone number
+    if (!configId && instancePhone) {
+      // Normalize phone for comparison (remove non-digits)
+      const normalizedInstancePhone = instancePhone.replace(/\D/g, '');
+      
+      // Try exact match first
+      const { data: configByPhone } = await supabase
+        .from('whatsapp_config')
+        .select('id, instance_phone')
+        .eq('is_active', true);
+      
+      if (configByPhone && configByPhone.length > 0) {
+        // Find config where instance_phone matches (with normalization)
+        const matchedConfig = configByPhone.find(config => {
+          if (!config.instance_phone) return false;
+          const normalizedConfigPhone = config.instance_phone.replace(/\D/g, '');
+          // Check if either contains the other (handles country code variations)
+          return normalizedConfigPhone.includes(normalizedInstancePhone) || 
+                 normalizedInstancePhone.includes(normalizedConfigPhone) ||
+                 normalizedConfigPhone === normalizedInstancePhone;
+        });
+        
+        if (matchedConfig) {
+          configId = matchedConfig.id;
+          console.log('[Webhook] Found instance by phone number:', configId, 'Phone:', instancePhone);
+        }
+      }
+    }
+
+    // Fallback: use first active instance if still no match
     if (!configId) {
       const { data: activeConfig } = await supabase
         .from('whatsapp_config')
@@ -265,7 +306,7 @@ serve(async (req) => {
       
       if (activeConfig) {
         configId = activeConfig.id;
-        console.log('[Webhook] Using first active instance:', configId);
+        console.log('[Webhook] Using first active instance as fallback:', configId);
       }
     }
 
