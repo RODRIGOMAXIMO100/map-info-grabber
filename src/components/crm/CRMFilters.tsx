@@ -1,5 +1,6 @@
-import { Filter, Clock, Bot, Flame, Search } from 'lucide-react';
+import { Filter, Clock, Bot, Flame, Search, Bell } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -7,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 export type PeriodFilter = 'all' | 'today' | 'week' | 'month';
 export type AIStatusFilter = 'all' | 'ai_active' | 'manual' | 'handoff';
@@ -24,6 +26,9 @@ interface CRMFiltersProps {
   onUrgencyChange: (value: UrgencyFilter) => void;
   sortOption: SortOption;
   onSortChange: (value: SortOption) => void;
+  showRemindersOnly?: boolean;
+  onRemindersFilterChange?: (value: boolean) => void;
+  pendingRemindersCount?: number;
 }
 
 export function CRMFilters({
@@ -37,6 +42,9 @@ export function CRMFilters({
   onUrgencyChange,
   sortOption,
   onSortChange,
+  showRemindersOnly = false,
+  onRemindersFilterChange,
+  pendingRemindersCount = 0,
 }: CRMFiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -50,6 +58,32 @@ export function CRMFilters({
           className="pl-8 h-8 text-sm"
         />
       </div>
+
+      {/* Reminders Filter Button */}
+      {onRemindersFilterChange && (
+        <Button
+          variant={showRemindersOnly ? "default" : "outline"}
+          size="sm"
+          className={cn(
+            "h-8 text-xs gap-1.5",
+            showRemindersOnly && "bg-primary"
+          )}
+          onClick={() => onRemindersFilterChange(!showRemindersOnly)}
+        >
+          <Bell className="h-3.5 w-3.5" />
+          Lembretes
+          {pendingRemindersCount > 0 && (
+            <span className={cn(
+              "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium",
+              showRemindersOnly 
+                ? "bg-primary-foreground text-primary" 
+                : "bg-primary text-primary-foreground"
+            )}>
+              {pendingRemindersCount}
+            </span>
+          )}
+        </Button>
+      )}
 
       {/* Period Filter */}
       <Select value={periodFilter} onValueChange={(v) => onPeriodChange(v as PeriodFilter)}>
