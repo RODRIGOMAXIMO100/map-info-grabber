@@ -307,16 +307,15 @@ serve(async (req) => {
     const blacklistedPhones = new Set(blacklist?.map(b => b.phone.replace(/\D/g, '')) || []);
     console.log(`[Broadcast] Loaded ${blacklistedPhones.size} blacklisted phones`);
 
-    // Get pending messages from queue (limit to batch size)
+    // Get pending messages atomically using FOR UPDATE SKIP LOCKED to prevent race conditions
+    // This function atomically selects AND updates status to 'processing' in a single transaction
     const { data: pendingMessages, error: fetchError } = await supabase
-      .from('whatsapp_queue')
-      .select('*')
-      .eq('status', 'pending')
-      .lt('attempts', 3)
-      .order('created_at', { ascending: true })
-      .limit(settings.batch_size);
+      .rpc('get_pending_broadcast_messages', { batch_limit: settings.batch_size });
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      console.error('[Broadcast] Error fetching pending messages:', fetchError);
+      throw fetchError;
+    }
 
     console.log('[Broadcast] Found pending messages:', pendingMessages?.length || 0);
 
@@ -355,12 +354,11 @@ serve(async (req) => {
       console.log(`[Broadcast] Sending via ${selectedConfig.name || selectedConfig.instance_phone} (${limit.messages_sent + 1}/${dailyLimit})`);
 
       try {
-        // Mark as processing
+        // Update attempts and config_id (status already set to 'processing' by RPC)
         await supabase
           .from('whatsapp_queue')
           .update({ 
-            status: 'processing', 
-            attempts: queueItem.attempts + 1,
+            attempts: (queueItem.attempts || 0) + 1,
             config_id: selectedConfig.id
           })
           .eq('id', queueItem.id);
