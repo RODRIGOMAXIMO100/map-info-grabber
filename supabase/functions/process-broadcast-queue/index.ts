@@ -216,6 +216,74 @@ serve(async (req) => {
               config_id: selectedConfig.id
             });
 
+          // === CREATE OR UPDATE CONVERSATION FOR CHAT/CRM ===
+          const { data: existingConv } = await supabase
+            .from('whatsapp_conversations')
+            .select('id')
+            .eq('phone', formattedPhone)
+            .maybeSingle();
+
+          let conversationId: string;
+          const leadData = queueItem.lead_data as Record<string, unknown> | null;
+
+          if (existingConv) {
+            conversationId = existingConv.id;
+            // Update existing conversation
+            await supabase
+              .from('whatsapp_conversations')
+              .update({
+                last_message_at: new Date().toISOString(),
+                last_message_preview: processedMessage.substring(0, 100),
+                config_id: selectedConfig.id,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', conversationId);
+            console.log(`[Broadcast] Updated existing conversation: ${conversationId}`);
+          } else {
+            // Create new conversation
+            const { data: newConv, error: convError } = await supabase
+              .from('whatsapp_conversations')
+              .insert({
+                phone: formattedPhone,
+                name: leadData?.name ? String(leadData.name) : null,
+                config_id: selectedConfig.id,
+                last_message_at: new Date().toISOString(),
+                last_message_preview: processedMessage.substring(0, 100),
+                status: 'active',
+                tags: ['broadcast']
+              })
+              .select('id')
+              .single();
+            
+            if (convError) {
+              console.error('[Broadcast] Error creating conversation:', convError);
+            } else {
+              conversationId = newConv!.id;
+              console.log(`[Broadcast] Created new conversation: ${conversationId}`);
+            }
+          }
+
+          // === REGISTER MESSAGE IN CHAT HISTORY ===
+          if (conversationId!) {
+            const { error: msgError } = await supabase
+              .from('whatsapp_messages')
+              .insert({
+                conversation_id: conversationId,
+                direction: 'outgoing',
+                message_type: queueItem.image_url ? 'image' : 'text',
+                content: processedMessage,
+                media_url: queueItem.image_url || null,
+                status: 'sent',
+                message_id_whatsapp: result.key?.id || null
+              });
+            
+            if (msgError) {
+              console.error('[Broadcast] Error registering message:', msgError);
+            } else {
+              console.log(`[Broadcast] Registered message for conversation: ${conversationId}`);
+            }
+          }
+
           // Update broadcast list counters
           if (queueItem.broadcast_list_id) {
             const { data: list } = await supabase
