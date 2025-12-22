@@ -43,6 +43,30 @@ function extractWhatsApp(phone: string, website: string, links: any[]): string {
   return '';
 }
 
+// Extrai o nome real do estabelecimento (parte depois do " - ")
+function extractRealName(title: string): string {
+  if (!title) return '';
+  
+  // Se tiver " - ", pega a parte DEPOIS (nome real do profissional/estabelecimento)
+  if (title.includes(' - ')) {
+    const parts = title.split(' - ');
+    if (parts[1] && parts[1].trim().length > 3) {
+      return parts[1].trim();
+    }
+  }
+  
+  // Se tiver " | ", pega a parte DEPOIS
+  if (title.includes(' | ')) {
+    const parts = title.split(' | ');
+    if (parts[1] && parts[1].trim().length > 3) {
+      return parts[1].trim();
+    }
+  }
+  
+  // Fallback: retorna o título original
+  return title;
+}
+
 function extractInstagram(website: string, links: any[], result: any): string {
   // Check if website is Instagram
   if (website && website.includes('instagram.com')) {
@@ -179,7 +203,7 @@ serve(async (req) => {
         console.log(`Business: ${result.title}, Phone: ${phone}, WhatsApp: ${whatsapp}, Instagram: ${instagram}`);
 
         allResults.push({
-          name: result.title || '',
+          name: extractRealName(result.title || ''),
           address: result.address || '',
           phone: phone,
           website: website,
