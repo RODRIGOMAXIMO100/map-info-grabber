@@ -231,8 +231,8 @@ export default function DNAEditor() {
                   Defina a identidade e características deste DNA
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
+              <CardContent className="space-y-6">
+                <div className="grid gap-6 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="name">Nome do DNA *</Label>
                     <Input
@@ -240,6 +240,7 @@ export default function DNAEditor() {
                       placeholder="Ex: DNA Indústrias"
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      className="h-12 text-base"
                     />
                   </div>
                   <div className="space-y-2">
@@ -249,28 +250,33 @@ export default function DNAEditor() {
                       placeholder="Ex: Carlos da Vijay"
                       value={form.persona_name}
                       onChange={(e) => setForm({ ...form, persona_name: e.target.value })}
+                      className="h-12 text-base"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="description">Descrição</Label>
-                  <Input
+                  <Textarea
                     id="description"
-                    placeholder="Descrição breve do DNA"
+                    placeholder="Descrição breve do DNA e seu propósito..."
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    rows={3}
+                    className="text-base resize-none"
                   />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-6 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="audience">Público-Alvo</Label>
-                    <Input
+                    <Textarea
                       id="audience"
-                      placeholder="Ex: Donos de indústrias metalúrgicas"
+                      placeholder="Ex: Donos de indústrias metalúrgicas, gestores de produção..."
                       value={form.target_audience}
                       onChange={(e) => setForm({ ...form, target_audience: e.target.value })}
+                      rows={3}
+                      className="text-base resize-none"
                     />
                   </div>
                   <div className="space-y-2">
@@ -279,7 +285,7 @@ export default function DNAEditor() {
                       value={form.tone}
                       onValueChange={(value) => setForm({ ...form, tone: value })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-12 text-base">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -302,10 +308,11 @@ export default function DNAEditor() {
                   <Label htmlFor="offer">Descrição da Oferta</Label>
                   <Textarea
                     id="offer"
-                    placeholder="Descreva o que está sendo oferecido neste DNA..."
+                    placeholder="Descreva detalhadamente o que está sendo oferecido neste DNA, benefícios, diferenciais..."
                     value={form.offer_description}
                     onChange={(e) => setForm({ ...form, offer_description: e.target.value })}
-                    rows={3}
+                    rows={6}
+                    className="text-base resize-none"
                   />
                 </div>
               </CardContent>
@@ -325,10 +332,10 @@ export default function DNAEditor() {
                   placeholder="Defina o prompt do sistema..."
                   value={form.system_prompt}
                   onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
-                  rows={20}
-                  className="font-mono text-sm"
+                  rows={28}
+                  className="font-mono text-sm min-h-[500px] resize-y"
                 />
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className="text-sm text-muted-foreground mt-3">
                   Dica: Use markdown para estruturar melhor o prompt. Inclua informações sobre a empresa,
                   regras de qualificação, tom de voz e materiais disponíveis.
                 </p>
@@ -344,10 +351,10 @@ export default function DNAEditor() {
                   URLs específicas que a IA pode enviar durante as conversas
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="video" className="flex items-center gap-2">
-                    <Video className="h-4 w-4" />
+              <CardContent className="space-y-6">
+                <div className="space-y-3">
+                  <Label htmlFor="video" className="flex items-center gap-2 text-base">
+                    <Video className="h-5 w-5" />
                     URL do Vídeo
                   </Label>
                   <Input
@@ -356,15 +363,16 @@ export default function DNAEditor() {
                     placeholder="https://youtube.com/..."
                     value={form.video_url}
                     onChange={(e) => setForm({ ...form, video_url: e.target.value })}
+                    className="h-12 text-base"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     Vídeo de apresentação ou demonstração
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="site" className="flex items-center gap-2">
-                    <Link className="h-4 w-4" />
+                <div className="space-y-3">
+                  <Label htmlFor="site" className="flex items-center gap-2 text-base">
+                    <Link className="h-5 w-5" />
                     URL do Site / Landing Page
                   </Label>
                   <Input
@@ -373,15 +381,16 @@ export default function DNAEditor() {
                     placeholder="https://seusite.com.br"
                     value={form.site_url}
                     onChange={(e) => setForm({ ...form, site_url: e.target.value })}
+                    className="h-12 text-base"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     Site ou landing page específica para este DNA
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="payment" className="flex items-center gap-2">
-                    <CreditCard className="h-4 w-4" />
+                <div className="space-y-3">
+                  <Label htmlFor="payment" className="flex items-center gap-2 text-base">
+                    <CreditCard className="h-5 w-5" />
                     Link de Pagamento
                   </Label>
                   <Input
@@ -390,8 +399,9 @@ export default function DNAEditor() {
                     placeholder="https://pag.ae/..."
                     value={form.payment_link}
                     onChange={(e) => setForm({ ...form, payment_link: e.target.value })}
+                    className="h-12 text-base"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     Link para checkout ou pagamento
                   </p>
                 </div>
