@@ -85,18 +85,24 @@ export default function Dashboard() {
 
   const loadDashboardData = async () => {
     try {
+      // Função para normalizar telefone (remover tudo exceto dígitos)
+      const normalizePhone = (phone: string): string => {
+        return phone.replace(/\D/g, '');
+      };
+
       // Buscar telefones válidos (do broadcast)
       const { data: queuePhones } = await supabase.from('whatsapp_queue').select('phone');
       const { data: lists } = await supabase.from('broadcast_lists').select('lead_data, phones');
       
+      // Criar Set de telefones NORMALIZADOS
       const broadcastPhones = new Set<string>();
-      queuePhones?.forEach(q => broadcastPhones.add(q.phone));
+      queuePhones?.forEach(q => broadcastPhones.add(normalizePhone(q.phone)));
       lists?.forEach(list => {
         const leadData = list.lead_data as Array<{ phone?: string }> | null;
         leadData?.forEach(lead => {
-          if (lead.phone) broadcastPhones.add(lead.phone);
+          if (lead.phone) broadcastPhones.add(normalizePhone(lead.phone));
         });
-        list.phones?.forEach(phone => broadcastPhones.add(phone));
+        list.phones?.forEach(phone => broadcastPhones.add(normalizePhone(phone)));
       });
 
       // Buscar conversas filtradas por broadcasts
@@ -105,7 +111,10 @@ export default function Dashboard() {
         .select('*')
         .order('last_message_at', { ascending: false });
 
-      const filteredConversations = conversations?.filter(c => broadcastPhones.has(c.phone)) || [];
+      // Filtrar conversas comparando telefones NORMALIZADOS
+      const filteredConversations = conversations?.filter(c => 
+        broadcastPhones.has(normalizePhone(c.phone))
+      ) || [];
 
       // Mapear cores de número para hex
       const colorMap: Record<number, string> = {
