@@ -15,6 +15,8 @@ export interface Business {
   place_id: string;
   whatsapp?: string;
   instagram?: string;
+  source?: 'google_maps' | 'instagram';
+  score?: number;
 }
 
 export const BRAZILIAN_STATES = [

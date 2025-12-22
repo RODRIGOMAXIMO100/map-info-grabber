@@ -3,6 +3,12 @@ project_id = "vorehtfxwvsbbivnskeq"
 [functions.search-businesses]
 verify_jwt = false
 
+[functions.search-instagram]
+verify_jwt = false
+
+[functions.scrape-whatsapp]
+verify_jwt = false
+
 [functions.whatsapp-receive-webhook]
 verify_jwt = false
 

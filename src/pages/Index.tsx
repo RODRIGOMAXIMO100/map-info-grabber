@@ -1,22 +1,82 @@
 import { useState, useMemo } from 'react';
-import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram } from 'lucide-react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { LocationSelector } from '@/components/LocationSelector';
 import { ResultsTable } from '@/components/ResultsTable';
 import { useBusinessSearch } from '@/hooks/useBusinessSearch';
+import { useInstagramSearch, InstagramResult } from '@/hooks/useInstagramSearch';
 import { exportToCSV } from '@/lib/exportCsv';
-import { Location } from '@/types/business';
+import { Location, Business } from '@/types/business';
+
+type SearchSource = 'maps' | 'instagram' | 'both';
 
 export default function Index() {
   const [keyword, setKeyword] = useState('');
   const [locations, setLocations] = useState<Location[]>([]);
   const [maxResults, setMaxResults] = useState(20);
-  const { search, results, isLoading, error, progress } = useBusinessSearch();
+  const [searchSource, setSearchSource] = useState<SearchSource>('both');
+  const [filterWhatsAppOnly, setFilterWhatsAppOnly] = useState(false);
+  
+  const { search: searchMaps, results: mapsResults, isLoading: mapsLoading, error: mapsError, progress: mapsProgress } = useBusinessSearch();
+  const { search: searchInstagram, scrapeProfiles, results: instagramResults, isLoading: instagramLoading, error: instagramError, progress: instagramProgress } = useInstagramSearch();
+  
   const { toast } = useToast();
+
+  const isLoading = mapsLoading || instagramLoading;
+
+  // Convert Instagram results to Business format for unified display
+  const convertedInstagramResults: Business[] = useMemo(() => {
+    return instagramResults.map(ig => ({
+      name: ig.name,
+      address: `${ig.city}, ${ig.state}`,
+      phone: ig.phone || '',
+      website: ig.profileUrl,
+      rating: null,
+      reviews: null,
+      city: ig.city,
+      state: ig.state,
+      place_id: `ig_${ig.username}`,
+      whatsapp: ig.whatsapp,
+      instagram: ig.instagram,
+      source: 'instagram' as const,
+      score: ig.score,
+    }));
+  }, [instagramResults]);
+
+  // Combine and deduplicate results
+  const combinedResults = useMemo(() => {
+    const mapsWithSource = mapsResults.map(r => ({ ...r, source: 'google_maps' as const }));
+    const all = [...mapsWithSource, ...convertedInstagramResults];
+    
+    // Deduplicate by phone or name similarity
+    const unique = all.filter((item, index, self) => {
+      if (item.phone) {
+        const normalizedPhone = item.phone.replace(/\D/g, '');
+        return index === self.findIndex(t => t.phone?.replace(/\D/g, '') === normalizedPhone);
+      }
+      return index === self.findIndex(t => t.name.toLowerCase() === item.name.toLowerCase());
+    });
+    
+    // Sort by score if available
+    return unique.sort((a, b) => (b.score || 0) - (a.score || 0));
+  }, [mapsResults, convertedInstagramResults]);
+
+  // Apply filters
+  const filteredResults = useMemo(() => {
+    let results = combinedResults;
+    if (filterWhatsAppOnly) {
+      results = results.filter(r => r.whatsapp);
+    }
+    return results;
+  }, [combinedResults, filterWhatsAppOnly]);
 
   const handleAddLocation = (location: Location) => {
     setLocations(prev => {
@@ -57,11 +117,28 @@ export default function Index() {
       });
       return;
     }
-    await search(keyword, locations, maxResults);
+    
+    // Search based on selected sources
+    const promises: Promise<void>[] = [];
+    
+    if (searchSource === 'maps' || searchSource === 'both') {
+      promises.push(searchMaps(keyword, locations, maxResults));
+    }
+    
+    if (searchSource === 'instagram' || searchSource === 'both') {
+      promises.push(searchInstagram(keyword, locations, maxResults));
+    }
+    
+    await Promise.all(promises);
+    
+    toast({
+      title: 'Busca concluída!',
+      description: `Encontrados ${combinedResults.length} leads.`,
+    });
   };
 
   const handleExport = () => {
-    if (results.length === 0) {
+    if (filteredResults.length === 0) {
       toast({
         title: 'Nenhum resultado',
         description: 'Faça uma busca primeiro para exportar.',
@@ -69,32 +146,37 @@ export default function Index() {
       });
       return;
     }
-    exportToCSV(results, keyword.replace(/\s+/g, '_'));
+    exportToCSV(filteredResults, keyword.replace(/\s+/g, '_'));
     toast({
       title: 'Exportado!',
-      description: `${results.length} empresas exportadas para CSV.`,
+      description: `${filteredResults.length} empresas exportadas para CSV.`,
     });
   };
 
-  const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
+  const currentProgress = mapsLoading ? mapsProgress : instagramProgress;
+  const progressPercent = currentProgress.total > 0 ? (currentProgress.current / currentProgress.total) * 100 : 0;
 
   const stats = useMemo(() => ({
-    whatsapp: results.filter(r => r.whatsapp).length,
-    instagram: results.filter(r => r.instagram).length,
-    phone: results.filter(r => r.phone).length,
-    website: results.filter(r => r.website && r.website.startsWith('http') && !r.website.includes('wa.me') && !r.website.includes('instagram.com')).length,
-  }), [results]);
+    total: filteredResults.length,
+    whatsapp: filteredResults.filter(r => r.whatsapp).length,
+    instagram: filteredResults.filter(r => r.instagram).length,
+    fromMaps: filteredResults.filter(r => r.source === 'google_maps').length,
+    fromInstagram: filteredResults.filter(r => r.source === 'instagram').length,
+    highScore: filteredResults.filter(r => (r.score || 0) >= 4).length,
+  }), [filteredResults]);
+
+  const error = mapsError || instagramError;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted/30 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 text-primary">
-            <MapPin className="h-8 w-8" />
-            <h1 className="text-3xl font-bold">Busca de Empresas</h1>
+            <Sparkles className="h-8 w-8" />
+            <h1 className="text-3xl font-bold">Prospecção Inteligente</h1>
           </div>
           <p className="text-muted-foreground">
-            Encontre empresas no Google Maps por palavra-chave e localização
+            Busque leads no Google Maps e Instagram com extração automática de WhatsApp
           </p>
         </div>
 
@@ -102,7 +184,7 @@ export default function Index() {
           <CardHeader>
             <CardTitle>Parâmetros de Busca</CardTitle>
             <CardDescription>
-              Adicione a palavra-chave e as cidades onde deseja buscar
+              Configure sua busca multi-fonte para encontrar leads qualificados
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -117,6 +199,26 @@ export default function Index() {
               </div>
 
               <div>
+                <label className="text-sm font-medium mb-2 block">Fontes de Busca</label>
+                <Tabs value={searchSource} onValueChange={(v) => setSearchSource(v as SearchSource)} className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="maps" className="flex items-center gap-2">
+                      <Map className="h-4 w-4" />
+                      Google Maps
+                    </TabsTrigger>
+                    <TabsTrigger value="instagram" className="flex items-center gap-2">
+                      <Instagram className="h-4 w-4" />
+                      Instagram
+                    </TabsTrigger>
+                    <TabsTrigger value="both" className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      Ambos
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              <div>
                 <label className="text-sm font-medium mb-2 block">Localizações</label>
                 <LocationSelector
                   locations={locations}
@@ -125,20 +227,31 @@ export default function Index() {
                 />
               </div>
 
-              <div>
-                <label className="text-sm font-medium mb-2 block">Quantidade de contatos por cidade</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={200}
-                    value={maxResults}
-                    onChange={(e) => setMaxResults(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
-                    className="w-32"
+              <div className="flex items-center gap-6">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Quantidade por cidade</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={maxResults}
+                      onChange={(e) => setMaxResults(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">(máx. 200)</span>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2 pt-6">
+                  <Switch
+                    id="whatsapp-filter"
+                    checked={filterWhatsAppOnly}
+                    onCheckedChange={setFilterWhatsAppOnly}
                   />
-                  <span className="text-sm text-muted-foreground">
-                    (máx. 200 por cidade)
-                  </span>
+                  <Label htmlFor="whatsapp-filter" className="text-sm">
+                    Apenas com WhatsApp
+                  </Label>
                 </div>
               </div>
 
@@ -152,7 +265,7 @@ export default function Index() {
                   ) : (
                     <>
                       <Search className="h-4 w-4 mr-2" />
-                      Buscar
+                      Buscar Leads
                     </>
                   )}
                 </Button>
@@ -160,7 +273,7 @@ export default function Index() {
                   type="button"
                   variant="outline"
                   onClick={handleExport}
-                  disabled={results.length === 0 || isLoading}
+                  disabled={filteredResults.length === 0 || isLoading}
                 >
                   <Download className="h-4 w-4 mr-2" />
                   Exportar CSV
@@ -177,15 +290,16 @@ export default function Index() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <div className="text-center space-y-1">
                   <p className="font-medium">
-                    Buscando {progress.current} de {progress.total} cidade{progress.total !== 1 ? 's' : ''}...
+                    {mapsLoading && 'Buscando no Google Maps...'}
+                    {instagramLoading && 'Buscando perfis no Instagram...'}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {progress.currentCity}
+                    {currentProgress.currentCity}
                   </p>
-                  {results.length > 0 && (
+                  {combinedResults.length > 0 && (
                     <p className="text-sm text-green-600 dark:text-green-400 mt-2 flex items-center justify-center gap-1">
                       <CheckCircle2 className="h-4 w-4" />
-                      {results.length} empresa{results.length !== 1 ? 's' : ''} encontrada{results.length !== 1 ? 's' : ''}
+                      {combinedResults.length} lead{combinedResults.length !== 1 ? 's' : ''} encontrado{combinedResults.length !== 1 ? 's' : ''}
                     </p>
                   )}
                 </div>
@@ -205,29 +319,45 @@ export default function Index() {
           </Card>
         )}
 
-        {(results.length > 0 || isLoading) && (
+        {(filteredResults.length > 0 || isLoading) && (
           <Card>
             <CardHeader>
-              <CardTitle>Resultados</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Resultados
+                {stats.highScore > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    <Star className="h-3 w-3 mr-1 text-yellow-500" />
+                    {stats.highScore} alta qualidade
+                  </Badge>
+                )}
+              </CardTitle>
               <CardDescription>
-                {results.length} empresa{results.length !== 1 ? 's' : ''} encontrada{results.length !== 1 ? 's' : ''}
+                {stats.total} lead{stats.total !== 1 ? 's' : ''} encontrado{stats.total !== 1 ? 's' : ''}
                 {isLoading && ' (buscando mais...)'}
               </CardDescription>
-              {results.length > 0 && (
-                <div className="flex flex-wrap gap-4 mt-3 text-sm">
-                  <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-                    <MessageCircle className="h-4 w-4" />
-                    <span>{stats.whatsapp} com WhatsApp</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-pink-600 dark:text-pink-400">
-                    <Instagram className="h-4 w-4" />
-                    <span>{stats.instagram} com Instagram</span>
-                  </div>
+              {stats.total > 0 && (
+                <div className="flex flex-wrap gap-3 mt-3 text-sm">
+                  <Badge variant="outline" className="gap-1.5">
+                    <MessageCircle className="h-3.5 w-3.5 text-green-500" />
+                    {stats.whatsapp} WhatsApp
+                  </Badge>
+                  <Badge variant="outline" className="gap-1.5">
+                    <Instagram className="h-3.5 w-3.5 text-pink-500" />
+                    {stats.instagram} Instagram
+                  </Badge>
+                  <Badge variant="outline" className="gap-1.5">
+                    <Map className="h-3.5 w-3.5 text-blue-500" />
+                    {stats.fromMaps} do Maps
+                  </Badge>
+                  <Badge variant="outline" className="gap-1.5">
+                    <Instagram className="h-3.5 w-3.5 text-purple-500" />
+                    {stats.fromInstagram} do Instagram
+                  </Badge>
                 </div>
               )}
             </CardHeader>
             <CardContent>
-              <ResultsTable results={results} />
+              <ResultsTable results={filteredResults} />
             </CardContent>
           </Card>
         )}
