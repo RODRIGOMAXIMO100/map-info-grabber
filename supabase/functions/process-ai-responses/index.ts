@@ -78,6 +78,18 @@ serve(async (req) => {
         }
 
         const aiData = await aiResponse.json();
+        
+        // Se detectou loop de bot, a IA já pausou - não fazer nada
+        if (aiData.is_bot_loop) {
+          console.log('[Process AI] Bot loop detected for conversation:', conv.id, '- AI paused');
+          continue;
+        }
+        
+        // Se é mensagem de bot, responder mas não insistir
+        if (aiData.is_bot_message) {
+          console.log('[Process AI] Bot message detected for conversation:', conv.id);
+        }
+        
         if (!aiData.response) continue;
 
         console.log('[Process AI] AI response:', aiData);
@@ -100,7 +112,7 @@ serve(async (req) => {
 
         if (sendResponse.ok) {
           processedCount++;
-          console.log('[Process AI] Message sent successfully for conversation:', conv.id);
+          console.log('[Process AI] Message sent successfully for conversation:', conv.id, '| Bot msg:', aiData.is_bot_message || false);
         }
 
         // Send video if needed

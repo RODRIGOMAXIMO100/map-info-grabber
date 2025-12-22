@@ -27,8 +27,127 @@ function getStageFromLabelId(labelId: string): CRMStage | null {
   return null;
 }
 
-// Prompt padrão com FUNIL DE AQUECIMENTO: Curiosidade → Interesse → CTA
+// ========== DETECÇÃO DE BOTS/ROBÔS ==========
+const BOT_PATTERNS = [
+  /aguarde.*transferindo/i,
+  /transferindo.*atendente/i,
+  /horário de atendimento/i,
+  /fora do horário/i,
+  /escolha.*opção/i,
+  /digite.*número/i,
+  /opção.*inválida/i,
+  /férias coletivas/i,
+  /recesso/i,
+  /não estamos atendendo/i,
+  /atendimento encerrado/i,
+  /deixe.*mensagem/i,
+  /retornaremos.*contato/i,
+  /^[1-9]$/,  // Só número de menu
+  /^\*[1-9]\*/,  // Número entre asteriscos
+  /menu principal/i,
+  /voltar.*menu/i,
+  /bem-vindo.*atendimento/i,
+  /olá.*sou.*assistente virtual/i,
+  /sou.*robô/i,
+  /atendimento automático/i,
+  /aguarde.*atendente/i,
+  /em breve.*atendente/i,
+  /tempo de espera/i,
+  /posição na fila/i,
+];
+
+// Padrões de inversão de papéis (lead é atendente)
+const ROLE_INVERSION_PATTERNS = [
+  /em que (eu )?posso (te )?ajudar/i,
+  /como posso (te )?ajudar/i,
+  /o que (você )?deseja/i,
+  /o que (você )?precisa/i,
+  /qual.*seu.*pedido/i,
+  /posso (te )?auxiliar/i,
+  /em que posso ser útil/i,
+  /com o que posso ajudar/i,
+  /pois não/i,
+  /diga/i,
+];
+
+function detectBotMessage(message: string): { isBot: boolean; reason: string | null } {
+  const normalizedMsg = message.toLowerCase().trim();
+  
+  for (const pattern of BOT_PATTERNS) {
+    if (pattern.test(normalizedMsg)) {
+      console.log('[AI] Bot detected! Pattern matched:', pattern.toString());
+      return { isBot: true, reason: `Padrão detectado: ${pattern.toString()}` };
+    }
+  }
+  
+  // Mensagens muito curtas com só números (menu)
+  if (/^[0-9\s\*#]+$/.test(normalizedMsg) && normalizedMsg.length < 5) {
+    return { isBot: true, reason: 'Resposta de menu numérico' };
+  }
+  
+  return { isBot: false, reason: null };
+}
+
+function detectRoleInversion(message: string): boolean {
+  const normalizedMsg = message.toLowerCase().trim();
+  
+  for (const pattern of ROLE_INVERSION_PATTERNS) {
+    if (pattern.test(normalizedMsg)) {
+      console.log('[AI] Role inversion detected! Lead is asking how to help us');
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// Conta respostas consecutivas da IA sem resposta humana real
+function countConsecutiveAIResponses(history: Array<{ direction: string; content: string }>): number {
+  let count = 0;
+  
+  // Percorre do mais recente para o mais antigo
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    
+    if (msg.direction === 'outgoing') {
+      count++;
+    } else {
+      // Verifica se a resposta incoming é de bot
+      const botCheck = detectBotMessage(msg.content || '');
+      if (botCheck.isBot) {
+        // É bot, continua contando
+        continue;
+      } else {
+        // Resposta humana real, para de contar
+        break;
+      }
+    }
+  }
+  
+  return count;
+}
+
+// Prompt padrão com FUNIL DE AQUECIMENTO + DETECÇÃO DE BOTS
 const DEFAULT_SDR_PROMPT = `Você é um consultor da empresa, especialista em criar conexão e despertar interesse.
+
+## ⚠️ DETECÇÃO DE ROBÔS/MENSAGENS AUTOMÁTICAS (CRÍTICO!)
+ANTES de responder, verifique se a mensagem do lead parece AUTOMÁTICA:
+- Mensagens de menu: "Digite 1 para...", "Escolha uma opção"
+- Mensagens de espera: "Aguarde, transferindo...", "Em breve um atendente"
+- Mensagens de horário: "Fora do horário de atendimento", "Férias coletivas"
+- Respostas de URA: números soltos (1, 2, 3), "Opção inválida"
+
+SE DETECTAR MENSAGEM AUTOMÁTICA:
+- Responda APENAS: "Entendido! Fico no aguardo de um atendente 😊"
+- Marque "is_bot_message": true no JSON
+- NÃO tente vender, qualificar ou fazer perguntas
+
+## 🔄 INVERSÃO DE PAPÉIS (CRÍTICO!)
+Se o lead perguntar "Em que posso ajudar?" ou similar, ELE É PROVAVELMENTE UM ATENDENTE:
+- NÃO pergunte o nome ou faça qualificação
+- APRESENTE-SE: "Olá! Sou [consultor] da [empresa]. Entramos em contato pois..."
+- EXPLIQUE o motivo do contato de forma breve
+- Marque "role_inverted": true no JSON
 
 ## SUA ABORDAGEM: FUNIL DE AQUECIMENTO
 Você segue uma jornada CONSULTIVA, não vendedora. Cada estágio tem um objetivo específico:
@@ -74,6 +193,7 @@ Objetivo: Confirmar interesse e passar para consultor
 3. NUNCA seja direto demais - construa a relação primeiro
 4. Se perguntarem preço: "Varia conforme o projeto, posso conectar você com nosso consultor?"
 5. Avance APENAS 1 estágio por mensagem
+6. Se detectar BOT/robô, não insista - aguarde humano
 
 ## COLETA DE NOME
 - Em STAGE_1, pergunte o nome naturalmente
@@ -164,6 +284,72 @@ serve(async (req) => {
       );
     }
 
+    // ========== DETECÇÃO DE BOT ==========
+    const botCheck = detectBotMessage(incoming_message);
+    const isRoleInverted = detectRoleInversion(incoming_message);
+    const consecutiveAIResponses = countConsecutiveAIResponses(conversation_history || []);
+    
+    console.log('[AI] Bot check:', botCheck.isBot, '| Role inverted:', isRoleInverted, '| Consecutive AI:', consecutiveAIResponses);
+
+    // Se muitas respostas consecutivas da IA (possível loop com bot), pausar
+    if (consecutiveAIResponses >= 3) {
+      console.log('[AI] Too many consecutive AI responses, possible bot loop. Pausing.');
+      
+      // Atualizar conversa para pausar IA
+      await supabase
+        .from('whatsapp_conversations')
+        .update({ 
+          ai_paused: true,
+          ai_handoff_reason: 'IA pausada automaticamente - possível loop com bot/robô'
+        })
+        .eq('id', conversation_id);
+      
+      return new Response(
+        JSON.stringify({
+          response: null,
+          should_respond: false,
+          is_bot_loop: true,
+          message: 'IA pausada - detectado possível loop com bot/robô',
+          consecutive_ai_responses: consecutiveAIResponses
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Se é mensagem de bot, responder de forma simples e não insistir
+    if (botCheck.isBot) {
+      console.log('[AI] Bot message detected, responding with simple acknowledgment');
+      
+      const botResponse = 'Entendido! Fico no aguardo de um atendente 😊';
+      
+      // Log the bot detection
+      await supabase
+        .from('whatsapp_ai_logs')
+        .insert({
+          conversation_id,
+          incoming_message,
+          ai_response: botResponse,
+          detected_intent: `BOT_DETECTED: ${botCheck.reason}`,
+          confidence_score: 0.95,
+          needs_human: false
+        });
+      
+      return new Response(
+        JSON.stringify({
+          response: botResponse,
+          stage: currentStage || 'STAGE_1',
+          label_id: CRM_STAGES[currentStage as CRMStage]?.id || '16',
+          is_bot_message: true,
+          bot_reason: botCheck.reason,
+          should_send_video: false,
+          should_send_site: false,
+          should_handoff: false,
+          delay_seconds: aiConfig.auto_reply_delay_seconds || 5
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Build conversation history
     const historyMessages = (conversation_history || []).map((msg: { direction: string; content: string }) => ({
       role: msg.direction === 'incoming' ? 'user' : 'assistant',
@@ -177,6 +363,12 @@ serve(async (req) => {
     const siteUrl = dnaConfig?.site_url || aiConfig.site_url;
     const paymentLink = dnaConfig?.payment_link || aiConfig.payment_link;
     
+    // Adicionar contexto de inversão de papéis se detectado
+    const roleInversionContext = isRoleInverted 
+      ? `\n\n⚠️ ATENÇÃO: O lead perguntou "em que posso ajudar" ou similar - ELE É PROVAVELMENTE UM ATENDENTE. 
+         APRESENTE-SE explicando quem você é e por que está entrando em contato. NÃO pergunte o nome nem faça qualificação.`
+      : '';
+    
     const fullPrompt = `
 ${systemPrompt}
 
@@ -185,6 +377,8 @@ RESPONDA EM JSON COM ESTE FORMATO EXATO:
   "response": "sua resposta aqui (max 400 chars)",
   "stage": "STAGE_1" ou "STAGE_2" ou "STAGE_3" ou "STAGE_4" ou "STAGE_5",
   "lead_name": "nome do lead se identificado, ou null",
+  "is_bot_message": false,
+  "role_inverted": ${isRoleInverted},
   "should_send_video": true/false,
   "should_send_site": true/false,
   "should_handoff": true/false,
@@ -203,6 +397,7 @@ URLs disponíveis:
 - Vídeo: ${videoUrl || 'não configurado'}
 - Site: ${siteUrl || 'não configurado'}
 ${paymentLink ? `- Link de Pagamento: ${paymentLink}` : ''}
+${roleInversionContext}
 
 Histórico da conversa:
 ${historyMessages.slice(0, -1).map((m: { role: string; content: string }) => `${m.role === 'user' ? 'Lead' : 'SDR'}: ${m.content}`).join('\n')}
@@ -216,7 +411,7 @@ IMPORTANTE:
 - Se should_handoff=true, defina stage=STAGE_5 e OBRIGATORIAMENTE preencha conversation_summary com o resumo completo
 `;
 
-    console.log('[AI] Calling OpenAI - Stage atual:', currentStage, 'Order:', currentOrder, 'DNA:', dnaConfig?.name || 'default');
+    console.log('[AI] Calling OpenAI - Stage atual:', currentStage, 'Order:', currentOrder, 'DNA:', dnaConfig?.name || 'default', 'RoleInverted:', isRoleInverted);
 
     // Call OpenAI
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
