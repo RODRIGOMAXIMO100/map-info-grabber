@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Send, Pause, Play, Trash2, Users, Clock, 
   RefreshCw, CheckCircle2, XCircle, Loader2, AlertCircle, MessageSquare,
-  Image as ImageIcon
+  Image as ImageIcon, ShieldCheck, Phone, PhoneOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +28,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Dna } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface QueueItem {
   id: string;
@@ -45,6 +52,22 @@ interface DNA {
   id: string;
   name: string;
   description: string | null;
+}
+
+interface ValidationResult {
+  phone: string;
+  exists: boolean;
+  formattedNumber: string | null;
+  isLandline: boolean;
+  error?: string;
+}
+
+interface ValidationSummary {
+  total: number;
+  valid: number;
+  invalid: number;
+  landlines: number;
+  successRate: number;
 }
 
 const DEFAULT_MESSAGE = `Oi! Vi a {nome_empresa} aqui em {cidade} e achei interessante.
@@ -110,6 +133,14 @@ export default function BroadcastDetails() {
   const [editedImageUrl, setEditedImageUrl] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
   const [uploading, setUploading] = useState(false);
+  
+  // Validation state
+  const [validating, setValidating] = useState(false);
+  const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
+  const [validationSummary, setValidationSummary] = useState<ValidationSummary | null>(null);
+  const [showValidationDialog, setShowValidationDialog] = useState(false);
+  const [validatedPhones, setValidatedPhones] = useState<Set<string>>(new Set());
+  const [invalidPhones, setInvalidPhones] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (id) {
@@ -405,6 +436,96 @@ export default function BroadcastDetails() {
     }
   };
 
+  // Validate phone numbers before broadcast
+  const validatePhones = async () => {
+    if (!list || list.phones.length === 0) {
+      toast({
+        title: 'Lista vazia',
+        description: 'Adicione contatos antes de validar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setValidating(true);
+    setValidationResults([]);
+    setValidationSummary(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('validate-phone-numbers', {
+        body: {
+          phones: list.phones,
+          broadcastListId: list.id,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        setValidationResults(data.results);
+        setValidationSummary(data.summary);
+        setValidatedPhones(new Set(data.validPhones));
+        setInvalidPhones(new Set(data.invalidPhones));
+        setShowValidationDialog(true);
+        
+        // Reload list to get updated validation columns
+        loadList();
+
+        toast({
+          title: 'Validação concluída!',
+          description: `${data.summary.valid} válidos, ${data.summary.invalid} inválidos`,
+        });
+      } else {
+        throw new Error(data.error || 'Erro na validação');
+      }
+    } catch (error) {
+      console.error('Error validating phones:', error);
+      toast({
+        title: 'Erro ao validar números',
+        description: String(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  // Remove invalid phones from the list
+  const removeInvalidPhones = async () => {
+    if (!list || invalidPhones.size === 0) return;
+
+    try {
+      const validPhonesArray = list.phones.filter(p => !invalidPhones.has(p));
+      const validLeadData = list.lead_data.filter(l => !invalidPhones.has(l.phone));
+
+      const { error } = await supabase
+        .from('broadcast_lists')
+        .update({
+          phones: validPhonesArray,
+          lead_data: validLeadData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', list.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Números inválidos removidos!',
+        description: `${invalidPhones.size} números removidos da lista.`,
+      });
+
+      setShowValidationDialog(false);
+      setInvalidPhones(new Set());
+      loadList();
+    } catch (error) {
+      console.error('Error removing invalid phones:', error);
+      toast({
+        title: 'Erro ao remover números',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       draft: { variant: 'secondary', label: 'Rascunho' },
@@ -479,6 +600,22 @@ export default function BroadcastDetails() {
           </div>
 
           <div className="flex gap-2">
+            {/* Validate Button - always show for draft/paused */}
+            {(list.status === 'draft' || list.status === 'paused') && (
+              <Button 
+                variant="outline" 
+                onClick={validatePhones} 
+                disabled={validating || list.phones.length === 0}
+                className="gap-2"
+              >
+                {validating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4" />
+                )}
+                {validating ? 'Validando...' : 'Validar Números'}
+              </Button>
+            )}
             {list.status === 'draft' && (
               <Button onClick={startBroadcast} className="gap-2">
                 <Send className="h-4 w-4" />
@@ -504,7 +641,7 @@ export default function BroadcastDetails() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -516,6 +653,34 @@ export default function BroadcastDetails() {
               </div>
             </CardContent>
           </Card>
+          
+          {/* Validation Status Card */}
+          <Card className={(list as any).validated_at ? 'border-green-500/30' : 'border-amber-500/30'}>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <ShieldCheck className={`h-8 w-8 ${(list as any).validated_at ? 'text-green-600' : 'text-amber-500'}`} />
+                <div>
+                  {(list as any).validated_at ? (
+                    <>
+                      <p className="text-2xl font-bold text-green-600">{(list as any).valid_count || 0}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Validados
+                        {(list as any).invalid_count > 0 && (
+                          <span className="text-destructive ml-1">({(list as any).invalid_count} inválidos)</span>
+                        )}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-lg font-medium text-amber-500">Não validado</p>
+                      <p className="text-xs text-muted-foreground">Clique em "Validar"</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -840,6 +1005,7 @@ export default function BroadcastDetails() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead className="w-12">WhatsApp</TableHead>
                           <TableHead>Telefone</TableHead>
                           <TableHead>Nome</TableHead>
                           <TableHead>Status do Envio</TableHead>
@@ -849,8 +1015,25 @@ export default function BroadcastDetails() {
                         {list.phones.map((phone, idx) => {
                           const leadInfo = list.lead_data.find(l => l.phone === phone);
                           const queueItem = queue.find(q => q.phone === phone);
+                          const isValid = validatedPhones.has(phone);
+                          const isInvalid = invalidPhones.has(phone);
+                          const hasValidation = validatedPhones.size > 0 || invalidPhones.size > 0;
+                          
                           return (
-                            <TableRow key={idx}>
+                            <TableRow key={idx} className={isInvalid ? 'bg-destructive/5' : ''}>
+                              <TableCell>
+                                {hasValidation ? (
+                                  isValid ? (
+                                    <Phone className="h-4 w-4 text-green-600" />
+                                  ) : isInvalid ? (
+                                    <PhoneOff className="h-4 w-4 text-destructive" />
+                                  ) : (
+                                    <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                                  )
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
                               <TableCell className="font-mono">{phone}</TableCell>
                               <TableCell>{leadInfo?.name || '-'}</TableCell>
                               <TableCell>
@@ -860,6 +1043,8 @@ export default function BroadcastDetails() {
                                       {getQueueStatusIcon(queueItem.status)}
                                       <span className="text-sm capitalize">{queueItem.status}</span>
                                     </>
+                                  ) : isInvalid ? (
+                                    <span className="text-destructive text-sm">Sem WhatsApp</span>
                                   ) : (
                                     <span className="text-muted-foreground text-sm">Aguardando</span>
                                   )}
@@ -877,6 +1062,105 @@ export default function BroadcastDetails() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Validation Results Dialog */}
+      <Dialog open={showValidationDialog} onOpenChange={setShowValidationDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              Resultado da Validação
+            </DialogTitle>
+            <DialogDescription>
+              Verificamos quais números estão ativos no WhatsApp
+            </DialogDescription>
+          </DialogHeader>
+          
+          {validationSummary && (
+            <div className="space-y-4">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-4 gap-3">
+                <div className="bg-muted/50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold">{validationSummary.total}</p>
+                  <p className="text-xs text-muted-foreground">Total</p>
+                </div>
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-green-600">{validationSummary.valid}</p>
+                  <p className="text-xs text-green-600">Válidos</p>
+                </div>
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-destructive">{validationSummary.invalid}</p>
+                  <p className="text-xs text-destructive">Inválidos</p>
+                </div>
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-amber-600">{validationSummary.landlines}</p>
+                  <p className="text-xs text-amber-600">Fixos</p>
+                </div>
+              </div>
+
+              {/* Success Rate */}
+              <div className="bg-muted/30 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium">Taxa de Sucesso Esperada</span>
+                  <span className="text-lg font-bold text-green-600">{validationSummary.successRate}%</span>
+                </div>
+                <Progress value={validationSummary.successRate} className="h-2" />
+              </div>
+
+              {/* Invalid Numbers List */}
+              {validationResults.filter(r => !r.exists).length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <PhoneOff className="h-4 w-4 text-destructive" />
+                    Números Inválidos ({validationResults.filter(r => !r.exists).length})
+                  </Label>
+                  <ScrollArea className="h-[200px] border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Telefone</TableHead>
+                          <TableHead>Motivo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {validationResults.filter(r => !r.exists).map((result, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-mono text-sm">{result.phone}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {result.isLandline ? 'Telefone fixo' : result.error || 'Não encontrado no WhatsApp'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                {invalidPhones.size > 0 && (
+                  <Button 
+                    variant="destructive" 
+                    onClick={removeInvalidPhones}
+                    className="gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remover {invalidPhones.size} Inválidos
+                  </Button>
+                )}
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowValidationDialog(false)}
+                  className="ml-auto"
+                >
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
