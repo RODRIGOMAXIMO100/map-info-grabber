@@ -165,21 +165,23 @@ serve(async (req) => {
         let payload: Record<string, unknown>;
 
         if (queueItem.image_url) {
-          // Send media message
-          apiUrl = `${selectedConfig.server_url}/sendFile/${selectedConfig.instance_token}`;
+          // Send media message - UAZAPI format: /send/file/
+          apiUrl = `${selectedConfig.server_url}/send/file/${selectedConfig.instance_token}`;
           payload = {
             phone: formattedPhone,
             url: queueItem.image_url,
             caption: processedMessage,
             fileName: 'image.jpg'
           };
+          console.log(`[Broadcast] Sending media to: ${apiUrl}`);
         } else {
-          // Send text message
-          apiUrl = `${selectedConfig.server_url}/sendText/${selectedConfig.instance_token}`;
+          // Send text message - UAZAPI format: /send/text/
+          apiUrl = `${selectedConfig.server_url}/send/text/${selectedConfig.instance_token}`;
           payload = {
             phone: formattedPhone,
             message: processedMessage
           };
+          console.log(`[Broadcast] Sending text to: ${apiUrl}`);
         }
 
         const sendResponse = await fetch(apiUrl, {
