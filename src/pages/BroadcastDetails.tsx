@@ -600,15 +600,15 @@ export default function BroadcastDetails() {
                       DNA do Agente IA
                     </Label>
                     <Select
-                      value={selectedDnaId}
-                      onValueChange={setSelectedDnaId}
+                      value={selectedDnaId || 'none'}
+                      onValueChange={(val) => setSelectedDnaId(val === 'none' ? '' : val)}
                       disabled={list.status === 'sending'}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione um DNA (opcional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Nenhum (usar config padrão)</SelectItem>
+                        <SelectItem value="none">Nenhum (usar config padrão)</SelectItem>
                         {dnas.map((dna) => (
                           <SelectItem key={dna.id} value={dna.id}>
                             {dna.name}
