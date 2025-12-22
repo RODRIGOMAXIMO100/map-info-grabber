@@ -124,6 +124,45 @@ export type Database = {
           },
         ]
       }
+      search_cache: {
+        Row: {
+          cache_key: string
+          city: string
+          created_at: string
+          expires_at: string
+          id: string
+          keyword: string
+          result_count: number
+          results: Json
+          search_type: string
+          state: string
+        }
+        Insert: {
+          cache_key: string
+          city: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          keyword: string
+          result_count?: number
+          results?: Json
+          search_type: string
+          state: string
+        }
+        Update: {
+          cache_key?: string
+          city?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          keyword?: string
+          result_count?: number
+          results?: Json
+          search_type?: string
+          state?: string
+        }
+        Relationships: []
+      }
       whatsapp_ai_config: {
         Row: {
           auto_reply_delay_seconds: number | null
@@ -758,6 +797,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      clean_expired_cache: { Args: never; Returns: undefined }
       get_pending_broadcast_messages: {
         Args: { batch_limit: number }
         Returns: {

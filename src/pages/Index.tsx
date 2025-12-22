@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles } from 'lucide-react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,8 +25,8 @@ export default function Index() {
   const [searchSource, setSearchSource] = useState<SearchSource>('both');
   const [filterWhatsAppOnly, setFilterWhatsAppOnly] = useState(false);
   
-  const { search: searchMaps, results: mapsResults, isLoading: mapsLoading, error: mapsError, progress: mapsProgress } = useBusinessSearch();
-  const { search: searchInstagram, scrapeProfiles, results: instagramResults, isLoading: instagramLoading, error: instagramError, progress: instagramProgress } = useInstagramSearch();
+  const { search: searchMaps, cancel: cancelMaps, results: mapsResults, isLoading: mapsLoading, error: mapsError, progress: mapsProgress } = useBusinessSearch();
+  const { search: searchInstagram, scrapeProfiles, results: instagramResults, isLoading: instagramLoading, isScraping, error: instagramError, progress: instagramProgress } = useInstagramSearch();
   
   const { toast } = useToast();
 
@@ -155,6 +155,7 @@ export default function Index() {
 
   const currentProgress = mapsLoading ? mapsProgress : instagramProgress;
   const progressPercent = currentProgress.total > 0 ? (currentProgress.current / currentProgress.total) * 100 : 0;
+  const showScrapingIndicator = isScraping;
 
   const stats = useMemo(() => ({
     total: filteredResults.length,
@@ -287,11 +288,17 @@ export default function Index() {
           <Card className="border-primary/20 bg-primary/5">
             <CardContent className="pt-6">
               <div className="flex flex-col items-center gap-4">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <div className="relative">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  {showScrapingIndicator && (
+                    <Zap className="h-4 w-4 text-yellow-500 absolute -top-1 -right-1 animate-pulse" />
+                  )}
+                </div>
                 <div className="text-center space-y-1">
                   <p className="font-medium">
-                    {mapsLoading && 'Buscando no Google Maps...'}
-                    {instagramLoading && 'Buscando perfis no Instagram...'}
+                    {mapsLoading && !instagramLoading && 'Buscando no Google Maps...'}
+                    {instagramLoading && !isScraping && 'Buscando perfis no Instagram...'}
+                    {isScraping && 'Extraindo WhatsApp dos perfis...'}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {currentProgress.currentCity}
@@ -302,6 +309,18 @@ export default function Index() {
                       {combinedResults.length} lead{combinedResults.length !== 1 ? 's' : ''} encontrado{combinedResults.length !== 1 ? 's' : ''}
                     </p>
                   )}
+                  
+                  {/* Progress indicators */}
+                  <div className="flex items-center justify-center gap-4 mt-3 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <Zap className="h-3 w-3 text-yellow-500" />
+                      Buscas paralelas
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Database className="h-3 w-3 text-blue-500" />
+                      Cache ativo
+                    </div>
+                  </div>
                 </div>
                 <div className="w-full max-w-xs">
                   <Progress value={progressPercent} className="h-2" />
