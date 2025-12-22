@@ -106,19 +106,21 @@ serve(async (req) => {
       );
     }
 
-    // Fetch DNA if provided
+    // Fetch DNA: use dna_id from conversation, or default_dna_id from config
     let dnaConfig = null;
-    if (dna_id) {
+    const dnaIdToUse = dna_id || aiConfig?.default_dna_id;
+    
+    if (dnaIdToUse) {
       const { data: dna } = await supabase
         .from('ai_dnas')
         .select('*')
-        .eq('id', dna_id)
+        .eq('id', dnaIdToUse)
         .eq('is_active', true)
         .maybeSingle();
       
       if (dna) {
         dnaConfig = dna;
-        console.log('[AI] Using DNA:', dna.name);
+        console.log('[AI] Using DNA:', dna.name, dna_id ? '(from conversation)' : '(default from config)');
       }
     }
 
