@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.generate-dna-prompt]
 verify_jwt = false
+
+[functions.validate-phone-numbers]
+verify_jwt = false
