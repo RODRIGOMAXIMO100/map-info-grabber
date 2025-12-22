@@ -85,27 +85,13 @@ export default function Dashboard() {
 
   const loadDashboardData = async () => {
     try {
-      // Buscar telefones válidos (do broadcast)
-      const { data: queuePhones } = await supabase.from('whatsapp_queue').select('phone');
-      const { data: lists } = await supabase.from('broadcast_lists').select('lead_data, phones');
-      
-      const broadcastPhones = new Set<string>();
-      queuePhones?.forEach(q => broadcastPhones.add(q.phone));
-      lists?.forEach(list => {
-        const leadData = list.lead_data as Array<{ phone?: string }> | null;
-        leadData?.forEach(lead => {
-          if (lead.phone) broadcastPhones.add(lead.phone);
-        });
-        list.phones?.forEach(phone => broadcastPhones.add(phone));
-      });
-
-      // Buscar conversas filtradas
+      // Buscar TODAS as conversas (não apenas de broadcasts)
       const { data: conversations } = await supabase
         .from('whatsapp_conversations')
         .select('*')
         .order('last_message_at', { ascending: false });
 
-      const filteredConversations = conversations?.filter(c => broadcastPhones.has(c.phone)) || [];
+      const allConversations = conversations || [];
 
       // Mapear cores de número para hex
       const colorMap: Record<number, string> = {
@@ -118,17 +104,46 @@ export default function Dashboard() {
         7: '#6B7280', // cinza
       };
 
-      // Contagens por estágio
+      // Criar mapeamento de label_id para stage_id
+      const labelToStageMap: Record<string, string> = {};
+      CRM_STAGES.forEach(stage => {
+        labelToStageMap[stage.label_id] = stage.id;
+      });
+
+      // Contagens por estágio usando tags (que contêm label_ids)
       const stageCounts: Record<string, number> = {};
       CRM_STAGES.forEach(stage => {
         stageCounts[stage.id] = 0;
       });
 
-      filteredConversations.forEach(conv => {
-        if (stageCounts[conv.status] !== undefined) {
-          stageCounts[conv.status]++;
+      allConversations.forEach(conv => {
+        const tags = conv.tags || [];
+        // Encontrar o estágio mais avançado baseado nas tags
+        let matchedStageId: string | null = null;
+        let highestOrder = 0;
+        
+        tags.forEach((tag: string) => {
+          const stageId = labelToStageMap[tag];
+          if (stageId) {
+            const stage = CRM_STAGES.find(s => s.id === stageId);
+            if (stage && stage.order > highestOrder) {
+              highestOrder = stage.order;
+              matchedStageId = stageId;
+            }
+          }
+        });
+
+        // Se não encontrou nenhum estágio via tags, conta como Lead Novo
+        if (matchedStageId) {
+          stageCounts[matchedStageId]++;
+        } else {
+          stageCounts['1']++; // Lead Novo
         }
       });
+
+      // Identificar handoffs (estágio 5)
+      const handoffStage = CRM_STAGES.find(s => s.name.includes('Handoff'));
+      const handoffLabelId = handoffStage?.label_id || '21';
 
       const stageChartData = CRM_STAGES.map(stage => ({
         name: stage.name,
@@ -136,9 +151,9 @@ export default function Dashboard() {
         color: colorMap[stage.color] || '#6B7280',
       }));
 
-      // Handoffs recentes
-      const handoffs = filteredConversations
-        .filter(c => c.status === 'handoff')
+      // Handoffs recentes (conversas com tag de handoff)
+      const handoffs = allConversations
+        .filter(c => (c.tags || []).includes(handoffLabelId))
         .slice(0, 5)
         .map(c => ({
           id: c.id,
@@ -176,10 +191,10 @@ export default function Dashboard() {
         .single();
 
       setStats({
-        totalLeads: filteredConversations.length,
-        mqlCount: stageCounts['mql'] || 0,
-        sqlCount: stageCounts['sql'] || 0,
-        handoffCount: stageCounts['handoff'] || 0,
+        totalLeads: allConversations.length,
+        mqlCount: stageCounts['2'] || 0, // MQL - Respondeu
+        sqlCount: stageCounts['4'] || 0, // SQL - Qualificado
+        handoffCount: stageCounts['5'] || 0, // Handoff - Vendedor
         todayMessages: todayMessagesCount || 0,
         broadcastsSent: broadcastsSentCount || 0,
         aiResponses: aiResponsesCount || 0,
