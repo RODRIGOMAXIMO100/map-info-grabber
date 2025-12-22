@@ -34,6 +34,17 @@ export default function CRMKanban() {
     };
   }, []);
 
+  // Normaliza telefone para formato apenas dígitos (sem DDI 55)
+  const normalizePhone = (phone: string): string => {
+    // Remove tudo que não é número
+    const digits = phone.replace(/\D/g, '');
+    // Se começar com 55 e tiver mais de 10 dígitos, remover o 55
+    if (digits.startsWith('55') && digits.length > 10) {
+      return digits.slice(2);
+    }
+    return digits;
+  };
+
   const loadConversations = async () => {
     try {
       // 1. Buscar telefones da fila de disparos
@@ -46,21 +57,21 @@ export default function CRMKanban() {
         .from('broadcast_lists')
         .select('lead_data, phones');
 
-      // 3. Extrair todos os telefones de broadcast
+      // 3. Extrair todos os telefones de broadcast (normalizados)
       const broadcastPhones = new Set<string>();
       
-      // Telefones da queue
-      queuePhones?.forEach(q => broadcastPhones.add(q.phone));
+      // Telefones da queue (normalizados)
+      queuePhones?.forEach(q => broadcastPhones.add(normalizePhone(q.phone)));
       
-      // Telefones das listas (lead_data e phones)
+      // Telefones das listas (lead_data e phones) - normalizados
       lists?.forEach(list => {
         // lead_data é um array de objetos com phone
         const leadData = list.lead_data as Array<{ phone?: string }> | null;
         leadData?.forEach(lead => {
-          if (lead.phone) broadcastPhones.add(lead.phone);
+          if (lead.phone) broadcastPhones.add(normalizePhone(lead.phone));
         });
         // phones é um array direto de telefones
-        list.phones?.forEach(phone => broadcastPhones.add(phone));
+        list.phones?.forEach(phone => broadcastPhones.add(normalizePhone(phone)));
       });
 
       // 4. Buscar todas as conversas
@@ -71,9 +82,9 @@ export default function CRMKanban() {
 
       if (error) throw error;
 
-      // 5. Filtrar apenas conversas com números de broadcast
+      // 5. Filtrar conversas com números de broadcast (comparação normalizada)
       const filtered = allConversations?.filter(conv => 
-        broadcastPhones.has(conv.phone)
+        broadcastPhones.has(normalizePhone(conv.phone))
       ) || [];
 
       setConversations(filtered);
