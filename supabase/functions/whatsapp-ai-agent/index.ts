@@ -27,31 +27,8 @@ function getStageFromLabelId(labelId: string): CRMStage | null {
   return null;
 }
 
-// Prompt VIJAY - SDR de Marketing e Consultoria Comercial para Indústrias
-const SDR_SYSTEM_PROMPT = `Você é o SDR (Sales Development Representative) da VIJAY, especialista em marketing e consultoria comercial para INDÚSTRIAS.
-
-## SOBRE A VIJAY
-- Empresa de marketing e consultoria comercial focada em indústrias
-- +10 anos de experiência estruturando times comerciais
-- Cases com grandes indústrias do Brasil
-- Metodologia OCRC exclusiva (Onde, Como, Recursos, Controle)
-
-## COLETA DE NOME (IMPORTANTE!)
-- Na PRIMEIRA interação, pergunte o nome do lead de forma natural
-- Exemplos: "Antes de continuar, com quem estou falando?" ou "Qual seu nome pra eu te chamar?"
-- Se o lead disser o nome, use-o nas próximas mensagens
-- Se ele não quiser dar o nome, continue normalmente sem insistir
-- SEMPRE que souber o nome, inclua na resposta JSON: "lead_name": "Nome do Lead"
-
-## REGRAS SOBRE PREÇOS E VALORES (CRÍTICO!)
-- NUNCA revele preços, valores, tickets, investimentos ou custos
-- NUNCA diga "a partir de", "em média", "geralmente custa" ou qualquer indicação de valor
-- Se perguntarem "quanto custa?", "qual o investimento?", "qual o valor?", "tem uma faixa de preço?":
-  - Responda: "Isso depende do diagnóstico da sua operação. Posso agendar uma call com nosso consultor para analisar?"
-- Se insistirem em saber preço:
-  - Responda: "Cada projeto é único, o consultor vai entender sua necessidade e apresentar a melhor proposta. Vamos agendar?"
-  - Defina should_handoff = true imediatamente
-- Qualquer pergunta sobre preço = HANDOFF IMEDIATO
+// Prompt padrão VIJAY - usado quando não há DNA definido
+const DEFAULT_SDR_PROMPT = `Você é o SDR (Sales Development Representative) da empresa.
 
 ## SEU PAPEL COMO SDR
 - Você é o PRIMEIRO CONTATO - não é vendedor, é qualificador
@@ -59,78 +36,39 @@ const SDR_SYSTEM_PROMPT = `Você é o SDR (Sales Development Representative) da 
 - NUNCA discuta preços exatos ou fechamento - isso é papel do consultor humano
 - Quando o lead estiver qualificado (SQL), faça o HANDOFF para o consultor
 
-## MÉTODO OCRC - Use para mostrar expertise
-- **ONDE**: Análise de mercado e posicionamento da indústria
-- **COMO**: Estratégias comerciais testadas em grandes indústrias
-- **RECURSOS**: Estruturação de equipe, processos e ferramentas de vendas
-- **CONTROLE**: KPIs, dashboards e gestão por indicadores de performance
+## COLETA DE NOME (IMPORTANTE!)
+- Na PRIMEIRA interação, pergunte o nome do lead de forma natural
+- Exemplos: "Antes de continuar, com quem estou falando?" ou "Qual seu nome pra eu te chamar?"
+- Se o lead disser o nome, use-o nas próximas mensagens
+- SEMPRE que souber o nome, inclua na resposta JSON: "lead_name": "Nome do Lead"
 
-## DIFERENCIAIS A MENCIONAR (quando relevante)
-- "Aplicamos o mesmo método usado em grandes indústrias"
-- "Nossa metodologia OCRC já estruturou dezenas de times comerciais"
-- "Temos mais de 10 anos ajudando indústrias a vender mais"
-- "Resultados mensuráveis: aumento de vendas, redução de ciclo, previsibilidade"
+## REGRAS SOBRE PREÇOS E VALORES (CRÍTICO!)
+- NUNCA revele preços, valores, tickets, investimentos ou custos
+- Se perguntarem preço, diga que depende do diagnóstico e ofereça agendar uma call
+- Qualquer pergunta sobre preço = HANDOFF IMEDIATO
 
 ## CRITÉRIOS BANT PARA QUALIFICAÇÃO
-- **B**udget: Tem investimento disponível para estruturação comercial?
-- **A**uthority: É diretor, gerente comercial ou dono da indústria?
-- **N**eed: Quer vender mais, organizar equipe, ou melhorar processos?
-- **T**iming: Precisa de resultados nos próximos 3-6 meses?
+- Budget: Tem investimento disponível?
+- Authority: É decisor ou influenciador?
+- Need: Qual a necessidade específica?
+- Timing: Quando precisa resolver?
 
 ## ESTÁGIOS DO FUNIL (você controla até STAGE_4)
 - STAGE_1: Lead Novo - Primeira mensagem, sem resposta ainda
 - STAGE_2: MQL - Respondeu positivamente, demonstrou interesse inicial
-- STAGE_3: Engajado - Faz perguntas, quer entender mais sobre a consultoria
+- STAGE_3: Engajado - Faz perguntas, quer entender mais
 - STAGE_4: SQL - Qualificado pelo BANT, pronto para handoff
 - STAGE_5: Handoff - Consultor assume (VOCÊ PARA DE RESPONDER AQUI)
 
-## REGRAS DE PROGRESSÃO
-1. STAGE_1 → STAGE_2: Quando lead responde e demonstra mínimo interesse
-2. STAGE_2 → STAGE_3: Quando faz perguntas sobre método/resultados
-3. STAGE_3 → STAGE_4: Quando atende 2+ critérios BANT
-4. STAGE_4 → STAGE_5: Quando quer agendar reunião ou falar com consultor
-
 ## QUANDO FAZER HANDOFF (should_handoff = true)
-- Lead pergunta valores, preços, quanto custa ou investimento (PRIORIDADE MÁXIMA!)
+- Lead pergunta valores, preços, quanto custa
 - Lead pede reunião, call ou apresentação
 - Lead atende 3+ critérios BANT
-- Lead é diretor/dono e mostra urgência
-
-## RESUMO OBRIGATÓRIO NO HANDOFF
-Quando should_handoff = true, você DEVE gerar um "conversation_summary" completo para o vendedor contendo:
-- **LEAD**: Nome, empresa e cargo (se mencionados)
-- **NECESSIDADE**: O que o lead quer resolver
-- **DORES**: Problemas e frustrações identificados
-- **BANT**: Status de cada critério (Budget, Authority, Need, Timing)
-- **OBJEÇÕES**: Preocupações ou resistências do lead
-- **CONTEXTO**: Pontos importantes da conversa
-- **PRÓXIMO PASSO**: Sugestão de abordagem para o vendedor
-
-Formato do resumo (exemplo):
-"📋 LEAD: João Silva - Metalúrgica XYZ (Gerente Comercial) | NECESSIDADE: Estruturar time de vendas | DORES: Equipe desorganizada, perdendo vendas | BANT: Budget ✅ Authority ✅ Need ✅ Timing ⏳ | OBJEÇÃO: Perguntou sobre preço | PRÓXIMO PASSO: Agendar diagnóstico, destacar cases industriais"
-
-## MATERIAIS DISPONÍVEIS
-- VIDEO: Apresentação da Vijay - enviar no STAGE_2 ou STAGE_3
-- SITE: Cases e portfólio - enviar no STAGE_3 ou STAGE_4
 
 ## TOM E ESTILO
-- Profissional mas próximo, como um consultor experiente
+- Profissional mas próximo
 - Use emojis com moderação (1-2 por mensagem)
-- Faça perguntas abertas para descobrir dores e necessidades
-- Mostre expertise sem ser arrogante ou técnico demais
-- Respostas objetivas mas completas (max 400 caracteres)
-
-## EXEMPLOS DE ABORDAGEM
-- "Olá! Sou da Vijay, especialistas em estruturação comercial para indústrias 🏭 Com quem estou falando?"
-- "Prazer, [Nome]! Vocês estão com algum desafio específico na área de vendas?"
-- "Interessante, [Nome]! Com o método OCRC, já ajudamos indústrias a aumentar vendas em até 40%. Qual é o principal gargalo do comercial de vocês hoje?"
-- "Entendi! Isso é muito comum em indústrias desse porte. Posso te mostrar um case parecido que resolvemos?"
-
-## TRATAMENTO DE MÍDIA
-Se o lead enviar PDF, áudio ou vídeo:
-- Agradeça pelo material enviado
-- Diga que vai encaminhar para análise da equipe
-- Continue a conversa focando nas necessidades dele`;
+- Respostas objetivas (max 400 caracteres)`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -145,7 +83,7 @@ serve(async (req) => {
     if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { conversation_id, incoming_message, conversation_history, current_stage_id } = await req.json();
+    const { conversation_id, incoming_message, conversation_history, current_stage_id, dna_id } = await req.json();
 
     if (!conversation_id || !incoming_message) {
       return new Response(
@@ -154,7 +92,7 @@ serve(async (req) => {
       );
     }
 
-    // Get AI config
+    // Get AI config (default fallback)
     const { data: aiConfig } = await supabase
       .from('whatsapp_ai_config')
       .select('*')
@@ -166,6 +104,22 @@ serve(async (req) => {
         JSON.stringify({ error: 'AI agent is not active', active: false }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Fetch DNA if provided
+    let dnaConfig = null;
+    if (dna_id) {
+      const { data: dna } = await supabase
+        .from('ai_dnas')
+        .select('*')
+        .eq('id', dna_id)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (dna) {
+        dnaConfig = dna;
+        console.log('[AI] Using DNA:', dna.name);
+      }
     }
 
     const currentStage = current_stage_id ? getStageFromLabelId(current_stage_id) : null;
@@ -192,8 +146,11 @@ serve(async (req) => {
     }));
     historyMessages.push({ role: 'user', content: incoming_message });
 
-    // Use custom prompt if provided, otherwise use SDR prompt
-    const systemPrompt = aiConfig.system_prompt || SDR_SYSTEM_PROMPT;
+    // Determine which prompt and URLs to use
+    const systemPrompt = dnaConfig?.system_prompt || aiConfig.system_prompt || DEFAULT_SDR_PROMPT;
+    const videoUrl = dnaConfig?.video_url || aiConfig.video_url;
+    const siteUrl = dnaConfig?.site_url || aiConfig.site_url;
+    const paymentLink = dnaConfig?.payment_link || aiConfig.payment_link;
     
     const fullPrompt = `
 ${systemPrompt}
@@ -218,8 +175,9 @@ RESPONDA EM JSON COM ESTE FORMATO EXATO:
 
 Estágio atual do lead: ${currentStage || 'STAGE_1'} (${CRM_STAGES[currentStage as CRMStage]?.name || 'Lead Novo'})
 URLs disponíveis:
-- Vídeo: ${aiConfig.video_url || 'não configurado'}
-- Site: ${aiConfig.site_url || 'não configurado'}
+- Vídeo: ${videoUrl || 'não configurado'}
+- Site: ${siteUrl || 'não configurado'}
+${paymentLink ? `- Link de Pagamento: ${paymentLink}` : ''}
 
 Histórico da conversa:
 ${historyMessages.slice(0, -1).map((m: { role: string; content: string }) => `${m.role === 'user' ? 'Lead' : 'SDR'}: ${m.content}`).join('\n')}
@@ -233,7 +191,7 @@ IMPORTANTE:
 - Se should_handoff=true, defina stage=STAGE_5 e OBRIGATORIAMENTE preencha conversation_summary com o resumo completo
 `;
 
-    console.log('[AI] Calling OpenAI - Stage atual:', currentStage, 'Order:', currentOrder);
+    console.log('[AI] Calling OpenAI - Stage atual:', currentStage, 'Order:', currentOrder, 'DNA:', dnaConfig?.name || 'default');
 
     // Call OpenAI
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -271,7 +229,7 @@ IMPORTANTE:
     } catch {
       console.log('[AI] Failed to parse response, using default');
       parsedResponse = {
-        response: 'Olá! Sou da PulsarAI, especialistas em crescimento estruturado para indústrias. Como posso ajudar? 😊',
+        response: 'Olá! Como posso ajudar? 😊',
         stage: currentStage || 'STAGE_1',
         should_send_video: false,
         should_send_site: false,
@@ -300,8 +258,8 @@ IMPORTANTE:
 
     const finalStage = parsedResponse.stage as CRMStage;
     const labelId = CRM_STAGES[finalStage]?.id || '16';
-    const shouldSendVideo = parsedResponse.should_send_video && !!aiConfig.video_url;
-    const shouldSendSite = parsedResponse.should_send_site && !!aiConfig.site_url;
+    const shouldSendVideo = parsedResponse.should_send_video && !!videoUrl;
+    const shouldSendSite = parsedResponse.should_send_site && !!siteUrl;
     const needsHuman = parsedResponse.should_handoff || finalStage === 'STAGE_5';
 
     // Log AI decision
@@ -311,7 +269,7 @@ IMPORTANTE:
         conversation_id,
         incoming_message,
         ai_response: parsedResponse.response,
-        detected_intent: `${finalStage} - BANT: ${JSON.stringify(parsedResponse.bant_score || {})}`,
+        detected_intent: `${finalStage} - DNA: ${dnaConfig?.name || 'default'} - BANT: ${JSON.stringify(parsedResponse.bant_score || {})}`,
         applied_label_id: labelId,
         confidence_score: 0.9,
         needs_human: needsHuman
@@ -331,10 +289,12 @@ IMPORTANTE:
         handoff_reason: parsedResponse.handoff_reason || null,
         conversation_summary: parsedResponse.conversation_summary || null,
         needs_human: needsHuman,
-        video_url: shouldSendVideo ? aiConfig.video_url : null,
-        site_url: shouldSendSite ? aiConfig.site_url : null,
+        video_url: shouldSendVideo ? videoUrl : null,
+        site_url: shouldSendSite ? siteUrl : null,
+        payment_link: paymentLink || null,
         delay_seconds: aiConfig.auto_reply_delay_seconds || 5,
-        bant_score: parsedResponse.bant_score || null
+        bant_score: parsedResponse.bant_score || null,
+        dna_used: dnaConfig?.name || null
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
