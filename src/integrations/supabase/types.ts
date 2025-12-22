@@ -376,6 +376,7 @@ export type Database = {
           error_message: string | null
           id: string
           image_url: string | null
+          lead_data: Json | null
           message: string
           phone: string
           processed_at: string | null
@@ -389,6 +390,7 @@ export type Database = {
           error_message?: string | null
           id?: string
           image_url?: string | null
+          lead_data?: Json | null
           message: string
           phone: string
           processed_at?: string | null
@@ -402,6 +404,7 @@ export type Database = {
           error_message?: string | null
           id?: string
           image_url?: string | null
+          lead_data?: Json | null
           message?: string
           phone?: string
           processed_at?: string | null

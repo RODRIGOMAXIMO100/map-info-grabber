@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import type { BroadcastList } from '@/types/whatsapp';
+import type { BroadcastList, LeadData } from '@/types/whatsapp';
 
 interface QueueItem {
   id: string;
@@ -33,9 +33,30 @@ interface QueueItem {
   image_url: string | null;
 }
 
-const DEFAULT_MESSAGE = `Olá, meu nome é Rodrigo, encontrei você [nome da empresa] pelo google e gostaria de apresentar uma solução que pode ajudar seu negócio.
+const DEFAULT_MESSAGE = `Olá, encontrei a {nome_empresa} pelo Google aqui em {cidade}.
 
-Podemos conversar?`;
+Vi que vocês têm avaliação {rating} ⭐ - parabéns pelo trabalho!
+
+Posso te fazer uma pergunta rápida?`;
+
+const AVAILABLE_VARIABLES = [
+  { key: '{nome_empresa}', label: 'Nome da Empresa', field: 'name' },
+  { key: '{cidade}', label: 'Cidade', field: 'city' },
+  { key: '{estado}', label: 'Estado', field: 'state' },
+  { key: '{rating}', label: 'Avaliação', field: 'rating' },
+  { key: '{website}', label: 'Website', field: 'website' },
+];
+
+const replaceVariables = (message: string, lead: LeadData | null): string => {
+  if (!lead) return message;
+  let result = message;
+  result = result.replace(/{nome_empresa}/g, String(lead.name || 'sua empresa'));
+  result = result.replace(/{cidade}/g, String(lead.city || ''));
+  result = result.replace(/{estado}/g, String(lead.state || ''));
+  result = result.replace(/{rating}/g, String(lead.rating || ''));
+  result = result.replace(/{website}/g, String(lead.website || ''));
+  return result;
+};
 
 export default function BroadcastDetails() {
   const navigate = useNavigate();
@@ -224,14 +245,18 @@ export default function BroadcastDetails() {
       const existingPending = queue.filter(q => q.status === 'pending').length;
       
       if (existingPending === 0) {
-        // Add all phones to queue
-        const queueItems = list.phones.map(phone => ({
-          broadcast_list_id: list.id,
-          phone,
-          message: list.message_template!,
-          image_url: list.image_url || null,
-          status: 'pending' as const,
-        }));
+        // Add all phones to queue with lead_data for personalization
+        const queueItems = list.phones.map(phone => {
+          const leadInfo = list.lead_data.find(l => l.phone === phone);
+          return {
+            broadcast_list_id: list.id,
+            phone,
+            message: list.message_template!,
+            image_url: list.image_url || null,
+            status: 'pending' as const,
+            lead_data: leadInfo || null,
+          };
+        });
 
         const { error: queueError } = await supabase
           .from('whatsapp_queue')
@@ -512,10 +537,34 @@ export default function BroadcastDetails() {
                   Mensagem do Disparo
                 </CardTitle>
                 <CardDescription>
-                  Esta é a mensagem que será enviada para todos os contatos da lista.
+                  Use variáveis dinâmicas para personalizar cada mensagem automaticamente.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Available Variables */}
+                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                  <Label className="text-sm font-medium">Variáveis Disponíveis</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {AVAILABLE_VARIABLES.map((v) => (
+                      <Badge 
+                        key={v.key} 
+                        variant="secondary" 
+                        className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                        onClick={() => {
+                          if (list.status !== 'sending') {
+                            setEditedMessage(prev => prev + ' ' + v.key);
+                          }
+                        }}
+                      >
+                        {v.key} <span className="ml-1 text-xs opacity-70">({v.label})</span>
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Clique para adicionar à mensagem. Cada variável será substituída pelos dados reais do lead.
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Mensagem *</Label>
                   <Textarea
@@ -526,6 +575,22 @@ export default function BroadcastDetails() {
                     disabled={list.status === 'sending'}
                   />
                 </div>
+
+                {/* Live Preview */}
+                {list.lead_data.length > 0 && (
+                  <div className="border rounded-lg p-4 bg-muted/30 space-y-2">
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Preview da Mensagem (usando primeiro lead)
+                    </Label>
+                    <div className="bg-background rounded-lg p-3 text-sm whitespace-pre-wrap border">
+                      {replaceVariables(editedMessage, list.lead_data[0])}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Lead: {list.lead_data[0]?.name || 'Sem nome'} - {list.lead_data[0]?.city || 'Sem cidade'}
+                    </p>
+                  </div>
+                )}
                 
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">

@@ -9,6 +9,18 @@ const corsHeaders = {
 const BATCH_SIZE = 5;
 const DELAY_BETWEEN_MESSAGES_MS = 3000;
 
+// Replace dynamic variables in message with lead data
+const replaceVariables = (message: string, leadData: Record<string, unknown> | null): string => {
+  if (!leadData) return message;
+  let result = message;
+  result = result.replace(/{nome_empresa}/g, String(leadData.name || 'sua empresa'));
+  result = result.replace(/{cidade}/g, String(leadData.city || ''));
+  result = result.replace(/{estado}/g, String(leadData.state || ''));
+  result = result.replace(/{rating}/g, String(leadData.rating || ''));
+  result = result.replace(/{website}/g, String(leadData.website || ''));
+  return result;
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -43,6 +55,14 @@ serve(async (req) => {
           .update({ status: 'processing', attempts: queueItem.attempts + 1 })
           .eq('id', queueItem.id);
 
+        // Personalize message with lead data
+        const personalizedMessage = replaceVariables(
+          queueItem.message, 
+          queueItem.lead_data as Record<string, unknown> | null
+        );
+        
+        console.log('[Broadcast] Sending personalized message to:', queueItem.phone);
+
         // Send message
         const sendResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
           method: 'POST',
@@ -52,7 +72,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             phone: queueItem.phone,
-            message: queueItem.message,
+            message: personalizedMessage,
             media_url: queueItem.image_url,
             media_type: queueItem.image_url ? 'image' : undefined
           })
