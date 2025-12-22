@@ -16,6 +16,51 @@ interface SearchRequest {
   maxResults?: number;
 }
 
+// Verifica se é um número de celular válido (não telefone fixo)
+function isMobileNumber(phone: string): boolean {
+  const cleanPhone = phone.replace(/\D/g, '');
+  
+  // Remove o código do país se existir
+  let localNumber = cleanPhone;
+  if (cleanPhone.startsWith('55') && cleanPhone.length >= 12) {
+    localNumber = cleanPhone.slice(2);
+  }
+  
+  // Número brasileiro: DDD (2 dígitos) + número (8-9 dígitos)
+  // Celulares começam com 9 (ou 6-9 em alguns casos antigos)
+  // Fixos começam com 2, 3, 4 ou 5
+  
+  if (localNumber.length < 10 || localNumber.length > 11) {
+    return false;
+  }
+  
+  // Pega o primeiro dígito após o DDD
+  const firstDigit = localNumber.length === 11 ? localNumber[2] : localNumber[2];
+  const hasNinePrefix = localNumber.length === 11; // Celulares têm 11 dígitos (DDD + 9 + 8 dígitos)
+  
+  // Celulares no Brasil:
+  // - Têm 11 dígitos (com DDD): XX 9XXXX-XXXX
+  // - O terceiro dígito (após DDD) é 9
+  // Fixos:
+  // - Têm 10 dígitos (com DDD): XX XXXX-XXXX  
+  // - O terceiro dígito é 2, 3, 4 ou 5
+  
+  if (hasNinePrefix) {
+    // 11 dígitos - deve começar com 9 após o DDD para ser celular
+    const digitAfterDDD = localNumber[2];
+    return digitAfterDDD === '9' || digitAfterDDD === '8' || digitAfterDDD === '7' || digitAfterDDD === '6';
+  }
+  
+  // 10 dígitos - provavelmente fixo (formato antigo de celular era 10 dígitos, mas hoje são 11)
+  // Vamos considerar fixo se começar com 2, 3, 4 ou 5
+  const digitAfterDDD = localNumber[2];
+  if (digitAfterDDD === '2' || digitAfterDDD === '3' || digitAfterDDD === '4' || digitAfterDDD === '5') {
+    return false; // Telefone fixo
+  }
+  
+  return true; // Provavelmente celular antigo
+}
+
 function extractWhatsApp(phone: string, website: string, links: any[]): string {
   // Check if website is a WhatsApp link
   if (website && website.includes('wa.me')) {
@@ -32,9 +77,16 @@ function extractWhatsApp(phone: string, website: string, links: any[]): string {
   }
   
   // Generate WhatsApp link from phone number (Brazilian format)
+  // IMPORTANTE: Só gerar se for número de CELULAR (não fixo)
   if (phone) {
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.length >= 10 && cleanPhone.length <= 13) {
+      // Verificar se é celular antes de gerar link
+      if (!isMobileNumber(cleanPhone)) {
+        console.log(`[Search] Skipping landline number: ${phone}`);
+        return ''; // Telefone fixo - não gerar link WhatsApp
+      }
+      
       const fullNumber = cleanPhone.startsWith('55') ? cleanPhone : '55' + cleanPhone;
       return `https://wa.me/${fullNumber}`;
     }
