@@ -188,17 +188,14 @@ export function LeadCard({
         conv.ai_handoff_reason && 'ring-1 ring-orange-400/50'
       )}
     >
-      <CardContent className="p-2.5">
+      <CardContent className="p-2.5 overflow-visible">
         {/* Row 1: Name + Actions */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <span className="font-medium text-sm truncate">
-              {conv.name || formatPhone(conv.phone)}
-            </span>
+        <div className="flex items-center gap-1">
+          <span className="font-medium text-sm truncate min-w-0 flex-1" style={{ maxWidth: '120px' }}>
+            {conv.name || formatPhone(conv.phone)}
+          </span>
+          <div className="flex items-center gap-0.5 ml-auto">
             <BANTIndicator />
-          </div>
-          
-          <div className="flex items-center gap-0.5 flex-shrink-0">
             <Button
               size="icon"
               variant="ghost"

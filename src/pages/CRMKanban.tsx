@@ -377,7 +377,7 @@ export default function CRMKanban() {
         <div className="flex gap-3 p-3 h-full min-w-max">
           {/* Unclassified Column */}
           {unclassified.length > 0 && (
-            <div className="w-60 sm:w-72 flex-shrink-0 flex flex-col">
+            <div className="w-72 flex-shrink-0 flex flex-col">
               <div className="mb-2 flex items-center justify-between px-1">
                 <h3 className="font-medium text-sm text-muted-foreground">Não Classificados</h3>
                 <Badge variant="secondary" className="text-xs">{unclassified.length}</Badge>
@@ -410,7 +410,7 @@ export default function CRMKanban() {
             return (
               <div
                 key={stage.id}
-                className="w-60 sm:w-72 flex-shrink-0 flex flex-col"
+                className="w-72 flex-shrink-0 flex flex-col"
                 onDragOver={handleDragOver}
                 onDrop={() => handleDrop(stage)}
               >
