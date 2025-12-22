@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Send, Loader2, Play, Pause, Trash2, Users, Clock } from 'lucide-react';
+import { ArrowLeft, Plus, Send, Loader2, Play, Pause, Trash2, Users, Clock, Eye, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,10 +13,18 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { BroadcastList } from '@/types/whatsapp';
 
+interface QueueStats {
+  listId: string;
+  pending: number;
+  sent: number;
+  failed: number;
+}
+
 export default function BroadcastManager() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [lists, setLists] = useState<BroadcastList[]>([]);
+  const [queueStats, setQueueStats] = useState<QueueStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -40,7 +48,6 @@ export default function BroadcastManager() {
 
       if (error) throw error;
       
-      // Type assertion for lead_data
       const typedData = (data || []).map(item => ({
         ...item,
         status: item.status as BroadcastList['status'],
@@ -48,6 +55,23 @@ export default function BroadcastManager() {
       }));
       
       setLists(typedData);
+      
+      // Load queue stats for each list
+      const listIds = typedData.map(l => l.id);
+      if (listIds.length > 0) {
+        const { data: queueData } = await supabase
+          .from('whatsapp_queue')
+          .select('broadcast_list_id, status')
+          .in('broadcast_list_id', listIds);
+        
+        const stats: QueueStats[] = listIds.map(id => ({
+          listId: id,
+          pending: queueData?.filter(q => q.broadcast_list_id === id && q.status === 'pending').length || 0,
+          sent: queueData?.filter(q => q.broadcast_list_id === id && q.status === 'sent').length || 0,
+          failed: queueData?.filter(q => q.broadcast_list_id === id && q.status === 'failed').length || 0,
+        }));
+        setQueueStats(stats);
+      }
     } catch (error) {
       console.error('Error loading lists:', error);
     } finally {
@@ -67,7 +91,7 @@ export default function BroadcastManager() {
 
     setCreating(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('broadcast_lists')
         .insert({
           name: newList.name,
@@ -76,14 +100,22 @@ export default function BroadcastManager() {
           status: 'draft',
           phones: [],
           lead_data: [],
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
       toast({ title: 'Lista criada com sucesso!' });
       setNewList({ name: '', description: '', message_template: '' });
       setDialogOpen(false);
-      loadLists();
+      
+      // Navigate to the new list details
+      if (data) {
+        navigate(`/whatsapp/broadcast/${data.id}`);
+      } else {
+        loadLists();
+      }
     } catch (error) {
       console.error('Error creating list:', error);
       toast({
@@ -116,7 +148,6 @@ export default function BroadcastManager() {
     }
 
     try {
-      // Add all phones to queue
       const queueItems = list.phones.map(phone => ({
         broadcast_list_id: list.id,
         phone,
@@ -131,7 +162,6 @@ export default function BroadcastManager() {
 
       if (queueError) throw queueError;
 
-      // Update list status
       const { error: updateError } = await supabase
         .from('broadcast_lists')
         .update({ status: 'sending', updated_at: new Date().toISOString() })
@@ -169,17 +199,16 @@ export default function BroadcastManager() {
     }
   };
 
-  const deleteList = async (list: BroadcastList) => {
+  const deleteList = async (e: React.MouseEvent, list: BroadcastList) => {
+    e.stopPropagation();
     if (!confirm('Tem certeza que deseja excluir esta lista?')) return;
 
     try {
-      // Delete queue items first
       await supabase
         .from('whatsapp_queue')
         .delete()
         .eq('broadcast_list_id', list.id);
 
-      // Delete list
       await supabase
         .from('broadcast_lists')
         .delete()
@@ -297,12 +326,18 @@ export default function BroadcastManager() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {lists.map((list) => {
               const total = list.phones.length;
-              const sent = list.sent_count;
-              const failed = list.failed_count;
+              const stats = queueStats.find(s => s.listId === list.id);
+              const sent = stats?.sent || list.sent_count;
+              const failed = stats?.failed || list.failed_count;
+              const pending = stats?.pending || 0;
               const progress = total > 0 ? ((sent + failed) / total) * 100 : 0;
 
               return (
-                <Card key={list.id}>
+                <Card 
+                  key={list.id} 
+                  className="cursor-pointer hover:border-primary/50 transition-colors"
+                  onClick={() => navigate(`/whatsapp/broadcast/${list.id}`)}
+                >
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between">
                       <div>
@@ -313,6 +348,17 @@ export default function BroadcastManager() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Message Preview */}
+                    {list.message_template && (
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1 text-xs text-muted-foreground">
+                          <MessageSquare className="h-3 w-3" />
+                          Mensagem:
+                        </div>
+                        <p className="text-sm line-clamp-2">{list.message_template}</p>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <Users className="h-4 w-4" />
@@ -326,61 +372,80 @@ export default function BroadcastManager() {
                       )}
                     </div>
 
-                    {list.status === 'sending' && (
+                    {(list.status === 'sending' || list.status === 'paused') && (
                       <div className="space-y-2">
                         <Progress value={progress} />
                         <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>{sent} enviadas</span>
-                          <span>{failed} falhas</span>
+                          <span className="text-green-600">{sent} enviadas</span>
+                          <span>{pending} pendentes</span>
+                          <span className="text-destructive">{failed} falhas</span>
                         </div>
                       </div>
                     )}
 
                     {list.status === 'completed' && (
-                      <div className="text-sm">
+                      <div className="text-sm flex gap-3">
                         <span className="text-green-600">{sent} enviadas</span>
                         {failed > 0 && (
-                          <span className="text-red-600 ml-2">{failed} falhas</span>
+                          <span className="text-destructive">{failed} falhas</span>
                         )}
                       </div>
                     )}
 
                     <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/whatsapp/broadcast/${list.id}`);
+                        }}
+                      >
+                        <Eye className="h-3 w-3" />
+                        Detalhes
+                      </Button>
                       {list.status === 'draft' && (
                         <Button
                           size="sm"
-                          onClick={() => startBroadcast(list)}
-                          className="gap-1 flex-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startBroadcast(list);
+                          }}
+                          className="gap-1"
                         >
                           <Send className="h-3 w-3" />
-                          Iniciar
                         </Button>
                       )}
                       {list.status === 'sending' && (
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => pauseBroadcast(list)}
-                          className="gap-1 flex-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            pauseBroadcast(list);
+                          }}
+                          className="gap-1"
                         >
                           <Pause className="h-3 w-3" />
-                          Pausar
                         </Button>
                       )}
                       {list.status === 'paused' && (
                         <Button
                           size="sm"
-                          onClick={() => startBroadcast(list)}
-                          className="gap-1 flex-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startBroadcast(list);
+                          }}
+                          className="gap-1"
                         >
                           <Play className="h-3 w-3" />
-                          Continuar
                         </Button>
                       )}
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => deleteList(list)}
+                        onClick={(e) => deleteList(e, list)}
                         className="text-destructive"
                       >
                         <Trash2 className="h-4 w-4" />

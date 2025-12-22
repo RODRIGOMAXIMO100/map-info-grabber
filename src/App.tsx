@@ -9,6 +9,7 @@ import NotFound from "./pages/NotFound";
 import WhatsAppConfig from "./pages/WhatsAppConfig";
 import WhatsAppChat from "./pages/WhatsAppChat";
 import BroadcastManager from "./pages/BroadcastManager";
+import BroadcastDetails from "./pages/BroadcastDetails";
 import CRMKanban from "./pages/CRMKanban";
 import AIConfig from "./pages/AIConfig";
 import AILogs from "./pages/AILogs";
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/whatsapp/config" element={<WhatsAppConfig />} />
             <Route path="/whatsapp/chat" element={<WhatsAppChat />} />
             <Route path="/whatsapp/broadcast" element={<BroadcastManager />} />
+            <Route path="/whatsapp/broadcast/:id" element={<BroadcastDetails />} />
             <Route path="/crm" element={<CRMKanban />} />
             <Route path="/ai-config" element={<AIConfig />} />
             <Route path="/ai-logs" element={<AILogs />} />
