@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -431,65 +431,68 @@ export default function WhatsAppChat() {
                 className="pl-9"
               />
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Button
-                variant={activeFilter === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveFilter('all')}
-                className="h-7 text-xs px-2"
-              >
-                Todos
-                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.all}</Badge>
-              </Button>
-              <Button
-                variant={activeFilter === 'no_reply' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveFilter('no_reply')}
-                className="h-7 text-xs px-2"
-              >
-                <MessageSquareOff className="h-3 w-3 mr-1" />
-                Sem Resposta
-                {filterCounts.no_reply > 0 && (
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.no_reply}</Badge>
-                )}
-              </Button>
-              <Button
-                variant={activeFilter === 'unread' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveFilter('unread')}
-                className="h-7 text-xs px-2"
-              >
-                <Mail className="h-3 w-3 mr-1" />
-                Não Lidas
-                {filterCounts.unread > 0 && (
-                  <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.unread}</Badge>
-                )}
-              </Button>
-              <Button
-                variant={activeFilter === 'ai_paused' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveFilter('ai_paused')}
-                className="h-7 text-xs px-2"
-              >
-                <BotOff className="h-3 w-3 mr-1" />
-                IA Pausada
-                {filterCounts.ai_paused > 0 && (
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px] bg-orange-500/20 text-orange-600">{filterCounts.ai_paused}</Badge>
-                )}
-              </Button>
-              <Button
-                variant={activeFilter === 'waiting' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveFilter('waiting')}
-                className="h-7 text-xs px-2"
-              >
-                <Clock className="h-3 w-3 mr-1" />
-                Aguardando
-                {filterCounts.waiting > 0 && (
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.waiting}</Badge>
-                )}
-              </Button>
-            </div>
+            <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
+              <SelectTrigger className="w-full">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4" />
+                  <span>
+                    {activeFilter === 'all' && `Todos (${filterCounts.all})`}
+                    {activeFilter === 'no_reply' && `Sem Resposta (${filterCounts.no_reply})`}
+                    {activeFilter === 'unread' && `Não Lidas (${filterCounts.unread})`}
+                    {activeFilter === 'ai_paused' && `IA Pausada (${filterCounts.ai_paused})`}
+                    {activeFilter === 'waiting' && `Aguardando (${filterCounts.waiting})`}
+                  </span>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  <div className="flex items-center justify-between w-full gap-4">
+                    <span>Todos</span>
+                    <Badge variant="secondary" className="ml-auto">{filterCounts.all}</Badge>
+                  </div>
+                </SelectItem>
+                <SelectItem value="no_reply">
+                  <div className="flex items-center justify-between w-full gap-4">
+                    <div className="flex items-center gap-2">
+                      <MessageSquareOff className="h-4 w-4" />
+                      <span>Sem Resposta</span>
+                    </div>
+                    <Badge variant="secondary" className="ml-auto">{filterCounts.no_reply}</Badge>
+                  </div>
+                </SelectItem>
+                <SelectItem value="unread">
+                  <div className="flex items-center justify-between w-full gap-4">
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-4 w-4" />
+                      <span>Não Lidas</span>
+                    </div>
+                    {filterCounts.unread > 0 ? (
+                      <Badge variant="destructive" className="ml-auto">{filterCounts.unread}</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="ml-auto">0</Badge>
+                    )}
+                  </div>
+                </SelectItem>
+                <SelectItem value="ai_paused">
+                  <div className="flex items-center justify-between w-full gap-4">
+                    <div className="flex items-center gap-2">
+                      <BotOff className="h-4 w-4" />
+                      <span>IA Pausada</span>
+                    </div>
+                    <Badge variant="secondary" className="ml-auto">{filterCounts.ai_paused}</Badge>
+                  </div>
+                </SelectItem>
+                <SelectItem value="waiting">
+                  <div className="flex items-center justify-between w-full gap-4">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      <span>Aguardando</span>
+                    </div>
+                    <Badge variant="secondary" className="ml-auto">{filterCounts.waiting}</Badge>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <ScrollArea className="flex-1">
@@ -677,65 +680,68 @@ export default function WhatsAppChat() {
                     className="pl-9"
                   />
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <Button
-                    variant={activeFilter === 'all' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setActiveFilter('all')}
-                    className="h-7 text-xs px-2"
-                  >
-                    Todos
-                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.all}</Badge>
-                  </Button>
-                  <Button
-                    variant={activeFilter === 'no_reply' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setActiveFilter('no_reply')}
-                    className="h-7 text-xs px-2"
-                  >
-                    <MessageSquareOff className="h-3 w-3 mr-1" />
-                    Sem Resposta
-                    {filterCounts.no_reply > 0 && (
-                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.no_reply}</Badge>
-                    )}
-                  </Button>
-                  <Button
-                    variant={activeFilter === 'unread' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setActiveFilter('unread')}
-                    className="h-7 text-xs px-2"
-                  >
-                    <Mail className="h-3 w-3 mr-1" />
-                    Não Lidas
-                    {filterCounts.unread > 0 && (
-                      <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.unread}</Badge>
-                    )}
-                  </Button>
-                  <Button
-                    variant={activeFilter === 'ai_paused' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setActiveFilter('ai_paused')}
-                    className="h-7 text-xs px-2"
-                  >
-                    <BotOff className="h-3 w-3 mr-1" />
-                    IA Pausada
-                    {filterCounts.ai_paused > 0 && (
-                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px] bg-orange-500/20 text-orange-600">{filterCounts.ai_paused}</Badge>
-                    )}
-                  </Button>
-                  <Button
-                    variant={activeFilter === 'waiting' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setActiveFilter('waiting')}
-                    className="h-7 text-xs px-2"
-                  >
-                    <Clock className="h-3 w-3 mr-1" />
-                    Aguardando
-                    {filterCounts.waiting > 0 && (
-                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{filterCounts.waiting}</Badge>
-                    )}
-                  </Button>
-                </div>
+                <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
+                  <SelectTrigger className="w-full">
+                    <div className="flex items-center gap-2">
+                      <Filter className="h-4 w-4" />
+                      <span>
+                        {activeFilter === 'all' && `Todos (${filterCounts.all})`}
+                        {activeFilter === 'no_reply' && `Sem Resposta (${filterCounts.no_reply})`}
+                        {activeFilter === 'unread' && `Não Lidas (${filterCounts.unread})`}
+                        {activeFilter === 'ai_paused' && `IA Pausada (${filterCounts.ai_paused})`}
+                        {activeFilter === 'waiting' && `Aguardando (${filterCounts.waiting})`}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      <div className="flex items-center justify-between w-full gap-4">
+                        <span>Todos</span>
+                        <Badge variant="secondary" className="ml-auto">{filterCounts.all}</Badge>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="no_reply">
+                      <div className="flex items-center justify-between w-full gap-4">
+                        <div className="flex items-center gap-2">
+                          <MessageSquareOff className="h-4 w-4" />
+                          <span>Sem Resposta</span>
+                        </div>
+                        <Badge variant="secondary" className="ml-auto">{filterCounts.no_reply}</Badge>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="unread">
+                      <div className="flex items-center justify-between w-full gap-4">
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4" />
+                          <span>Não Lidas</span>
+                        </div>
+                        {filterCounts.unread > 0 ? (
+                          <Badge variant="destructive" className="ml-auto">{filterCounts.unread}</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="ml-auto">0</Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="ai_paused">
+                      <div className="flex items-center justify-between w-full gap-4">
+                        <div className="flex items-center gap-2">
+                          <BotOff className="h-4 w-4" />
+                          <span>IA Pausada</span>
+                        </div>
+                        <Badge variant="secondary" className="ml-auto">{filterCounts.ai_paused}</Badge>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="waiting">
+                      <div className="flex items-center justify-between w-full gap-4">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          <span>Aguardando</span>
+                        </div>
+                        <Badge variant="secondary" className="ml-auto">{filterCounts.waiting}</Badge>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <ScrollArea className="flex-1">
