@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { LeadDetailsSheet } from '@/components/LeadDetailsSheet';
 import type { WhatsAppConversation, CRMStage } from '@/types/whatsapp';
 import { CRM_STAGES } from '@/types/whatsapp';
 
@@ -18,6 +19,8 @@ export default function CRMKanban() {
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [draggedItem, setDraggedItem] = useState<WhatsAppConversation | null>(null);
+  const [selectedLead, setSelectedLead] = useState<WhatsAppConversation | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     loadConversations();
@@ -186,80 +189,87 @@ export default function CRMKanban() {
     return `${diffDays}d`;
   };
 
+  const handleCardClick = (conv: WhatsAppConversation) => {
+    setSelectedLead(conv);
+    setSheetOpen(true);
+  };
+
   // Componente do cartão compacto estilo Pipedrive
   const LeadCard = ({ conv }: { conv: WhatsAppConversation }) => (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Card
-            draggable
-            onDragStart={() => handleDragStart(conv)}
-            className={cn(
-              'cursor-grab active:cursor-grabbing hover:shadow-md transition-all border-l-4',
-              getUrgencyColor(conv.last_message_at),
-              draggedItem?.id === conv.id && 'opacity-50'
+    <Card
+      draggable
+      onDragStart={() => handleDragStart(conv)}
+      onClick={() => handleCardClick(conv)}
+      className={cn(
+        'cursor-pointer hover:shadow-md transition-all border-l-4',
+        getUrgencyColor(conv.last_message_at),
+        draggedItem?.id === conv.id && 'opacity-50'
+      )}
+    >
+      <CardContent className="p-2">
+        {/* Linha 1: Nome */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-medium text-sm truncate flex-1 max-w-[140px]">
+            {conv.name || formatPhone(conv.phone)}
+          </span>
+          {/* Ações sempre visíveis */}
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 min-w-[28px] hover:bg-green-100 dark:hover:bg-green-900/50"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/whatsapp/chat?phone=${encodeURIComponent(conv.phone)}`);
+              }}
+            >
+              <MessageCircle className="h-4 w-4 text-green-600" />
+            </Button>
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              className="h-7 w-7 min-w-[28px] hover:bg-blue-100 dark:hover:bg-blue-900/50"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(`tel:${conv.phone}`, '_self');
+              }}
+            >
+              <Phone className="h-4 w-4 text-blue-600" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Linha 2: Telefone formatado */}
+        <div className="text-xs text-muted-foreground truncate">
+          📱 {formatPhone(conv.phone)}
+        </div>
+
+        {/* Linha 3: Badges + Tempo */}
+        <div className="flex items-center justify-between mt-1">
+          <div className="flex items-center gap-1">
+            <Badge 
+              variant={conv.ai_paused ? "outline" : "secondary"} 
+              className="text-[10px] h-4 px-1"
+            >
+              {conv.ai_paused ? '👤' : '🤖'}
+            </Badge>
+            {(conv.unread_count ?? 0) > 0 && (
+              <Badge className="text-[10px] h-4 px-1 bg-red-500 text-white">
+                {conv.unread_count}
+              </Badge>
             )}
-          >
-            <CardContent className="p-2">
-              {/* Linha 1: Nome + Ações */}
-              <div className="flex items-center justify-between gap-1">
-                <span className="font-medium text-sm truncate flex-1">
-                  {conv.name || formatPhone(conv.phone)}
-                </span>
-                <div className="flex items-center gap-0.5 flex-shrink-0">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 hover:bg-green-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/whatsapp/chat?phone=${encodeURIComponent(conv.phone)}`);
-                    }}
-                  >
-                    <MessageCircle className="h-3.5 w-3.5 text-green-600" />
-                  </Button>
-                  <a href={`tel:${conv.phone}`} onClick={(e) => e.stopPropagation()}>
-                    <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-blue-100">
-                      <Phone className="h-3.5 w-3.5 text-blue-600" />
-                    </Button>
-                  </a>
-                </div>
-              </div>
-
-              {/* Linha 2: Telefone formatado */}
-              <div className="text-xs text-muted-foreground truncate">
-                📱 {formatPhone(conv.phone)}
-              </div>
-
-              {/* Linha 3: Badges + Tempo */}
-              <div className="flex items-center justify-between mt-1">
-                <div className="flex items-center gap-1">
-                  <Badge 
-                    variant={conv.ai_paused ? "outline" : "secondary"} 
-                    className="text-[10px] h-4 px-1"
-                  >
-                    {conv.ai_paused ? '👤' : '🤖'}
-                  </Badge>
-                  {(conv.unread_count ?? 0) > 0 && (
-                    <Badge className="text-[10px] h-4 px-1 bg-red-500 text-white">
-                      {conv.unread_count}
-                    </Badge>
-                  )}
-                </div>
-                <span className="text-[10px] text-muted-foreground">
-                  {formatTime(conv.last_message_at)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </TooltipTrigger>
-        {conv.last_message_preview && (
-          <TooltipContent side="right" className="max-w-[200px]">
-            <p className="text-xs">{conv.last_message_preview}</p>
-          </TooltipContent>
-        )}
-      </Tooltip>
-    </TooltipProvider>
+            {conv.ai_handoff_reason && (
+              <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-400 text-orange-600">
+                ⚠️
+              </Badge>
+            )}
+          </div>
+          <span className="text-[10px] text-muted-foreground">
+            {formatTime(conv.last_message_at)}
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   );
 
   if (loading) {
@@ -294,6 +304,7 @@ export default function CRMKanban() {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 1-4h</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> 4-24h</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> &gt;24h</span>
+        <span className="ml-2 text-muted-foreground/70">• Clique no card para ver detalhes</span>
       </div>
 
       {/* Kanban Board */}
@@ -358,6 +369,14 @@ export default function CRMKanban() {
           })}
         </div>
       </div>
+
+      {/* Lead Details Sheet */}
+      <LeadDetailsSheet
+        conversation={selectedLead}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        onUpdate={loadConversations}
+      />
     </div>
   );
 }
