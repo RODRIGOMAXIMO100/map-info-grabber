@@ -37,7 +37,23 @@ import {
   RefreshCw,
   Eye,
   Calendar,
+  DollarSign,
+  UserCheck,
+  Zap,
+  Clock,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+interface BANTScore {
+  budget: number | null;
+  authority: number | null;
+  need: number | null;
+  timing: number | null;
+}
 
 interface AILog {
   id: string;
@@ -49,6 +65,7 @@ interface AILog {
   needs_human: boolean | null;
   applied_label_id: string | null;
   created_at: string | null;
+  bant_score: BANTScore | Record<string, unknown> | null;
   conversation?: {
     name: string | null;
     phone: string;
@@ -282,8 +299,8 @@ export default function AILogs() {
                   <TableHead className="text-muted-foreground">Contato</TableHead>
                   <TableHead className="text-muted-foreground">Mensagem</TableHead>
                   <TableHead className="text-muted-foreground">Intent</TableHead>
+                  <TableHead className="text-muted-foreground">BANT</TableHead>
                   <TableHead className="text-muted-foreground">Estágio</TableHead>
-                  <TableHead className="text-muted-foreground">Confiança</TableHead>
                   <TableHead className="text-muted-foreground">Handoff</TableHead>
                   <TableHead className="text-muted-foreground w-12"></TableHead>
                 </TableRow>
@@ -291,14 +308,14 @@ export default function AILogs() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={9} className="text-center py-8">
                       <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                     </TableCell>
                   </TableRow>
                 ) : filteredLogs.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="text-center py-8 text-muted-foreground"
                     >
                       Nenhum log encontrado
@@ -346,33 +363,59 @@ export default function AILogs() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {log.applied_label_id ? (
-                          <Badge variant="secondary" className="text-xs">
-                            {STAGE_LABELS[log.applied_label_id] || log.applied_label_id}
-                          </Badge>
+                        {log.bant_score ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-1">
+                                {[
+                                  { key: 'budget', icon: DollarSign, label: 'B', color: 'text-green-500' },
+                                  { key: 'authority', icon: UserCheck, label: 'A', color: 'text-blue-500' },
+                                  { key: 'need', icon: Zap, label: 'N', color: 'text-amber-500' },
+                                  { key: 'timing', icon: Clock, label: 'T', color: 'text-purple-500' },
+                                ].map(({ key, label, color }) => {
+                                  const value = (log.bant_score as BANTScore)?.[key as keyof BANTScore];
+                                  const hasValue = value !== null && value !== undefined;
+                                  return (
+                                    <span
+                                      key={key}
+                                      className={`text-xs font-bold ${hasValue ? color : 'text-muted-foreground/40'}`}
+                                    >
+                                      {label}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="p-3">
+                              <div className="space-y-1 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <DollarSign className="h-3 w-3 text-green-500" />
+                                  <span>Budget: {(log.bant_score as BANTScore)?.budget ?? '-'}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <UserCheck className="h-3 w-3 text-blue-500" />
+                                  <span>Authority: {(log.bant_score as BANTScore)?.authority ?? '-'}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Zap className="h-3 w-3 text-amber-500" />
+                                  <span>Need: {(log.bant_score as BANTScore)?.need ?? '-'}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-3 w-3 text-purple-500" />
+                                  <span>Timing: {(log.bant_score as BANTScore)?.timing ?? '-'}</span>
+                                </div>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell>
-                        {log.confidence_score !== null ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${
-                                  log.confidence_score >= 0.7
-                                    ? "bg-green-500"
-                                    : log.confidence_score >= 0.4
-                                    ? "bg-amber-500"
-                                    : "bg-red-500"
-                                }`}
-                                style={{ width: `${log.confidence_score * 100}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {(log.confidence_score * 100).toFixed(0)}%
-                            </span>
-                          </div>
+                        {log.applied_label_id ? (
+                          <Badge variant="secondary" className="text-xs">
+                            {STAGE_LABELS[log.applied_label_id] || log.applied_label_id}
+                          </Badge>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
@@ -483,6 +526,43 @@ export default function AILogs() {
                   )}
                 </Card>
               </div>
+
+              {/* BANT Score Detail */}
+              {selectedLog.bant_score && (
+                <Card className="p-4">
+                  <p className="text-sm font-medium text-muted-foreground mb-3">BANT Score</p>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="flex flex-col items-center p-3 bg-green-500/10 rounded-lg">
+                      <DollarSign className="h-5 w-5 text-green-500 mb-1" />
+                      <span className="text-xs text-muted-foreground">Budget</span>
+                      <span className="text-lg font-bold text-foreground">
+                        {(selectedLog.bant_score as BANTScore)?.budget ?? '-'}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-center p-3 bg-blue-500/10 rounded-lg">
+                      <UserCheck className="h-5 w-5 text-blue-500 mb-1" />
+                      <span className="text-xs text-muted-foreground">Authority</span>
+                      <span className="text-lg font-bold text-foreground">
+                        {(selectedLog.bant_score as BANTScore)?.authority ?? '-'}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-center p-3 bg-amber-500/10 rounded-lg">
+                      <Zap className="h-5 w-5 text-amber-500 mb-1" />
+                      <span className="text-xs text-muted-foreground">Need</span>
+                      <span className="text-lg font-bold text-foreground">
+                        {(selectedLog.bant_score as BANTScore)?.need ?? '-'}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-center p-3 bg-purple-500/10 rounded-lg">
+                      <Clock className="h-5 w-5 text-purple-500 mb-1" />
+                      <span className="text-xs text-muted-foreground">Timing</span>
+                      <span className="text-lg font-bold text-foreground">
+                        {(selectedLog.bant_score as BANTScore)?.timing ?? '-'}
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+              )}
 
               {/* Handoff */}
               {selectedLog.needs_human && (

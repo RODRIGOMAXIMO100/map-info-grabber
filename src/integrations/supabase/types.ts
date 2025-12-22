@@ -111,6 +111,7 @@ export type Database = {
         Row: {
           ai_response: string | null
           applied_label_id: string | null
+          bant_score: Json | null
           confidence_score: number | null
           conversation_id: string | null
           created_at: string | null
@@ -122,6 +123,7 @@ export type Database = {
         Insert: {
           ai_response?: string | null
           applied_label_id?: string | null
+          bant_score?: Json | null
           confidence_score?: number | null
           conversation_id?: string | null
           created_at?: string | null
@@ -133,6 +135,7 @@ export type Database = {
         Update: {
           ai_response?: string | null
           applied_label_id?: string | null
+          bant_score?: Json | null
           confidence_score?: number | null
           conversation_id?: string | null
           created_at?: string | null
