@@ -39,11 +39,13 @@ serve(async (req) => {
 
     // Extract message data from UAZAPI format
     let messageData = null;
-    if (payload.event === 'messages.upsert' || payload.messages) {
+    
+    // UAZAPI sends message directly in payload.message
+    if (payload.message) {
+      messageData = payload.message;
+    } else if (payload.event === 'messages.upsert' || payload.messages) {
       const messages = payload.messages || payload.data?.messages || [];
       if (messages.length > 0) messageData = messages[0];
-    } else if (payload.message) {
-      messageData = payload.message;
     } else if (payload.data?.message) {
       messageData = payload.data.message;
     }
@@ -55,34 +57,52 @@ serve(async (req) => {
       );
     }
 
-    // Extract phone, name, message content
-    const chatId = payload.chat?.wa_chatid || messageData.key?.remoteJid || '';
-    const isGroup = payload.chat?.wa_isGroup === true || chatId.includes('@g.us');
+    // Extract phone, name from UAZAPI chat object
+    const chatId = payload.chat?.wa_chatid || messageData.chatid || messageData.key?.remoteJid || '';
+    const isGroup = payload.chat?.wa_isGroup === true || messageData.isGroup === true || chatId.includes('@g.us');
     const senderPhone = chatId.replace(/@s\.whatsapp\.net|@c\.us|@lid|@g\.us/g, '');
-    const senderName = payload.chat?.wa_contactName || payload.chat?.name || messageData.pushName || '';
-    const isFromMe = messageData.key?.fromMe === true;
+    const senderName = payload.chat?.wa_name || payload.chat?.name || messageData.senderName || messageData.pushName || '';
+    
+    // UAZAPI sends fromMe directly as boolean
+    const isFromMe = messageData.fromMe === true || messageData.key?.fromMe === true;
 
-    // Extract message content
+    // Extract message content - UAZAPI sends text/content directly
     let messageContent = '';
     let messageType = 'text';
     let mediaUrl = '';
 
-    if (messageData.message?.conversation) {
+    // UAZAPI direct format
+    if (messageData.text) {
+      messageContent = messageData.text;
+    } else if (messageData.content) {
+      messageContent = messageData.content;
+    }
+    // Baileys/Evolution format fallback
+    else if (messageData.message?.conversation) {
       messageContent = messageData.message.conversation;
     } else if (messageData.message?.extendedTextMessage?.text) {
       messageContent = messageData.message.extendedTextMessage.text;
-    } else if (messageData.message?.imageMessage) {
-      messageType = 'image';
-      messageContent = messageData.message.imageMessage.caption || '[Imagem]';
-    } else if (messageData.message?.audioMessage) {
-      messageType = 'audio';
-      messageContent = '[Áudio]';
-    } else if (messageData.message?.videoMessage) {
-      messageType = 'video';
-      messageContent = messageData.message.videoMessage.caption || '[Vídeo]';
+    }
+    
+    // Handle media types
+    if (messageData.mediaType || messageData.type) {
+      const type = messageData.mediaType || messageData.type;
+      if (type === 'image' || messageData.message?.imageMessage) {
+        messageType = 'image';
+        messageContent = messageContent || '[Imagem]';
+      } else if (type === 'audio' || messageData.message?.audioMessage) {
+        messageType = 'audio';
+        messageContent = '[Áudio]';
+      } else if (type === 'video' || messageData.message?.videoMessage) {
+        messageType = 'video';
+        messageContent = messageContent || '[Vídeo]';
+      }
     }
 
-    const messageIdWhatsapp = messageData.key?.id || '';
+    // UAZAPI sends messageid directly (not nested in key)
+    const messageIdWhatsapp = messageData.messageid || messageData.id || messageData.key?.id || '';
+    
+    console.log('Extracted data:', { senderPhone, senderName, isFromMe, messageContent, messageType, messageIdWhatsapp });
 
     // Check for duplicate message
     if (messageIdWhatsapp) {
