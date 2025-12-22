@@ -89,14 +89,23 @@ export default function WhatsAppChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-select conversation from URL phone parameter
+  // Auto-select conversation from URL parameters (phone or lead id)
   useEffect(() => {
     const phoneParam = searchParams.get('phone');
-    if (phoneParam && conversations.length > 0 && !selectedConversation) {
-      const normalizedParam = normalizePhone(phoneParam);
-      const targetConv = conversations.find(c => 
-        normalizePhone(c.phone) === normalizedParam
-      );
+    const leadParam = searchParams.get('lead');
+    
+    if (conversations.length > 0 && !selectedConversation) {
+      let targetConv: ConversationWithInstance | undefined;
+      
+      if (leadParam) {
+        // Find by conversation ID
+        targetConv = conversations.find(c => c.id === leadParam);
+      } else if (phoneParam) {
+        // Find by phone number
+        const normalizedParam = normalizePhone(phoneParam);
+        targetConv = conversations.find(c => normalizePhone(c.phone) === normalizedParam);
+      }
+      
       if (targetConv) {
         setSelectedConversation(targetConv);
         // Clear the param after selecting
