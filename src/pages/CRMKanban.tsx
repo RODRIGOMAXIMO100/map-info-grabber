@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -21,7 +22,6 @@ export default function CRMKanban() {
   useEffect(() => {
     loadConversations();
 
-    // Subscribe to realtime updates
     const channel = supabase
       .channel('crm-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_conversations' }, () => {
@@ -34,47 +34,58 @@ export default function CRMKanban() {
     };
   }, []);
 
-  // Normaliza telefone para formato apenas dígitos (sem DDI 55)
   const normalizePhone = (phone: string): string => {
-    // Remove tudo que não é número
     const digits = phone.replace(/\D/g, '');
-    // Se começar com 55 e tiver mais de 10 dígitos, remover o 55
     if (digits.startsWith('55') && digits.length > 10) {
       return digits.slice(2);
     }
     return digits;
   };
 
+  const formatPhone = (phone: string): string => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length >= 10) {
+      const ddd = digits.slice(-11, -9) || digits.slice(0, 2);
+      const rest = digits.slice(-9);
+      if (rest.length === 9) {
+        return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+      }
+      return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    }
+    return phone;
+  };
+
+  const getUrgencyColor = (lastMessageAt: string | null): string => {
+    if (!lastMessageAt) return 'border-l-muted';
+    const hours = (Date.now() - new Date(lastMessageAt).getTime()) / 3600000;
+    if (hours < 1) return 'border-l-green-500';
+    if (hours < 4) return 'border-l-yellow-500';
+    if (hours < 24) return 'border-l-orange-500';
+    return 'border-l-red-500';
+  };
+
   const loadConversations = async () => {
     try {
-      // 1. Buscar telefones da fila de disparos
       const { data: queuePhones } = await supabase
         .from('whatsapp_queue')
         .select('phone');
 
-      // 2. Buscar lead_data das broadcast_lists
       const { data: lists } = await supabase
         .from('broadcast_lists')
         .select('lead_data, phones');
 
-      // 3. Extrair todos os telefones de broadcast (normalizados)
       const broadcastPhones = new Set<string>();
       
-      // Telefones da queue (normalizados)
       queuePhones?.forEach(q => broadcastPhones.add(normalizePhone(q.phone)));
       
-      // Telefones das listas (lead_data e phones) - normalizados
       lists?.forEach(list => {
-        // lead_data é um array de objetos com phone
         const leadData = list.lead_data as Array<{ phone?: string }> | null;
         leadData?.forEach(lead => {
           if (lead.phone) broadcastPhones.add(normalizePhone(lead.phone));
         });
-        // phones é um array direto de telefones
         list.phones?.forEach(phone => broadcastPhones.add(normalizePhone(phone)));
       });
 
-      // 4. Buscar todas as conversas
       const { data: allConversations, error } = await supabase
         .from('whatsapp_conversations')
         .select('*')
@@ -82,7 +93,6 @@ export default function CRMKanban() {
 
       if (error) throw error;
 
-      // 5. Filtrar conversas com números de broadcast (comparação normalizada)
       const filtered = allConversations?.filter(conv => 
         broadcastPhones.has(normalizePhone(conv.phone))
       ) || [];
@@ -120,7 +130,6 @@ export default function CRMKanban() {
     if (!draggedItem) return;
 
     try {
-      // Remove all funnel labels and add new one
       const funnelLabelIds = CRM_STAGES.map(s => s.label_id);
       const nonFunnelTags = (draggedItem.tags || []).filter(tag => !funnelLabelIds.includes(tag));
       const newTags = [...nonFunnelTags, targetStage.label_id];
@@ -150,20 +159,21 @@ export default function CRMKanban() {
 
   const getStageColor = (stage: CRMStage) => {
     const colors: Record<number, string> = {
-      1: 'border-t-blue-500',      // Lead Novo
-      2: 'border-t-cyan-500',      // MQL
-      3: 'border-t-yellow-500',    // Engajado
-      4: 'border-t-orange-500',    // SQL
-      5: 'border-t-purple-500',    // Handoff
-      6: 'border-t-green-500',     // Negociação
-      7: 'border-t-emerald-600',   // Fechado
+      1: 'border-t-blue-500',
+      2: 'border-t-cyan-500',
+      3: 'border-t-yellow-500',
+      4: 'border-t-orange-500',
+      5: 'border-t-purple-500',
+      6: 'border-t-green-500',
+      7: 'border-t-emerald-600',
     };
     return colors[stage.order] || 'border-t-gray-500';
   };
 
   const isAIControlled = (stage: CRMStage) => stage.is_ai_controlled;
 
-  const formatTime = (date: string) => {
+  const formatTime = (date: string | null) => {
+    if (!date) return '-';
     const d = new Date(date);
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
@@ -171,10 +181,86 @@ export default function CRMKanban() {
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 60) return `${diffMins}min`;
+    if (diffMins < 60) return `${diffMins}m`;
     if (diffHours < 24) return `${diffHours}h`;
     return `${diffDays}d`;
   };
+
+  // Componente do cartão compacto estilo Pipedrive
+  const LeadCard = ({ conv }: { conv: WhatsAppConversation }) => (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Card
+            draggable
+            onDragStart={() => handleDragStart(conv)}
+            className={cn(
+              'cursor-grab active:cursor-grabbing hover:shadow-md transition-all border-l-4',
+              getUrgencyColor(conv.last_message_at),
+              draggedItem?.id === conv.id && 'opacity-50'
+            )}
+          >
+            <CardContent className="p-2">
+              {/* Linha 1: Nome + Ações */}
+              <div className="flex items-center justify-between gap-1">
+                <span className="font-medium text-sm truncate flex-1">
+                  {conv.name || formatPhone(conv.phone)}
+                </span>
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 hover:bg-green-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/whatsapp/chat?phone=${encodeURIComponent(conv.phone)}`);
+                    }}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5 text-green-600" />
+                  </Button>
+                  <a href={`tel:${conv.phone}`} onClick={(e) => e.stopPropagation()}>
+                    <Button size="icon" variant="ghost" className="h-6 w-6 hover:bg-blue-100">
+                      <Phone className="h-3.5 w-3.5 text-blue-600" />
+                    </Button>
+                  </a>
+                </div>
+              </div>
+
+              {/* Linha 2: Telefone formatado */}
+              <div className="text-xs text-muted-foreground truncate">
+                📱 {formatPhone(conv.phone)}
+              </div>
+
+              {/* Linha 3: Badges + Tempo */}
+              <div className="flex items-center justify-between mt-1">
+                <div className="flex items-center gap-1">
+                  <Badge 
+                    variant={conv.ai_paused ? "outline" : "secondary"} 
+                    className="text-[10px] h-4 px-1"
+                  >
+                    {conv.ai_paused ? '👤' : '🤖'}
+                  </Badge>
+                  {(conv.unread_count ?? 0) > 0 && (
+                    <Badge className="text-[10px] h-4 px-1 bg-red-500 text-white">
+                      {conv.unread_count}
+                    </Badge>
+                  )}
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  {formatTime(conv.last_message_at)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </TooltipTrigger>
+        {conv.last_message_preview && (
+          <TooltipContent side="right" className="max-w-[200px]">
+            <p className="text-xs">{conv.last_message_preview}</p>
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
+  );
 
   if (loading) {
     return (
@@ -188,7 +274,7 @@ export default function CRMKanban() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-background">
-      {/* Header compacto */}
+      {/* Header */}
       <div className="border-b p-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold">CRM Kanban</h1>
@@ -202,54 +288,28 @@ export default function CRMKanban() {
         </Button>
       </div>
 
-      {/* Kanban Board - scroll horizontal */}
+      {/* Legenda de urgência */}
+      <div className="px-3 py-1.5 flex items-center gap-3 text-[10px] text-muted-foreground border-b">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> &lt;1h</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 1-4h</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> 4-24h</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> &gt;24h</span>
+      </div>
+
+      {/* Kanban Board */}
       <div className="flex-1 overflow-x-auto overflow-y-hidden">
         <div className="flex gap-3 p-3 h-full min-w-max">
           {/* Unclassified Column */}
           {unclassified.length > 0 && (
-            <div className="w-64 sm:w-72 md:w-80 flex-shrink-0 flex flex-col">
+            <div className="w-56 sm:w-64 flex-shrink-0 flex flex-col">
               <div className="mb-2 flex items-center justify-between px-1">
                 <h3 className="font-medium text-sm text-muted-foreground">Não Classificados</h3>
                 <Badge variant="secondary" className="text-xs">{unclassified.length}</Badge>
               </div>
               <ScrollArea className="flex-1">
-                <div className="space-y-2 pr-2">
+                <div className="space-y-1.5 pr-2">
                   {unclassified.map((conv) => (
-                    <Card
-                      key={conv.id}
-                      draggable
-                      onDragStart={() => handleDragStart(conv)}
-                      className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
-                    >
-                      <CardContent className="p-2.5">
-                        <div className="flex items-start justify-between mb-1.5">
-                          <span className="font-medium text-sm truncate max-w-[70%]">
-                            {conv.name || conv.phone}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatTime(conv.last_message_at)}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate mb-2">
-                          {conv.last_message_preview}
-                        </p>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-1.5"
-                            onClick={() => navigate(`/whatsapp/chat?phone=${encodeURIComponent(conv.phone)}`)}
-                          >
-                            <MessageCircle className="h-3 w-3" />
-                          </Button>
-                          <a href={`tel:${conv.phone}`}>
-                            <Button size="sm" variant="ghost" className="h-6 px-1.5">
-                              <Phone className="h-3 w-3" />
-                            </Button>
-                          </a>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <LeadCard key={conv.id} conv={conv} />
                   ))}
                 </div>
               </ScrollArea>
@@ -263,17 +323,17 @@ export default function CRMKanban() {
             return (
               <div
                 key={stage.id}
-                className="w-64 sm:w-72 md:w-80 flex-shrink-0 flex flex-col"
+                className="w-56 sm:w-64 flex-shrink-0 flex flex-col"
                 onDragOver={handleDragOver}
                 onDrop={() => handleDrop(stage)}
               >
                 <div className={cn(
-                  'mb-2 flex items-center justify-between p-2.5 rounded-lg border-t-4 bg-muted/50',
+                  'mb-2 flex items-center justify-between p-2 rounded-lg border-t-4 bg-muted/50',
                   getStageColor(stage)
                 )}>
                   <div className="flex flex-col">
                     <h3 className="font-medium text-sm">{stage.name}</h3>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-[10px] text-muted-foreground">
                       {isAIControlled(stage) ? '🤖 IA' : '👤 Vendedor'}
                     </span>
                   </div>
@@ -281,62 +341,13 @@ export default function CRMKanban() {
                 </div>
 
                 <ScrollArea className="flex-1">
-                  <div className="space-y-2 pr-2 min-h-[120px]">
+                  <div className="space-y-1.5 pr-2 min-h-[100px]">
                     {stageConversations.map((conv) => (
-                      <Card
-                        key={conv.id}
-                        draggable
-                        onDragStart={() => handleDragStart(conv)}
-                        className={cn(
-                          'cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow',
-                          draggedItem?.id === conv.id && 'opacity-50'
-                        )}
-                      >
-                        <CardContent className="p-2.5">
-                          <div className="flex items-start justify-between mb-1.5">
-                            <span className="font-medium text-sm truncate max-w-[70%]">
-                              {conv.name || conv.phone}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {formatTime(conv.last_message_at)}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate mb-2">
-                            {conv.last_message_preview}
-                          </p>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1">
-                              {conv.ai_paused ? (
-                                <Badge variant="outline" className="text-xs px-1.5 py-0">Manual</Badge>
-                              ) : (
-                                <Badge variant="secondary" className="text-xs px-1.5 py-0">IA</Badge>
-                              )}
-                              {conv.unread_count > 0 && (
-                                <Badge className="text-xs px-1.5 py-0">{conv.unread_count}</Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-0.5">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 px-1.5"
-                                onClick={() => navigate(`/whatsapp/chat?phone=${encodeURIComponent(conv.phone)}`)}
-                              >
-                                <MessageCircle className="h-3 w-3" />
-                              </Button>
-                              <a href={`tel:${conv.phone}`}>
-                                <Button size="sm" variant="ghost" className="h-6 px-1.5">
-                                  <Phone className="h-3 w-3" />
-                                </Button>
-                              </a>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                      <LeadCard key={conv.id} conv={conv} />
                     ))}
 
                     {stageConversations.length === 0 && (
-                      <div className="flex items-center justify-center h-24 border-2 border-dashed rounded-lg text-muted-foreground text-xs">
+                      <div className="flex items-center justify-center h-20 border-2 border-dashed rounded-lg text-muted-foreground text-[10px]">
                         Arraste leads aqui
                       </div>
                     )}
