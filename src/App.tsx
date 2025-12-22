@@ -14,6 +14,7 @@ import CRMKanban from "./pages/CRMKanban";
 import AIConfig from "./pages/AIConfig";
 import AILogs from "./pages/AILogs";
 import Dashboard from "./pages/Dashboard";
+import Reminders from "./pages/Reminders";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/whatsapp/broadcast" element={<BroadcastManager />} />
             <Route path="/whatsapp/broadcast/:id" element={<BroadcastDetails />} />
             <Route path="/crm" element={<CRMKanban />} />
+            <Route path="/lembretes" element={<Reminders />} />
             <Route path="/ai-config" element={<AIConfig />} />
             <Route path="/ai-logs" element={<AILogs />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
