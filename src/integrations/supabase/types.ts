@@ -752,7 +752,30 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_pending_broadcast_messages: {
+        Args: { batch_limit: number }
+        Returns: {
+          attempts: number | null
+          broadcast_list_id: string | null
+          config_id: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          image_url: string | null
+          lead_data: Json | null
+          message: string
+          phone: string
+          processed_at: string | null
+          schedule_id: string | null
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "whatsapp_queue"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
     }
     Enums: {
       [_ in never]: never
