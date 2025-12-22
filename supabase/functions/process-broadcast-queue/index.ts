@@ -91,16 +91,29 @@ interface InstanceLimit {
   pause_reason: string | null;
 }
 
-// Check if current time is within business hours
+// Check if current time is within business hours (using Brasília time UTC-3)
 const isWithinBusinessHours = (settings: ProtectionSettings): boolean => {
   if (!settings.business_hours_enabled) return true;
   
+  // Get current time in Brasília (UTC-3)
   const now = new Date();
-  const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
-  const startTime = settings.business_hours_start.slice(0, 5);
-  const endTime = settings.business_hours_end.slice(0, 5);
+  const brasiliaOffset = -3 * 60; // UTC-3 in minutes
+  const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const brasiliaTime = new Date(utcTime + (brasiliaOffset * 60000));
   
-  return currentTime >= startTime && currentTime <= endTime;
+  const currentHour = brasiliaTime.getHours();
+  const currentMinute = brasiliaTime.getMinutes();
+  const currentTimeMinutes = currentHour * 60 + currentMinute;
+  
+  // Parse business hours
+  const [startHour, startMin] = settings.business_hours_start.slice(0, 5).split(':').map(Number);
+  const [endHour, endMin] = settings.business_hours_end.slice(0, 5).split(':').map(Number);
+  const startTimeMinutes = startHour * 60 + startMin;
+  const endTimeMinutes = endHour * 60 + endMin;
+  
+  console.log(`[Broadcast] Brasília time: ${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}, Business hours: ${settings.business_hours_start.slice(0, 5)} - ${settings.business_hours_end.slice(0, 5)}`);
+  
+  return currentTimeMinutes >= startTimeMinutes && currentTimeMinutes <= endTimeMinutes;
 };
 
 // Check if instance is in warmup period
