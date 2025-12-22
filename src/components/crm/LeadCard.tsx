@@ -198,7 +198,7 @@ export function LeadCard({
             <BANTIndicator />
           </div>
           
-          <div className="flex items-center gap-0.5 flex-shrink-0 opacity-80 group-hover:opacity-100">
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             <Button
               size="icon"
               variant="ghost"
