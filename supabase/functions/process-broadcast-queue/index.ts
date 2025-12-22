@@ -228,6 +228,49 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // ============= RECOVERY: Reset stuck messages =============
+    // Messages stuck in 'processing' for more than 5 minutes are orphaned
+    // Reset them back to 'pending' so they can be retried
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: stuckMessages, error: stuckError } = await supabase
+      .from('whatsapp_queue')
+      .update({ 
+        status: 'pending',
+        updated_at: new Date().toISOString()
+      })
+      .eq('status', 'processing')
+      .lt('updated_at', fiveMinutesAgo)
+      .select('id, attempts');
+
+    if (stuckError) {
+      console.error('[Broadcast] Error recovering stuck messages:', stuckError);
+    } else if (stuckMessages && stuckMessages.length > 0) {
+      console.log(`[Broadcast] ♻️ Recovered ${stuckMessages.length} stuck messages`);
+      
+      // Check for messages that have been stuck too many times (3+) and mark as failed
+      for (const stuck of stuckMessages) {
+        const currentAttempts = (stuck.attempts || 0) + 1;
+        if (currentAttempts >= 3) {
+          await supabase
+            .from('whatsapp_queue')
+            .update({ 
+              status: 'failed', 
+              error_message: 'Mensagem travou múltiplas vezes (timeout)',
+              attempts: currentAttempts
+            })
+            .eq('id', stuck.id);
+          console.log(`[Broadcast] ❌ Message ${stuck.id} failed after ${currentAttempts} stuck attempts`);
+        } else {
+          // Increment attempts counter
+          await supabase
+            .from('whatsapp_queue')
+            .update({ attempts: currentAttempts })
+            .eq('id', stuck.id);
+        }
+      }
+    }
+    // ============= END RECOVERY =============
+
     // Load protection settings
     const { data: settingsData } = await supabase
       .from('whatsapp_protection_settings')
