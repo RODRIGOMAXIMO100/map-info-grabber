@@ -105,6 +105,15 @@ export default function WhatsAppChat() {
     }
   };
 
+  // Normaliza telefone para formato apenas dígitos (sem DDI 55)
+  const normalizePhone = (phone: string): string => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('55') && digits.length > 10) {
+      return digits.slice(2);
+    }
+    return digits;
+  };
+
   const loadConversations = async () => {
     try {
       // 1. Buscar telefones da fila de disparos
@@ -117,17 +126,19 @@ export default function WhatsAppChat() {
         .from('broadcast_lists')
         .select('lead_data, phones');
 
-      // 3. Extrair todos os telefones de broadcast
+      // 3. Extrair todos os telefones de broadcast (normalizados)
       const broadcastPhones = new Set<string>();
       
-      queuePhones?.forEach(q => broadcastPhones.add(q.phone));
+      // Telefones da queue (normalizados)
+      queuePhones?.forEach(q => broadcastPhones.add(normalizePhone(q.phone)));
       
+      // Telefones das listas (lead_data e phones) - normalizados
       lists?.forEach(list => {
         const leadData = list.lead_data as Array<{ phone?: string }> | null;
         leadData?.forEach(lead => {
-          if (lead.phone) broadcastPhones.add(lead.phone);
+          if (lead.phone) broadcastPhones.add(normalizePhone(lead.phone));
         });
-        list.phones?.forEach(phone => broadcastPhones.add(phone));
+        list.phones?.forEach(phone => broadcastPhones.add(normalizePhone(phone)));
       });
 
       // 4. Buscar todas as conversas com config_id
@@ -152,9 +163,9 @@ export default function WhatsAppChat() {
         is_active: i.is_active ?? true,
       }));
 
-      // 6. Filtrar apenas conversas com números de broadcast e adicionar instância
+      // 6. Filtrar conversas com números de broadcast (comparação normalizada)
       const filtered = (allConversations || [])
-        .filter(conv => broadcastPhones.has(conv.phone))
+        .filter(conv => broadcastPhones.has(normalizePhone(conv.phone)))
         .map(conv => ({
           ...conv,
           instance: conv.config_id ? instanceMap.get(conv.config_id) : undefined,
