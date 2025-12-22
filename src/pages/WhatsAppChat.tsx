@@ -312,6 +312,19 @@ export default function WhatsAppChat() {
     return d.toLocaleDateString('pt-BR');
   };
 
+  // Detecta se o preview é um template de broadcast não processado
+  const isBroadcastTemplate = (preview: string | null) => {
+    if (!preview) return false;
+    return preview.includes('{') && preview.includes('}');
+  };
+
+  // Formata o preview da mensagem
+  const formatPreview = (preview: string | null) => {
+    if (!preview) return 'Sem mensagens';
+    if (isBroadcastTemplate(preview)) return '📢 Broadcast enviado';
+    return preview;
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -435,29 +448,24 @@ export default function WhatsAppChat() {
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground truncate">
-                      {conv.last_message_preview}
+                      {formatPreview(conv.last_message_preview)}
                     </p>
-                    <div className="flex items-center gap-1 mt-1 flex-wrap">
-                      {conv.instance && instances.length > 1 && (
-                        <Badge 
-                          variant="outline" 
-                          className="text-xs px-1.5 py-0"
-                          style={{ borderColor: conv.instance.color, color: conv.instance.color }}
-                        >
-                          {conv.instance.name}
-                        </Badge>
-                      )}
+                    <div className="flex items-center gap-1.5 mt-1">
                       {conv.tags?.slice(0, 1).map((tag) => (
-                        <Badge key={tag} variant="secondary" className={cn('text-xs', getLabelColor(tag))}>
+                        <Badge key={tag} variant="secondary" className={cn('text-xs px-1.5 py-0', getLabelColor(tag))}>
                           {getLabelName(tag)}
                         </Badge>
                       ))}
-                      {conv.unread_count > 0 && (
-                        <Badge className="ml-auto">{conv.unread_count}</Badge>
-                      )}
-                      {conv.ai_paused && (
-                        <BotOff className="h-3 w-3 text-muted-foreground" />
-                      )}
+                      <div className="flex items-center gap-1 ml-auto">
+                        {conv.ai_paused && (
+                          <BotOff className="h-3.5 w-3.5 text-orange-500" />
+                        )}
+                        {(conv.unread_count ?? 0) > 0 && (
+                          <Badge className="h-5 min-w-5 flex items-center justify-center text-xs">
+                            {conv.unread_count}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
