@@ -154,6 +154,33 @@ export type Database = {
           },
         ]
       }
+      whatsapp_blacklist: {
+        Row: {
+          added_at: string
+          added_by: string | null
+          id: string
+          keyword_matched: string | null
+          phone: string
+          reason: string | null
+        }
+        Insert: {
+          added_at?: string
+          added_by?: string | null
+          id?: string
+          keyword_matched?: string | null
+          phone: string
+          reason?: string | null
+        }
+        Update: {
+          added_at?: string
+          added_by?: string | null
+          id?: string
+          keyword_matched?: string | null
+          phone?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_config: {
         Row: {
           admin_token: string | null
@@ -166,6 +193,7 @@ export type Database = {
           name: string | null
           server_url: string
           updated_at: string | null
+          warmup_started_at: string | null
         }
         Insert: {
           admin_token?: string | null
@@ -178,6 +206,7 @@ export type Database = {
           name?: string | null
           server_url: string
           updated_at?: string | null
+          warmup_started_at?: string | null
         }
         Update: {
           admin_token?: string | null
@@ -190,6 +219,7 @@ export type Database = {
           name?: string | null
           server_url?: string
           updated_at?: string | null
+          warmup_started_at?: string | null
         }
         Relationships: []
       }
@@ -293,6 +323,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "whatsapp_conversations_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_instance_limits: {
+        Row: {
+          config_id: string
+          consecutive_errors: number
+          created_at: string
+          date: string
+          id: string
+          is_paused: boolean
+          last_message_at: string | null
+          messages_sent: number
+          pause_reason: string | null
+          pause_until: string | null
+          updated_at: string
+        }
+        Insert: {
+          config_id: string
+          consecutive_errors?: number
+          created_at?: string
+          date?: string
+          id?: string
+          is_paused?: boolean
+          last_message_at?: string | null
+          messages_sent?: number
+          pause_reason?: string | null
+          pause_until?: string | null
+          updated_at?: string
+        }
+        Update: {
+          config_id?: string
+          consecutive_errors?: number
+          created_at?: string
+          date?: string
+          id?: string
+          is_paused?: boolean
+          last_message_at?: string | null
+          messages_sent?: number
+          pause_reason?: string | null
+          pause_until?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_instance_limits_config_id_fkey"
             columns: ["config_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_config"
@@ -421,6 +501,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      whatsapp_protection_settings: {
+        Row: {
+          auto_blacklist_enabled: boolean
+          batch_size: number
+          block_detection_enabled: boolean
+          business_hours_enabled: boolean
+          business_hours_end: string
+          business_hours_start: string
+          created_at: string
+          daily_limit_normal: number
+          daily_limit_warmup: number
+          id: string
+          max_consecutive_errors: number
+          max_delay_seconds: number
+          min_delay_seconds: number
+          pause_after_batch_minutes: number
+          updated_at: string
+          warmup_days: number
+        }
+        Insert: {
+          auto_blacklist_enabled?: boolean
+          batch_size?: number
+          block_detection_enabled?: boolean
+          business_hours_enabled?: boolean
+          business_hours_end?: string
+          business_hours_start?: string
+          created_at?: string
+          daily_limit_normal?: number
+          daily_limit_warmup?: number
+          id?: string
+          max_consecutive_errors?: number
+          max_delay_seconds?: number
+          min_delay_seconds?: number
+          pause_after_batch_minutes?: number
+          updated_at?: string
+          warmup_days?: number
+        }
+        Update: {
+          auto_blacklist_enabled?: boolean
+          batch_size?: number
+          block_detection_enabled?: boolean
+          business_hours_enabled?: boolean
+          business_hours_end?: string
+          business_hours_start?: string
+          created_at?: string
+          daily_limit_normal?: number
+          daily_limit_warmup?: number
+          id?: string
+          max_consecutive_errors?: number
+          max_delay_seconds?: number
+          min_delay_seconds?: number
+          pause_after_batch_minutes?: number
+          updated_at?: string
+          warmup_days?: number
+        }
+        Relationships: []
       }
       whatsapp_queue: {
         Row: {

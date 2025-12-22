@@ -480,6 +480,57 @@ serve(async (req) => {
     // Save message
     await supabase
       .from('whatsapp_messages')
+    // === AUTO BLACKLIST: Detect opt-out keywords ===
+    if (!isFromMe && messageContent) {
+      const optOutKeywords = [
+        'sair', 'parar', 'cancelar', 'remover', 'não quero',
+        'nao quero', 'stop', 'unsubscribe', 'saia', 'me tire',
+        'não me mande', 'nao me mande', 'spam', 'pare'
+      ];
+      
+      const lowerContent = messageContent.toLowerCase().trim();
+      const matchedKeyword = optOutKeywords.find(keyword => 
+        lowerContent === keyword || 
+        lowerContent.startsWith(keyword + ' ') ||
+        lowerContent.endsWith(' ' + keyword)
+      );
+      
+      if (matchedKeyword) {
+        // Check if auto-blacklist is enabled
+        const { data: protectionSettings } = await supabase
+          .from('whatsapp_protection_settings')
+          .select('auto_blacklist_enabled')
+          .limit(1)
+          .maybeSingle();
+        
+        if (protectionSettings?.auto_blacklist_enabled !== false) {
+          console.log(`[Blacklist] User ${senderPhone} requested opt-out with keyword: "${matchedKeyword}"`);
+          
+          // Add to blacklist
+          await supabase
+            .from('whatsapp_blacklist')
+            .upsert({
+              phone: senderPhone,
+              reason: 'opt_out',
+              keyword_matched: matchedKeyword,
+              added_at: new Date().toISOString()
+            }, { onConflict: 'phone' });
+          
+          // Pause AI for this conversation
+          await supabase
+            .from('whatsapp_conversations')
+            .update({ 
+              ai_paused: true,
+              ai_handoff_reason: `Usuário solicitou opt-out: "${matchedKeyword}"`
+            })
+            .eq('id', conversationId);
+        }
+      }
+    }
+
+    // Save message
+    await supabase
+      .from('whatsapp_messages')
       .insert({
         conversation_id: conversationId,
         direction: isFromMe ? 'outgoing' : 'incoming',

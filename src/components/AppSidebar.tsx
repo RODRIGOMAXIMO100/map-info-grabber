@@ -10,6 +10,7 @@ import {
   Settings,
   ScrollText,
   Bell,
+  Shield,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,6 +42,7 @@ const configItems = [
   { title: "Agente IA", url: "/ai-config", icon: Bot },
   { title: "Logs IA", url: "/ai-logs", icon: ScrollText },
   { title: "WhatsApp", url: "/whatsapp/config", icon: Settings },
+  { title: "Anti-Bloqueio", url: "/anti-block", icon: Shield },
 ];
 
 export function AppSidebar() {
