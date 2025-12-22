@@ -240,8 +240,12 @@ serve(async (req) => {
     console.log('Event type:', payload.event || payload.EventType);
 
     // Extract the receiving instance phone number from UAZAPI payload
-    // UAZAPI sends the instance phone in different fields depending on the event
+    // UAZAPI sends the owner phone (the instance phone) in the 'owner' field
+    // Also check chat.owner and message.owner as fallbacks
     const instancePhone = 
+      payload.owner ||
+      payload.chat?.owner ||
+      payload.message?.owner ||
       payload.instance?.phone || 
       payload.instance?.wuid?.replace(/@.*/, '') ||
       payload.to?.replace(/@.*/, '') ||
