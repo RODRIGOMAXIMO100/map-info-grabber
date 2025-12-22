@@ -246,17 +246,16 @@ async function processAIResponse(
 }
 
 // Check if phone received a broadcast message recently (fallback CRM detection)
+// Now also checks broadcast_lists.phones and lead_data for comprehensive detection
 async function checkIfBroadcastLead(
   supabase: any,
   phone: string
-): Promise<{ isBroadcastLead: boolean; dnaId: string | null; configId: string | null }> {
+): Promise<{ isBroadcastLead: boolean; dnaId: string | null; configId: string | null; reason?: string }> {
   try {
     // Use the same normalization function for consistent matching
     const normalizedPhone = normalizePhone(phone);
     
     // Extract last 8 digits for flexible matching
-    // This handles cases where phone in queue has formatting like "(31) 98336-0707"
-    // and incoming phone is normalized like "5531983360707"
     const phoneDigits = normalizedPhone.replace(/\D/g, '').slice(-8);
 
     // Check whatsapp_queue for recent sent messages to this phone (last 30 days)
@@ -265,6 +264,7 @@ async function checkIfBroadcastLead(
 
     console.log(`[CRM Detection] Searching for phone digits: ${phoneDigits} (from ${phone})`);
 
+    // 1. First check whatsapp_queue (most reliable - actually sent)
     const { data: queueItems } = await supabase
       .from('whatsapp_queue')
       .select('id, config_id, broadcast_list_id, phone')
@@ -287,14 +287,67 @@ async function checkIfBroadcastLead(
         dnaId = (broadcastList as { dna_id: string | null } | null)?.dna_id || null;
       }
 
-      console.log(`[CRM Detection] Found broadcast history for phone ${phone}, marking as CRM lead`);
-      return { isBroadcastLead: true, dnaId, configId: queueItem.config_id };
+      console.log(`[CRM Detection] ✅ Found in whatsapp_queue for phone ${phone}`);
+      return { isBroadcastLead: true, dnaId, configId: queueItem.config_id, reason: 'found_in_queue' };
     }
 
-    return { isBroadcastLead: false, dnaId: null, configId: null };
+    // 2. Check broadcast_lists directly (phones array and lead_data)
+    // This catches cases where the queue was cleaned but the broadcast was sent
+    const { data: broadcastLists } = await supabase
+      .from('broadcast_lists')
+      .select('id, dna_id, phones, lead_data')
+      .in('status', ['sent', 'sending', 'scheduled', 'processing'])
+      .gte('created_at', thirtyDaysAgo.toISOString())
+      .limit(50);
+
+    if (broadcastLists && broadcastLists.length > 0) {
+      for (const list of broadcastLists) {
+        // Check phones array
+        if (list.phones && Array.isArray(list.phones)) {
+          const found = list.phones.some((p: string) => {
+            const listPhoneDigits = p.replace(/\D/g, '').slice(-8);
+            return listPhoneDigits === phoneDigits;
+          });
+          
+          if (found) {
+            console.log(`[CRM Detection] ✅ Found in broadcast_lists.phones for phone ${phone} (list: ${list.id})`);
+            return { 
+              isBroadcastLead: true, 
+              dnaId: list.dna_id || null, 
+              configId: null,
+              reason: 'found_in_broadcast_list_phones' 
+            };
+          }
+        }
+
+        // Check lead_data array
+        if (list.lead_data && Array.isArray(list.lead_data)) {
+          const found = list.lead_data.some((lead: any) => {
+            if (lead && lead.phone) {
+              const leadPhoneDigits = lead.phone.replace(/\D/g, '').slice(-8);
+              return leadPhoneDigits === phoneDigits;
+            }
+            return false;
+          });
+          
+          if (found) {
+            console.log(`[CRM Detection] ✅ Found in broadcast_lists.lead_data for phone ${phone} (list: ${list.id})`);
+            return { 
+              isBroadcastLead: true, 
+              dnaId: list.dna_id || null, 
+              configId: null,
+              reason: 'found_in_broadcast_list_lead_data' 
+            };
+          }
+        }
+      }
+    }
+
+    console.log(`[CRM Detection] ❌ Phone ${phone} not found in any broadcast source`);
+    return { isBroadcastLead: false, dnaId: null, configId: null, reason: 'not_found' };
   } catch (error) {
     console.error('[CRM Detection] Error checking broadcast history:', error);
-    return { isBroadcastLead: false, dnaId: null, configId: null };
+    return { isBroadcastLead: false, dnaId: null, configId: null, reason: 'error' };
   }
 }
 
@@ -760,15 +813,44 @@ serve(async (req) => {
         existingConfigId
       ).catch(err => console.error('[AI] Background processing failed:', err));
     } else {
-      console.log('[AI] ❌ Skipping AI:', { 
+      // Enhanced audit logging with explicit skip reasons
+      let skipReason = 'UNKNOWN';
+      if (isFromMe) skipReason = 'IS_OWN_MESSAGE';
+      else if (isGroup) skipReason = 'IS_GROUP_CHAT';
+      else if (!hasValidContent) skipReason = 'NO_VALID_CONTENT';
+      else if (!isCrmLead) skipReason = 'NOT_CRM_LEAD';
+      else if (!isInAIControlledStage) skipReason = 'NOT_IN_FUNNEL_STAGE';
+      else if (aiPaused) skipReason = 'AI_PAUSED';
+
+      console.log(`[AI Skip] reason=${skipReason}`, { 
+        conversationId,
+        phone: senderPhone,
         isFromMe, 
         isGroup, 
         hasValidContent, 
         isInAIControlledStage, 
         aiPaused,
         isCrmLead,
-        reason: !isCrmLead ? 'NOT_CRM_LEAD' : !isInAIControlledStage ? 'NOT_IN_FUNNEL' : aiPaused ? 'AI_PAUSED' : 'OTHER'
+        tags: conversationTags
       });
+
+      // Store skip reason in conversation for UI display
+      if (!isFromMe && hasValidContent) {
+        await supabase
+          .from('whatsapp_conversations')
+          .update({ 
+            ai_handoff_reason: aiPaused 
+              ? (await supabase.from('whatsapp_conversations').select('ai_handoff_reason').eq('id', conversationId).single()).data?.ai_handoff_reason || `IA pausada`
+              : skipReason === 'NOT_CRM_LEAD' 
+                ? 'Número não está em lista de broadcast'
+                : skipReason === 'IS_GROUP_CHAT'
+                  ? 'Mensagens de grupo não são respondidas'
+                  : skipReason === 'NOT_IN_FUNNEL_STAGE'
+                    ? 'Conversa fora do funil da IA'
+                    : null
+          })
+          .eq('id', conversationId);
+      }
     }
 
     return new Response(

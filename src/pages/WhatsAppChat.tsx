@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info } from 'lucide-react';
+import { LeadStatusPanel } from '@/components/whatsapp/LeadStatusPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -824,62 +825,96 @@ export default function WhatsAppChat() {
               {selectedConversation ? (
                 <>
                   {/* Chat Header */}
-                  <div className="border-b p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback>
-                            {selectedConversation.name?.charAt(0).toUpperCase() || selectedConversation.phone.slice(-2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        {selectedConversation.instance && (
-                          <div 
-                            className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
-                            style={{ backgroundColor: selectedConversation.instance.color }}
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <h2 className="font-medium text-sm">
-                          {selectedConversation.name || selectedConversation.phone}
-                        </h2>
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">
-                            {selectedConversation.phone}
-                          </span>
+                  <div className="border-b p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback>
+                              {selectedConversation.name?.charAt(0).toUpperCase() || selectedConversation.phone.slice(-2)}
+                            </AvatarFallback>
+                          </Avatar>
                           {selectedConversation.instance && (
-                            <Badge 
-                              variant="outline" 
-                              className="text-xs"
-                              style={{ borderColor: selectedConversation.instance.color, color: selectedConversation.instance.color }}
-                            >
-                              via {selectedConversation.instance.name}
-                            </Badge>
+                            <div 
+                              className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
+                              style={{ backgroundColor: selectedConversation.instance.color }}
+                            />
                           )}
                         </div>
+                        <div>
+                          <h2 className="font-medium text-sm">
+                            {selectedConversation.name || selectedConversation.phone}
+                          </h2>
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">
+                              {selectedConversation.phone}
+                            </span>
+                            {selectedConversation.instance && (
+                              <Badge 
+                                variant="outline" 
+                                className="text-xs"
+                                style={{ borderColor: selectedConversation.instance.color, color: selectedConversation.instance.color }}
+                              >
+                                via {selectedConversation.instance.name}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant={selectedConversation.ai_paused ? 'outline' : 'default'}
+                          size="sm"
+                          onClick={() => toggleAI(selectedConversation)}
+                          className="gap-1 text-xs h-8"
+                        >
+                          {selectedConversation.ai_paused ? (
+                            <>
+                              <BotOff className="h-3.5 w-3.5" />
+                              <span className="hidden lg:inline">IA Pausada</span>
+                            </>
+                          ) : (
+                            <>
+                              <Bot className="h-3.5 w-3.5" />
+                              <span className="hidden lg:inline">IA Ativa</span>
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant={selectedConversation.ai_paused ? 'outline' : 'default'}
-                        size="sm"
-                        onClick={() => toggleAI(selectedConversation)}
-                        className="gap-1 text-xs h-8"
-                      >
-                        {selectedConversation.ai_paused ? (
-                          <>
-                            <BotOff className="h-3.5 w-3.5" />
-                            <span className="hidden lg:inline">IA Pausada</span>
-                          </>
-                        ) : (
-                          <>
-                            <Bot className="h-3.5 w-3.5" />
-                            <span className="hidden lg:inline">IA Ativa</span>
-                          </>
-                        )}
-                      </Button>
-                    </div>
+                    
+                    {/* Lead Status Panel - shows AI status and manual correction options */}
+                    <LeadStatusPanel 
+                      conversation={{
+                        id: selectedConversation.id,
+                        is_crm_lead: selectedConversation.is_crm_lead,
+                        ai_paused: selectedConversation.ai_paused,
+                        ai_handoff_reason: selectedConversation.ai_handoff_reason,
+                        is_group: selectedConversation.is_group,
+                        tags: selectedConversation.tags,
+                      }}
+                      onUpdate={() => {
+                        loadConversations();
+                        // Refresh selected conversation
+                        if (selectedConversation) {
+                          supabase
+                            .from('whatsapp_conversations')
+                            .select('*')
+                            .eq('id', selectedConversation.id)
+                            .single()
+                            .then(({ data }) => {
+                              if (data) {
+                                setSelectedConversation(prev => ({
+                                  ...prev!,
+                                  ...data,
+                                  instance: prev?.instance
+                                }));
+                              }
+                            });
+                        }
+                      }}
+                    />
                   </div>
 
                   {/* Messages */}
