@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MoreVertical, Filter } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -26,7 +25,6 @@ interface ConversationWithInstance extends WhatsAppConversation {
 }
 
 export default function WhatsAppChat() {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -298,49 +296,80 @@ export default function WhatsAppChat() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      {/* Header */}
-      <div className="border-b p-4 flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <h1 className="text-xl font-bold">Chat WhatsApp</h1>
-        {instances.length > 1 && (
-          <div className="ml-auto flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <Select value={selectedInstance} onValueChange={setSelectedInstance}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filtrar instância" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as instâncias</SelectItem>
-                {instances.map(instance => (
-                  <SelectItem key={instance.id} value={instance.id}>
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-2 h-2 rounded-full" 
-                        style={{ backgroundColor: instance.color }}
-                      />
-                      {instance.name}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-background">
+      {/* Header - apenas em mobile quando conversa selecionada */}
+      <div className="border-b p-3 flex items-center gap-3 md:hidden">
+        {selectedConversation ? (
+          <Button variant="ghost" size="icon" onClick={() => setSelectedConversation(null)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        ) : null}
+        <h1 className="text-lg font-semibold">
+          {selectedConversation ? (selectedConversation.name || selectedConversation.phone) : 'Chat WhatsApp'}
+        </h1>
+        {!selectedConversation && instances.length > 1 && (
+          <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+            <SelectTrigger className="w-[140px] ml-auto">
+              <SelectValue placeholder="Instância" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {instances.map(instance => (
+                <SelectItem key={instance.id} value={instance.id}>
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="w-2 h-2 rounded-full" 
+                      style={{ backgroundColor: instance.color }}
+                    />
+                    {instance.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Conversations List */}
-        <div className="w-80 border-r flex flex-col">
+        {/* Conversations List - hidden on mobile when conversation selected */}
+        <div className={cn(
+          "border-r flex flex-col bg-background",
+          "w-full md:w-80 lg:w-96",
+          selectedConversation ? "hidden md:flex" : "flex"
+        )}>
+          {/* Desktop Filter */}
+          <div className="hidden md:flex items-center gap-2 p-3 border-b">
+            <h2 className="font-semibold">Conversas</h2>
+            {instances.length > 1 && (
+              <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+                <SelectTrigger className="w-[140px] ml-auto">
+                  <SelectValue placeholder="Instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {instances.map(instance => (
+                    <SelectItem key={instance.id} value={instance.id}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-2 h-2 rounded-full" 
+                          style={{ backgroundColor: instance.color }}
+                        />
+                        {instance.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
           <div className="p-3 border-b">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -390,7 +419,7 @@ export default function WhatsAppChat() {
                     <p className="text-sm text-muted-foreground truncate">
                       {conv.last_message_preview}
                     </p>
-                    <div className="flex items-center gap-1 mt-1">
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
                       {conv.instance && instances.length > 1 && (
                         <Badge 
                           variant="outline" 
@@ -425,15 +454,18 @@ export default function WhatsAppChat() {
           </ScrollArea>
         </div>
 
-        {/* Chat Area */}
-        <div className="flex-1 flex flex-col">
+        {/* Chat Area - hidden on mobile when no conversation selected */}
+        <div className={cn(
+          "flex-1 flex flex-col bg-background",
+          selectedConversation ? "flex" : "hidden md:flex"
+        )}>
           {selectedConversation ? (
             <>
-              {/* Chat Header */}
-              <div className="border-b p-4 flex items-center justify-between">
+              {/* Chat Header - hidden on mobile (using top header instead) */}
+              <div className="border-b p-3 hidden md:flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <Avatar>
+                    <Avatar className="h-9 w-9">
                       <AvatarFallback>
                         {selectedConversation.name?.charAt(0).toUpperCase() || selectedConversation.phone.slice(-2)}
                       </AvatarFallback>
@@ -446,12 +478,12 @@ export default function WhatsAppChat() {
                     )}
                   </div>
                   <div>
-                    <h2 className="font-medium">
+                    <h2 className="font-medium text-sm">
                       {selectedConversation.name || selectedConversation.phone}
                     </h2>
                     <div className="flex items-center gap-2">
                       <Phone className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {selectedConversation.phone}
                       </span>
                       {selectedConversation.instance && (
@@ -466,34 +498,53 @@ export default function WhatsAppChat() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <Button
                     variant={selectedConversation.ai_paused ? 'outline' : 'default'}
                     size="sm"
                     onClick={() => toggleAI(selectedConversation)}
-                    className="gap-2"
+                    className="gap-1 text-xs h-8"
                   >
                     {selectedConversation.ai_paused ? (
                       <>
-                        <BotOff className="h-4 w-4" />
-                        IA Pausada
+                        <BotOff className="h-3.5 w-3.5" />
+                        <span className="hidden lg:inline">IA Pausada</span>
                       </>
                     ) : (
                       <>
-                        <Bot className="h-4 w-4" />
-                        IA Ativa
+                        <Bot className="h-3.5 w-3.5" />
+                        <span className="hidden lg:inline">IA Ativa</span>
                       </>
                     )}
-                  </Button>
-                  <Button variant="ghost" size="icon">
-                    <MoreVertical className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
 
+              {/* Mobile AI Toggle */}
+              <div className="md:hidden border-b p-2 flex items-center justify-end gap-2">
+                <Button
+                  variant={selectedConversation.ai_paused ? 'outline' : 'default'}
+                  size="sm"
+                  onClick={() => toggleAI(selectedConversation)}
+                  className="gap-1 text-xs h-7"
+                >
+                  {selectedConversation.ai_paused ? (
+                    <>
+                      <BotOff className="h-3.5 w-3.5" />
+                      IA Pausada
+                    </>
+                  ) : (
+                    <>
+                      <Bot className="h-3.5 w-3.5" />
+                      IA Ativa
+                    </>
+                  )}
+                </Button>
+              </div>
+
               {/* Messages */}
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
+              <ScrollArea className="flex-1 p-3 md:p-4">
+                <div className="space-y-3">
                   {messages.map((msg, index) => {
                     const showDate = index === 0 || 
                       formatDate(messages[index - 1].created_at) !== formatDate(msg.created_at);
@@ -501,7 +552,7 @@ export default function WhatsAppChat() {
                     return (
                       <div key={msg.id}>
                         {showDate && (
-                          <div className="flex justify-center my-4">
+                          <div className="flex justify-center my-3">
                             <Badge variant="secondary" className="text-xs">
                               {formatDate(msg.created_at)}
                             </Badge>
@@ -512,12 +563,12 @@ export default function WhatsAppChat() {
                           msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'
                         )}>
                           <div className={cn(
-                            'max-w-[70%] rounded-lg px-4 py-2',
+                            'max-w-[85%] md:max-w-[70%] rounded-lg px-3 py-2',
                             msg.direction === 'outgoing'
                               ? 'bg-primary text-primary-foreground'
                               : 'bg-muted'
                           )}>
-                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                            <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                             <span className={cn(
                               'text-xs mt-1 block text-right',
                               msg.direction === 'outgoing' ? 'text-primary-foreground/70' : 'text-muted-foreground'
@@ -534,7 +585,7 @@ export default function WhatsAppChat() {
               </ScrollArea>
 
               {/* Message Input */}
-              <div className="border-t p-4">
+              <div className="border-t p-3">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -549,7 +600,7 @@ export default function WhatsAppChat() {
                     disabled={sending}
                     className="flex-1"
                   />
-                  <Button type="submit" disabled={sending || !newMessage.trim()}>
+                  <Button type="submit" size="icon" disabled={sending || !newMessage.trim()}>
                     {sending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
@@ -560,7 +611,7 @@ export default function WhatsAppChat() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
               Selecione uma conversa para começar
             </div>
           )}
