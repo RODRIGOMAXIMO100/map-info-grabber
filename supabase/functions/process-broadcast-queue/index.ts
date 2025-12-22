@@ -200,13 +200,14 @@ serve(async (req) => {
             })
             .eq('id', queueItem.id);
 
-          // Log success
+          // Log success with config_id for monitoring
           await supabase
             .from('whatsapp_logs')
             .insert({
               schedule_id: queueItem.schedule_id,
               phone: queueItem.phone,
-              status: 'sent'
+              status: 'sent',
+              config_id: selectedConfig.id
             });
 
           // Update broadcast list counters
@@ -251,14 +252,15 @@ serve(async (req) => {
           .eq('id', queueItem.id);
 
         if (newStatus === 'failed') {
-          // Log failure
+          // Log failure with config_id for monitoring
           await supabase
             .from('whatsapp_logs')
             .insert({
               schedule_id: queueItem.schedule_id,
               phone: queueItem.phone,
               status: 'failed',
-              error_message: errorMessage
+              error_message: errorMessage,
+              config_id: selectedConfig.id
             });
 
           // Update broadcast list counters

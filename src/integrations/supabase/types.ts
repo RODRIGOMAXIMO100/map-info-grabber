@@ -311,6 +311,7 @@ export type Database = {
       }
       whatsapp_logs: {
         Row: {
+          config_id: string | null
           error_message: string | null
           id: string
           phone: string
@@ -320,6 +321,7 @@ export type Database = {
           subscription_id: string | null
         }
         Insert: {
+          config_id?: string | null
           error_message?: string | null
           id?: string
           phone: string
@@ -329,6 +331,7 @@ export type Database = {
           subscription_id?: string | null
         }
         Update: {
+          config_id?: string | null
           error_message?: string | null
           id?: string
           phone?: string
@@ -338,6 +341,13 @@ export type Database = {
           subscription_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_logs_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_config"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_logs_schedule_id_fkey"
             columns: ["schedule_id"]

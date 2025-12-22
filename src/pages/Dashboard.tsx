@@ -24,6 +24,7 @@ import {
   Cell
 } from "recharts";
 import { CRM_STAGES } from "@/types/whatsapp";
+import InstanceMonitor from "@/components/InstanceMonitor";
 
 interface DashboardStats {
   totalLeads: number;
@@ -430,6 +431,9 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Monitor de Instâncias WhatsApp */}
+      <InstanceMonitor />
 
       {/* Status da IA */}
       <Card>
