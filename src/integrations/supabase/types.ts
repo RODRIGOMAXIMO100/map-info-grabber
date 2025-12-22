@@ -129,6 +129,7 @@ export type Database = {
           auto_reply_delay_seconds: number | null
           classification_rules: Json | null
           created_at: string | null
+          default_dna_id: string | null
           id: string
           is_active: boolean | null
           payment_link: string | null
@@ -143,6 +144,7 @@ export type Database = {
           auto_reply_delay_seconds?: number | null
           classification_rules?: Json | null
           created_at?: string | null
+          default_dna_id?: string | null
           id?: string
           is_active?: boolean | null
           payment_link?: string | null
@@ -157,6 +159,7 @@ export type Database = {
           auto_reply_delay_seconds?: number | null
           classification_rules?: Json | null
           created_at?: string | null
+          default_dna_id?: string | null
           id?: string
           is_active?: boolean | null
           payment_link?: string | null
@@ -167,7 +170,15 @@ export type Database = {
           working_hours_end?: string | null
           working_hours_start?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_ai_config_default_dna_id_fkey"
+            columns: ["default_dna_id"]
+            isOneToOne: false
+            referencedRelation: "ai_dnas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_ai_logs: {
         Row: {

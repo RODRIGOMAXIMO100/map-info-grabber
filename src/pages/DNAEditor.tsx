@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, Dna, Link, Video, CreditCard } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Dna, Link, Video, CreditCard, Sparkles, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface DNAForm {
   name: string;
@@ -31,24 +32,6 @@ interface DNAForm {
   tone: string;
   is_active: boolean;
 }
-
-const DEFAULT_PROMPT = `Você é o SDR (Sales Development Representative) da empresa.
-
-## SEU PAPEL
-- Você é o PRIMEIRO CONTATO - não é vendedor, é qualificador
-- Seu objetivo é QUALIFICAR leads usando BANT e mover pelo funil
-- NUNCA discuta preços exatos ou fechamento
-
-## CRITÉRIOS BANT
-- Budget: Tem orçamento disponível?
-- Authority: É decisor ou influenciador?
-- Need: Qual a necessidade específica?
-- Timing: Quando precisa resolver?
-
-## TOM E ESTILO
-- Profissional mas próximo
-- Use emojis com moderação (1-2 por mensagem)
-- Respostas objetivas (max 400 caracteres)`;
 
 const TONES = [
   { value: 'profissional', label: '👔 Profissional', description: 'Formal e corporativo' },
@@ -65,13 +48,15 @@ export default function DNAEditor() {
   
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [activeTab, setActiveTab] = useState('basic');
   const [form, setForm] = useState<DNAForm>({
     name: '',
     description: '',
     persona_name: '',
     target_audience: '',
     offer_description: '',
-    system_prompt: DEFAULT_PROMPT,
+    system_prompt: '',
     video_url: '',
     site_url: '',
     payment_link: '',
@@ -104,7 +89,7 @@ export default function DNAEditor() {
       persona_name: data.persona_name || '',
       target_audience: data.target_audience || '',
       offer_description: data.offer_description || '',
-      system_prompt: data.system_prompt || DEFAULT_PROMPT,
+      system_prompt: data.system_prompt || '',
       video_url: data.video_url || '',
       site_url: data.site_url || '',
       payment_link: data.payment_link || '',
@@ -114,13 +99,61 @@ export default function DNAEditor() {
     setLoading(false);
   };
 
+  const canGeneratePrompt = form.persona_name.trim() && form.target_audience.trim() && form.offer_description.trim();
+
+  const handleGeneratePrompt = async () => {
+    if (!canGeneratePrompt) {
+      toast({ 
+        title: 'Preencha os campos obrigatórios', 
+        description: 'Nome da Persona, Público-Alvo e Descrição da Oferta são necessários.',
+        variant: 'destructive' 
+      });
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-dna-prompt', {
+        body: {
+          persona_name: form.persona_name,
+          target_audience: form.target_audience,
+          offer_description: form.offer_description,
+          tone: form.tone,
+          video_url: form.video_url,
+          site_url: form.site_url,
+          payment_link: form.payment_link,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.prompt) {
+        setForm(prev => ({ ...prev, system_prompt: data.prompt }));
+        setActiveTab('prompt');
+        toast({ 
+          title: 'Prompt gerado!', 
+          description: 'Revise e ajuste o prompt conforme necessário.' 
+        });
+      }
+    } catch (error) {
+      console.error('Error generating prompt:', error);
+      toast({ 
+        title: 'Erro ao gerar prompt', 
+        description: 'Não foi possível gerar o prompt. Tente novamente.',
+        variant: 'destructive' 
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!form.name.trim()) {
       toast({ title: 'Nome é obrigatório', variant: 'destructive' });
       return;
     }
     if (!form.system_prompt.trim()) {
-      toast({ title: 'Prompt do sistema é obrigatório', variant: 'destructive' });
+      toast({ title: 'Prompt do sistema é obrigatório', description: 'Gere ou escreva um prompt antes de salvar.', variant: 'destructive' });
       return;
     }
 
@@ -216,10 +249,13 @@ export default function DNAEditor() {
           </div>
         </div>
 
-        <Tabs defaultValue="basic" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList>
             <TabsTrigger value="basic">Informações Básicas</TabsTrigger>
-            <TabsTrigger value="prompt">Prompt do Sistema</TabsTrigger>
+            <TabsTrigger value="prompt">
+              Prompt do Sistema
+              {!form.system_prompt && <span className="ml-1 text-destructive">*</span>}
+            </TabsTrigger>
             <TabsTrigger value="materials">Materiais</TabsTrigger>
           </TabsList>
 
@@ -228,7 +264,7 @@ export default function DNAEditor() {
               <CardHeader>
                 <CardTitle>Informações do DNA</CardTitle>
                 <CardDescription>
-                  Defina a identidade e características deste DNA
+                  Preencha os dados básicos e gere o prompt automaticamente com IA
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -244,7 +280,7 @@ export default function DNAEditor() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="persona">Nome da Persona</Label>
+                    <Label htmlFor="persona">Nome da Persona *</Label>
                     <Input
                       id="persona"
                       placeholder="Ex: Carlos da Vijay"
@@ -269,7 +305,7 @@ export default function DNAEditor() {
 
                 <div className="grid gap-6 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="audience">Público-Alvo</Label>
+                    <Label htmlFor="audience">Público-Alvo *</Label>
                     <Textarea
                       id="audience"
                       placeholder="Ex: Donos de indústrias metalúrgicas, gestores de produção..."
@@ -305,7 +341,7 @@ export default function DNAEditor() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="offer">Descrição da Oferta</Label>
+                  <Label htmlFor="offer">Descrição da Oferta *</Label>
                   <Textarea
                     id="offer"
                     placeholder="Descreva detalhadamente o que está sendo oferecido neste DNA, benefícios, diferenciais..."
@@ -314,6 +350,43 @@ export default function DNAEditor() {
                     rows={6}
                     className="text-base resize-none"
                   />
+                </div>
+
+                {/* Generate Prompt Button */}
+                <div className="pt-4 border-t">
+                  {!canGeneratePrompt && (
+                    <Alert className="mb-4">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Preencha Nome da Persona, Público-Alvo e Descrição da Oferta para gerar o prompt automaticamente.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
+                  <Button 
+                    onClick={handleGeneratePrompt} 
+                    disabled={!canGeneratePrompt || generating}
+                    className="w-full gap-2 h-12 text-base"
+                    variant={canGeneratePrompt ? "default" : "secondary"}
+                  >
+                    {generating ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Gerando prompt com IA...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-5 w-5" />
+                        Gerar Prompt com IA
+                      </>
+                    )}
+                  </Button>
+                  
+                  {canGeneratePrompt && !generating && (
+                    <p className="text-sm text-muted-foreground text-center mt-2">
+                      O prompt será gerado baseado nas informações acima
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -324,10 +397,21 @@ export default function DNAEditor() {
               <CardHeader>
                 <CardTitle>Prompt do Sistema</CardTitle>
                 <CardDescription>
-                  Este é o prompt que define o comportamento da IA nas conversas
+                  Este é o prompt que define o comportamento da IA nas conversas. 
+                  {form.system_prompt ? ' Revise e ajuste conforme necessário.' : ' Gere automaticamente ou escreva manualmente.'}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {!form.system_prompt && (
+                  <Alert>
+                    <Sparkles className="h-4 w-4" />
+                    <AlertDescription>
+                      Você ainda não tem um prompt. Volte para a aba "Informações Básicas" e clique em "Gerar Prompt com IA" 
+                      ou escreva manualmente abaixo.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
                 <Textarea
                   placeholder="Defina o prompt do sistema..."
                   value={form.system_prompt}
@@ -335,7 +419,7 @@ export default function DNAEditor() {
                   rows={28}
                   className="font-mono text-sm min-h-[500px] resize-y"
                 />
-                <p className="text-sm text-muted-foreground mt-3">
+                <p className="text-sm text-muted-foreground">
                   Dica: Use markdown para estruturar melhor o prompt. Inclua informações sobre a empresa,
                   regras de qualificação, tom de voz e materiais disponíveis.
                 </p>
@@ -348,7 +432,7 @@ export default function DNAEditor() {
               <CardHeader>
                 <CardTitle>Materiais e Links</CardTitle>
                 <CardDescription>
-                  URLs específicas que a IA pode enviar durante as conversas
+                  URLs específicas que a IA pode enviar durante as conversas (serão incluídas no prompt gerado)
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
