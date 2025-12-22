@@ -253,17 +253,24 @@ async function checkIfBroadcastLead(
   try {
     // Use the same normalization function for consistent matching
     const normalizedPhone = normalizePhone(phone);
+    
+    // Extract last 8 digits for flexible matching
+    // This handles cases where phone in queue has formatting like "(31) 98336-0707"
+    // and incoming phone is normalized like "5531983360707"
+    const phoneDigits = normalizedPhone.replace(/\D/g, '').slice(-8);
 
     // Check whatsapp_queue for recent sent messages to this phone (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+    console.log(`[CRM Detection] Searching for phone digits: ${phoneDigits} (from ${phone})`);
+
     const { data: queueItems } = await supabase
       .from('whatsapp_queue')
-      .select('id, config_id, broadcast_list_id')
+      .select('id, config_id, broadcast_list_id, phone')
       .eq('status', 'sent')
       .gte('processed_at', thirtyDaysAgo.toISOString())
-      .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
+      .ilike('phone', `%${phoneDigits}%`)
       .limit(1);
 
     if (queueItems && queueItems.length > 0) {
