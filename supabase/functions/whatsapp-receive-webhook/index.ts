@@ -501,17 +501,32 @@ serve(async (req) => {
     const phoneDigits = senderPhone.replace(/\D/g, '').slice(-8);
     console.log(`[Conversation Search] Looking for phone ending in: ${phoneDigits}`);
 
-    const { data: existingConv } = await supabase
+    // First, try to find a CRM lead conversation (prioritize CRM leads)
+    let { data: existingConv } = await supabase
       .from('whatsapp_conversations')
       .select('id, tags, unread_count, ai_paused, config_id, is_crm_lead, dna_id, phone')
       .ilike('phone', `%${phoneDigits}%`)
+      .eq('is_crm_lead', true)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     
+    // If no CRM lead found, look for any conversation
+    if (!existingConv) {
+      const { data: anyConv } = await supabase
+        .from('whatsapp_conversations')
+        .select('id, tags, unread_count, ai_paused, config_id, is_crm_lead, dna_id, phone')
+        .ilike('phone', `%${phoneDigits}%`)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      existingConv = anyConv;
+    }
+    
     // Log the match result
     if (existingConv) {
-      console.log(`[Conversation Search] Found existing conversation: ${existingConv.id} (phone: ${existingConv.phone})`);
+      console.log(`[Conversation Search] Found existing conversation: ${existingConv.id} (phone: ${existingConv.phone}, is_crm_lead: ${existingConv.is_crm_lead})`);
       if (existingConv.phone !== senderPhone) {
         console.log(`[Phone Format] Incoming: ${senderPhone} vs Stored: ${existingConv.phone} - Same physical number, different format`);
       }
