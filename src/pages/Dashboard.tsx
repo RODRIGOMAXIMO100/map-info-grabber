@@ -85,13 +85,27 @@ export default function Dashboard() {
 
   const loadDashboardData = async () => {
     try {
-      // Buscar TODAS as conversas (não apenas de broadcasts)
+      // Buscar telefones válidos (do broadcast)
+      const { data: queuePhones } = await supabase.from('whatsapp_queue').select('phone');
+      const { data: lists } = await supabase.from('broadcast_lists').select('lead_data, phones');
+      
+      const broadcastPhones = new Set<string>();
+      queuePhones?.forEach(q => broadcastPhones.add(q.phone));
+      lists?.forEach(list => {
+        const leadData = list.lead_data as Array<{ phone?: string }> | null;
+        leadData?.forEach(lead => {
+          if (lead.phone) broadcastPhones.add(lead.phone);
+        });
+        list.phones?.forEach(phone => broadcastPhones.add(phone));
+      });
+
+      // Buscar conversas filtradas por broadcasts
       const { data: conversations } = await supabase
         .from('whatsapp_conversations')
         .select('*')
         .order('last_message_at', { ascending: false });
 
-      const allConversations = conversations || [];
+      const filteredConversations = conversations?.filter(c => broadcastPhones.has(c.phone)) || [];
 
       // Mapear cores de número para hex
       const colorMap: Record<number, string> = {
@@ -116,7 +130,7 @@ export default function Dashboard() {
         stageCounts[stage.id] = 0;
       });
 
-      allConversations.forEach(conv => {
+      filteredConversations.forEach(conv => {
         const tags = conv.tags || [];
         // Encontrar o estágio mais avançado baseado nas tags
         let matchedStageId: string | null = null;
@@ -151,8 +165,8 @@ export default function Dashboard() {
         color: colorMap[stage.color] || '#6B7280',
       }));
 
-      // Handoffs recentes (conversas com tag de handoff)
-      const handoffs = allConversations
+      // Handoffs recentes (conversas de broadcast com tag de handoff)
+      const handoffs = filteredConversations
         .filter(c => (c.tags || []).includes(handoffLabelId))
         .slice(0, 5)
         .map(c => ({
@@ -191,7 +205,7 @@ export default function Dashboard() {
         .single();
 
       setStats({
-        totalLeads: allConversations.length,
+        totalLeads: filteredConversations.length,
         mqlCount: stageCounts['2'] || 0, // MQL - Respondeu
         sqlCount: stageCounts['4'] || 0, // SQL - Qualificado
         handoffCount: stageCounts['5'] || 0, // Handoff - Vendedor
