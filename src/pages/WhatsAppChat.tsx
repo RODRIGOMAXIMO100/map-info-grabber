@@ -412,28 +412,30 @@ export default function WhatsAppChat() {
                       />
                     )}
                   </div>
-                  <div className="flex-1 min-w-0 overflow-hidden">
-                    <div className="grid grid-cols-[1fr_auto] items-center gap-2 min-w-0">
-                      <span className="block font-medium truncate text-sm leading-tight min-w-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium truncate text-sm max-w-[180px]">
                         {conv.name || conv.phone}
                       </span>
-                      <div className="flex items-center gap-1.5 justify-end flex-shrink-0 whitespace-nowrap leading-none">
+                      <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                        {formatTime(conv.last_message_at)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                      <p className="text-xs text-muted-foreground truncate flex-1">
+                        {formatPreview(conv.last_message_preview)}
+                      </p>
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         {conv.ai_paused && (
                           <BotOff className="h-3.5 w-3.5 text-orange-500" />
                         )}
                         {(conv.unread_count ?? 0) > 0 && (
-                          <Badge className="h-5 min-w-5 flex items-center justify-center text-xs px-1.5 leading-none">
+                          <Badge className="h-5 min-w-5 flex items-center justify-center text-xs px-1.5">
                             {conv.unread_count}
                           </Badge>
                         )}
-                        <span className="text-xs text-muted-foreground tabular-nums leading-none">
-                          {formatTime(conv.last_message_at)}
-                        </span>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate mt-1 leading-snug max-w-full">
-                      {formatPreview(conv.last_message_preview)}
-                    </p>
                   </div>
                 </div>
               </div>
@@ -597,28 +599,30 @@ export default function WhatsAppChat() {
                           />
                         )}
                       </div>
-                      <div className="flex-1 min-w-0 overflow-hidden">
-                        <div className="grid grid-cols-[1fr_auto] items-center gap-2 min-w-0">
-                          <span className="block font-medium truncate text-sm leading-tight min-w-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium truncate text-sm max-w-[140px]">
                             {conv.name || conv.phone}
                           </span>
-                          <div className="flex items-center gap-1.5 justify-end flex-shrink-0 whitespace-nowrap leading-none">
+                          <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                            {formatTime(conv.last_message_at)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                          <p className="text-xs text-muted-foreground truncate max-w-[160px]">
+                            {formatPreview(conv.last_message_preview)}
+                          </p>
+                          <div className="flex items-center gap-1 flex-shrink-0">
                             {conv.ai_paused && (
                               <BotOff className="h-3.5 w-3.5 text-orange-500" />
                             )}
                             {(conv.unread_count ?? 0) > 0 && (
-                              <Badge className="h-5 min-w-5 flex items-center justify-center text-xs px-1.5 leading-none">
+                              <Badge className="h-5 min-w-5 flex items-center justify-center text-xs px-1.5">
                                 {conv.unread_count}
                               </Badge>
                             )}
-                            <span className="text-xs text-muted-foreground tabular-nums leading-none">
-                              {formatTime(conv.last_message_at)}
-                            </span>
                           </div>
                         </div>
-                        <p className="text-xs text-muted-foreground truncate mt-1 leading-snug max-w-full">
-                          {formatPreview(conv.last_message_preview)}
-                        </p>
                       </div>
                     </div>
                   </div>
