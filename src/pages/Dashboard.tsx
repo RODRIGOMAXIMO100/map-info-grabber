@@ -186,14 +186,22 @@ export default function Dashboard() {
           time: c.last_message_at ? new Date(c.last_message_at).toLocaleString('pt-BR') : '',
         }));
 
-      // Mensagens de hoje
+      // IDs das conversas filtradas (apenas de broadcast)
+      const broadcastConversationIds = filteredConversations.map(c => c.id);
+
+      // Mensagens de hoje - apenas de conversas de broadcast
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      const { count: todayMessagesCount } = await supabase
-        .from('whatsapp_messages')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', today.toISOString());
+      let todayMessagesCount = 0;
+      if (broadcastConversationIds.length > 0) {
+        const { count } = await supabase
+          .from('whatsapp_messages')
+          .select('*', { count: 'exact', head: true })
+          .in('conversation_id', broadcastConversationIds)
+          .gte('created_at', today.toISOString());
+        todayMessagesCount = count || 0;
+      }
 
       // Broadcasts enviados
       const { count: broadcastsSentCount } = await supabase
@@ -201,10 +209,15 @@ export default function Dashboard() {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'sent');
 
-      // Respostas da IA
-      const { count: aiResponsesCount } = await supabase
-        .from('whatsapp_ai_logs')
-        .select('*', { count: 'exact', head: true });
+      // Respostas da IA - apenas de conversas de broadcast
+      let aiResponsesCount = 0;
+      if (broadcastConversationIds.length > 0) {
+        const { count } = await supabase
+          .from('whatsapp_ai_logs')
+          .select('*', { count: 'exact', head: true })
+          .in('conversation_id', broadcastConversationIds);
+        aiResponsesCount = count || 0;
+      }
 
       // Status da IA
       const { data: aiConfig } = await supabase
