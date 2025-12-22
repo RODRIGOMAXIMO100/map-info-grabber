@@ -138,6 +138,18 @@ const isBlockingError = (errorMessage: string): boolean => {
   return blockKeywords.some(keyword => lowerError.includes(keyword));
 };
 
+// Check if error is "innocent" (problem with the number, not the instance)
+const isInnocentError = (errorMessage: string): boolean => {
+  const innocentKeywords = [
+    'not on whatsapp', 'not registered', 'invalid phone',
+    'phone number not found', 'number not found', 'not a valid',
+    'número não encontrado', 'não está no whatsapp',
+    'invalid number', 'does not exist', 'not exist'
+  ];
+  const lowerError = errorMessage.toLowerCase();
+  return innocentKeywords.some(keyword => lowerError.includes(keyword));
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -508,43 +520,53 @@ serve(async (req) => {
 
       } catch (sendError) {
         const errorMessage = sendError instanceof Error ? sendError.message : 'Unknown error';
-        console.error('[Broadcast] ✗ Error sending to', queueItem.phone, ':', errorMessage);
-
-        // Update consecutive errors
-        const newErrorCount = limit.consecutive_errors + 1;
         
-        // Check for blocking
-        if (settings.block_detection_enabled && isBlockingError(errorMessage)) {
-          console.log(`[Broadcast] ⚠️ Blocking detected for ${selectedConfig.name}, pausing instance`);
-          await supabase
-            .from('whatsapp_instance_limits')
-            .update({ 
-              is_paused: true, 
-              pause_reason: `Blocking detected: ${errorMessage}`,
-              consecutive_errors: newErrorCount
-            })
-            .eq('id', limit.id);
-        } else if (newErrorCount >= settings.max_consecutive_errors) {
-          // Pause after too many consecutive errors
-          const pauseUntil = new Date(Date.now() + 30 * 60 * 1000); // 30 min pause
-          console.log(`[Broadcast] ⚠️ Too many errors for ${selectedConfig.name}, pausing until ${pauseUntil.toISOString()}`);
-          await supabase
-            .from('whatsapp_instance_limits')
-            .update({ 
-              is_paused: true, 
-              pause_until: pauseUntil.toISOString(),
-              pause_reason: `${newErrorCount} consecutive errors`,
-              consecutive_errors: newErrorCount
-            })
-            .eq('id', limit.id);
+        // Check if this is an "innocent" error (problem with the number, not the instance)
+        const isInnocent = isInnocentError(errorMessage);
+        
+        if (isInnocent) {
+          // Innocent error: Don't increment consecutive_errors, don't pause instance
+          console.log(`[Broadcast] ⓘ Innocent error (invalid number) for ${queueItem.phone}: ${errorMessage}`);
+          // Don't update consecutive_errors - keep it as is
         } else {
-          await supabase
-            .from('whatsapp_instance_limits')
-            .update({ consecutive_errors: newErrorCount })
-            .eq('id', limit.id);
-        }
+          // Real error: Update consecutive errors and potentially pause
+          console.error('[Broadcast] ✗ Real error sending to', queueItem.phone, ':', errorMessage);
+          
+          const newErrorCount = limit.consecutive_errors + 1;
+          
+          // Check for blocking
+          if (settings.block_detection_enabled && isBlockingError(errorMessage)) {
+            console.log(`[Broadcast] ⚠️ Blocking detected for ${selectedConfig.name}, pausing instance`);
+            await supabase
+              .from('whatsapp_instance_limits')
+              .update({ 
+                is_paused: true, 
+                pause_reason: `Blocking detected: ${errorMessage}`,
+                consecutive_errors: newErrorCount
+              })
+              .eq('id', limit.id);
+          } else if (newErrorCount >= settings.max_consecutive_errors) {
+            // Pause after too many consecutive errors
+            const pauseUntil = new Date(Date.now() + 30 * 60 * 1000); // 30 min pause
+            console.log(`[Broadcast] ⚠️ Too many errors for ${selectedConfig.name}, pausing until ${pauseUntil.toISOString()}`);
+            await supabase
+              .from('whatsapp_instance_limits')
+              .update({ 
+                is_paused: true, 
+                pause_until: pauseUntil.toISOString(),
+                pause_reason: `${newErrorCount} consecutive errors`,
+                consecutive_errors: newErrorCount
+              })
+              .eq('id', limit.id);
+          } else {
+            await supabase
+              .from('whatsapp_instance_limits')
+              .update({ consecutive_errors: newErrorCount })
+              .eq('id', limit.id);
+          }
 
-        limit.consecutive_errors = newErrorCount;
+          limit.consecutive_errors = newErrorCount;
+        }
 
         // Mark as failed if max attempts reached
         const newStatus = queueItem.attempts >= 2 ? 'failed' : 'pending';
