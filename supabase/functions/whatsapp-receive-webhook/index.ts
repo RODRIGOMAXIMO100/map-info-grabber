@@ -7,8 +7,8 @@ const corsHeaders = {
 };
 
 // SDR Funnel Stages - IA controla STAGE_1 a STAGE_4
-const FUNNEL_LABELS = ['16', '13', '14', '20']; // Labels que a IA controla
-const HANDOFF_LABEL = '21'; // STAGE_5 - Vendedor assume
+const FUNNEL_LABELS = ['16', '13', '14', '20'];
+const HANDOFF_LABEL = '21';
 
 // Process AI response in background
 async function processAIResponse(
@@ -17,12 +17,12 @@ async function processAIResponse(
   conversationId: string,
   messageContent: string,
   senderPhone: string,
-  tags: string[]
+  tags: string[],
+  configId: string | null
 ) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    // Get AI config
     const { data: aiConfig } = await supabase
       .from('whatsapp_ai_config')
       .select('*')
@@ -34,14 +34,10 @@ async function processAIResponse(
       return;
     }
 
-    // IA funciona 24 horas quando ativa - removida verificação de horário
-
-    // Wait for the configured delay (simulates human reading time)
     const delaySeconds = aiConfig.auto_reply_delay_seconds || 5;
     console.log(`[AI] Waiting ${delaySeconds}s before responding...`);
     await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
 
-    // Get conversation history
     const { data: messages } = await supabase
       .from('whatsapp_messages')
       .select('direction, content')
@@ -49,11 +45,9 @@ async function processAIResponse(
       .order('created_at', { ascending: true })
       .limit(20);
 
-    // Get current stage from tags
     const allStageLabels = ['16', '13', '14', '20', '21', '22', '23'];
     const currentStageId = tags.find(tag => allStageLabels.includes(tag)) || '16';
 
-    // Call AI agent
     console.log('[AI] Calling AI agent for conversation:', conversationId, 'Stage:', currentStageId);
     
     const aiResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-ai-agent`, {
@@ -79,13 +73,11 @@ async function processAIResponse(
     const aiResult = await aiResponse.json();
     console.log('[AI] Agent response:', aiResult);
 
-    // Se IA indicou que não deve responder (handoff ou erro)
     if (aiResult.error || aiResult.should_respond === false) {
       console.log('[AI] Agent indicated no response needed:', aiResult.error || aiResult.message);
       return;
     }
 
-    // Send AI response via WhatsApp
     if (aiResult.response) {
       console.log('[AI] Sending response to:', senderPhone);
       
@@ -98,7 +90,8 @@ async function processAIResponse(
         body: JSON.stringify({
           conversation_id: conversationId,
           phone: senderPhone,
-          message: aiResult.response
+          message: aiResult.response,
+          config_id: configId // Use same instance
         })
       });
 
@@ -109,7 +102,6 @@ async function processAIResponse(
         console.log('[AI] Message sent successfully');
       }
 
-      // Update conversation with lead name if provided
       if (aiResult.lead_name) {
         console.log('[AI] Lead name identified:', aiResult.lead_name);
         await supabase
@@ -118,21 +110,18 @@ async function processAIResponse(
           .eq('id', conversationId);
       }
 
-      // Update conversation label if stage changed
       if (aiResult.label_id && aiResult.label_id !== currentStageId) {
         console.log('[AI] Updating label to:', aiResult.label_id);
         
-        // Update tags in database - remove old stage labels, add new one
         const newTags = tags.filter(t => !allStageLabels.includes(t));
         newTags.push(aiResult.label_id);
         
         const updateData: Record<string, unknown> = { 
           tags: newTags,
-          followup_count: 0, // Reset follow-up count when lead responds
+          followup_count: 0,
           last_followup_at: null
         };
         
-        // Se for handoff, pausar IA e registrar motivo
         if (aiResult.should_handoff || aiResult.label_id === HANDOFF_LABEL) {
           updateData.ai_paused = true;
           updateData.ai_handoff_reason = aiResult.handoff_reason || 'Lead qualificado para vendedor';
@@ -144,7 +133,6 @@ async function processAIResponse(
           .update(updateData)
           .eq('id', conversationId);
 
-        // Update label in WhatsApp (UAZAPI)
         await fetch(`${supabaseUrl}/functions/v1/update-whatsapp-label`, {
           method: 'POST',
           headers: {
@@ -157,7 +145,6 @@ async function processAIResponse(
           })
         });
       } else {
-        // Mesmo se não mudou o estágio, reset follow-up count
         await supabase
           .from('whatsapp_conversations')
           .update({ 
@@ -167,7 +154,6 @@ async function processAIResponse(
           .eq('id', conversationId);
       }
 
-      // Send video if AI suggests (usually STAGE_2 or STAGE_3)
       if (aiResult.should_send_video && aiResult.video_url) {
         console.log('[AI] Sending video');
         await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
@@ -181,18 +167,17 @@ async function processAIResponse(
             phone: senderPhone,
             message: '',
             media_url: aiResult.video_url,
-            media_type: 'video'
+            media_type: 'video',
+            config_id: configId
           })
         });
 
-        // Mark video as sent
         await supabase
           .from('whatsapp_conversations')
           .update({ video_sent: true })
           .eq('id', conversationId);
       }
 
-      // Send site if AI suggests (usually STAGE_3 or STAGE_4)
       if (aiResult.should_send_site && aiResult.site_url) {
         console.log('[AI] Sending site link');
         await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
@@ -204,11 +189,11 @@ async function processAIResponse(
           body: JSON.stringify({
             conversation_id: conversationId,
             phone: senderPhone,
-            message: `📊 Conheça nossos cases de sucesso: ${aiResult.site_url}`
+            message: `📊 Conheça nossos cases de sucesso: ${aiResult.site_url}`,
+            config_id: configId
           })
         });
 
-        // Mark site as sent
         await supabase
           .from('whatsapp_conversations')
           .update({ site_sent: true })
@@ -231,6 +216,11 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Get instance ID from URL query param
+    const url = new URL(req.url);
+    const instanceId = url.searchParams.get('instance');
+    console.log('[Webhook] Instance ID from URL:', instanceId);
+
     const rawBody = await req.text();
     console.log('=== WEBHOOK RAW BODY ===');
     console.log(rawBody);
@@ -249,10 +239,39 @@ serve(async (req) => {
     console.log('=== WEBHOOK PARSED ===');
     console.log('Event type:', payload.event || payload.EventType);
 
+    // Validate instance exists if provided
+    let configId: string | null = instanceId;
+    if (instanceId) {
+      const { data: configData } = await supabase
+        .from('whatsapp_config')
+        .select('id')
+        .eq('id', instanceId)
+        .maybeSingle();
+      
+      if (!configData) {
+        console.log('[Webhook] Instance not found, will try to find active one');
+        configId = null;
+      }
+    }
+
+    // If no instance specified or not found, try to find by matching criteria or use first active
+    if (!configId) {
+      const { data: activeConfig } = await supabase
+        .from('whatsapp_config')
+        .select('id')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      
+      if (activeConfig) {
+        configId = activeConfig.id;
+        console.log('[Webhook] Using first active instance:', configId);
+      }
+    }
+
     // Extract message data from UAZAPI format
     let messageData = null;
     
-    // UAZAPI sends message directly in payload.message
     if (payload.message) {
       messageData = payload.message;
     } else if (payload.event === 'messages.upsert' || payload.messages) {
@@ -269,34 +288,27 @@ serve(async (req) => {
       );
     }
 
-    // Extract phone, name from UAZAPI chat object
     const chatId = payload.chat?.wa_chatid || messageData.chatid || messageData.key?.remoteJid || '';
     const isGroup = payload.chat?.wa_isGroup === true || messageData.isGroup === true || chatId.includes('@g.us');
     const senderPhone = chatId.replace(/@s\.whatsapp\.net|@c\.us|@lid|@g\.us/g, '');
     const senderName = payload.chat?.wa_name || payload.chat?.name || messageData.senderName || messageData.pushName || '';
     
-    // UAZAPI sends fromMe directly as boolean
     const isFromMe = messageData.fromMe === true || messageData.key?.fromMe === true;
 
-    // Extract message content - UAZAPI sends text/content directly
     let messageContent = '';
     let messageType = 'text';
     let mediaUrl = '';
 
-    // UAZAPI direct format
     if (messageData.text) {
       messageContent = messageData.text;
     } else if (messageData.content) {
       messageContent = messageData.content;
-    }
-    // Baileys/Evolution format fallback
-    else if (messageData.message?.conversation) {
+    } else if (messageData.message?.conversation) {
       messageContent = messageData.message.conversation;
     } else if (messageData.message?.extendedTextMessage?.text) {
       messageContent = messageData.message.extendedTextMessage.text;
     }
     
-    // Handle media types
     if (messageData.mediaType || messageData.type) {
       const type = messageData.mediaType || messageData.type;
       if (type === 'image' || messageData.message?.imageMessage) {
@@ -314,10 +326,9 @@ serve(async (req) => {
       }
     }
 
-    // UAZAPI sends messageid directly (not nested in key)
     const messageIdWhatsapp = messageData.messageid || messageData.id || messageData.key?.id || '';
     
-    console.log('Extracted data:', { senderPhone, senderName, isFromMe, messageContent, messageType, messageIdWhatsapp });
+    console.log('Extracted data:', { senderPhone, senderName, isFromMe, messageContent, messageType, messageIdWhatsapp, configId });
 
     // Check for duplicate message
     if (messageIdWhatsapp) {
@@ -346,12 +357,13 @@ serve(async (req) => {
     let conversationId: string;
     let conversationTags: string[] = [];
     let aiPaused = false;
+    let existingConfigId: string | null = null;
     
     const { data: existingConv } = await supabase
       .from('whatsapp_conversations')
-      .select('id, tags, unread_count, ai_paused')
+      .select('id, tags, unread_count, ai_paused, config_id')
       .eq('phone', senderPhone)
-      .single();
+      .maybeSingle();
 
     const messagePreview = messageContent.substring(0, 100);
 
@@ -359,6 +371,7 @@ serve(async (req) => {
       conversationId = existingConv.id;
       conversationTags = existingConv.tags || [];
       aiPaused = existingConv.ai_paused === true;
+      existingConfigId = existingConv.config_id;
       
       const updateData: Record<string, unknown> = {
         last_message_at: new Date().toISOString(),
@@ -366,9 +379,15 @@ serve(async (req) => {
         status: 'active'
       };
 
+      // Update config_id if not set and we have one now
+      if (!existingConfigId && configId) {
+        updateData.config_id = configId;
+        existingConfigId = configId;
+      }
+
       if (!isFromMe) {
         updateData.unread_count = (existingConv.unread_count || 0) + 1;
-        updateData.last_lead_message_at = new Date().toISOString(); // Track when lead last messaged
+        updateData.last_lead_message_at = new Date().toISOString();
       }
 
       if (!isGroup && senderName) {
@@ -380,7 +399,6 @@ serve(async (req) => {
         .update(updateData)
         .eq('id', conversationId);
     } else {
-      // For new conversations, add to funnel (STAGE_1 = label 16)
       conversationTags = ['16'];
       
       const { data: newConv, error: createError } = await supabase
@@ -395,13 +413,15 @@ serve(async (req) => {
           last_lead_message_at: isFromMe ? null : new Date().toISOString(),
           unread_count: isFromMe ? 0 : 1,
           status: 'active',
-          followup_count: 0
+          followup_count: 0,
+          config_id: configId // Link to instance
         })
         .select()
         .single();
 
       if (createError) throw createError;
       conversationId = newConv.id;
+      existingConfigId = configId;
     }
 
     // Save message
@@ -417,15 +437,10 @@ serve(async (req) => {
         status: isFromMe ? 'sent' : 'received'
       });
 
-    // AI Integration - Process in background for incoming messages
-    // IA controla apenas leads nos estágios STAGE_1 a STAGE_4 (labels 16, 13, 14, 20)
+    // AI Integration
     const isInAIControlledStage = conversationTags.some(tag => FUNNEL_LABELS.includes(tag));
 
-    // ===============================
-    // FILTRO DE BROADCAST - IA só responde leads de nossas listas
-    // ===============================
-    
-    // Buscar todos os telefones que vieram de NOSSOS broadcasts
+    // Broadcast filter
     const { data: broadcastLists } = await supabase
       .from('broadcast_lists')
       .select('phones');
@@ -434,12 +449,11 @@ serve(async (req) => {
       .from('whatsapp_queue')
       .select('phone');
 
-    // Criar Set com todos os telefones de broadcast (normalizados)
     const broadcastPhones = new Set<string>();
 
     broadcastLists?.forEach(list => {
       (list.phones as string[] || []).forEach((phone: string) => {
-        broadcastPhones.add(phone.replace(/\D/g, '')); // Remove não-dígitos
+        broadcastPhones.add(phone.replace(/\D/g, ''));
       });
     });
 
@@ -447,7 +461,6 @@ serve(async (req) => {
       broadcastPhones.add(item.phone.replace(/\D/g, ''));
     });
 
-    // Verificar se o remetente é um lead de broadcast
     const senderNormalized = senderPhone.replace(/\D/g, '');
     const isFromBroadcast = broadcastPhones.has(senderNormalized);
 
@@ -457,19 +470,17 @@ serve(async (req) => {
       totalBroadcastPhones: broadcastPhones.size 
     });
 
-    // IA só responde se: não é minha mensagem, não é grupo, tem conteúdo, 
-    // está em estágio controlado, não está pausada E veio de broadcast
     if (!isFromMe && !isGroup && messageContent && isInAIControlledStage && !aiPaused && isFromBroadcast) {
       console.log('[AI] Triggering background AI processing for conversation:', conversationId);
       
-      // Process AI in background (fire and forget - doesn't block webhook response)
       processAIResponse(
         supabaseUrl,
         supabaseServiceKey,
         conversationId,
         messageContent,
         senderPhone,
-        conversationTags
+        conversationTags,
+        existingConfigId
       ).catch(err => console.error('[AI] Background processing failed:', err));
     } else {
       console.log('[AI] Skipping AI:', { 
@@ -478,7 +489,7 @@ serve(async (req) => {
         hasContent: !!messageContent, 
         isInAIControlledStage, 
         aiPaused,
-        isFromBroadcast // Novo campo de debug
+        isFromBroadcast
       });
     }
 

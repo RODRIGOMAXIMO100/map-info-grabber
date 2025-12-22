@@ -157,31 +157,37 @@ export type Database = {
       whatsapp_config: {
         Row: {
           admin_token: string | null
+          color: string | null
           created_at: string | null
           id: string
           instance_phone: string | null
           instance_token: string
           is_active: boolean | null
+          name: string | null
           server_url: string
           updated_at: string | null
         }
         Insert: {
           admin_token?: string | null
+          color?: string | null
           created_at?: string | null
           id?: string
           instance_phone?: string | null
           instance_token: string
           is_active?: boolean | null
+          name?: string | null
           server_url: string
           updated_at?: string | null
         }
         Update: {
           admin_token?: string | null
+          color?: string | null
           created_at?: string | null
           id?: string
           instance_phone?: string | null
           instance_token?: string
           is_active?: boolean | null
+          name?: string | null
           server_url?: string
           updated_at?: string | null
         }
@@ -193,6 +199,7 @@ export type Database = {
           ai_paused: boolean | null
           ai_pending_at: string | null
           avatar_url: string | null
+          config_id: string | null
           created_at: string | null
           followup_count: number | null
           group_name: string | null
@@ -218,6 +225,7 @@ export type Database = {
           ai_paused?: boolean | null
           ai_pending_at?: string | null
           avatar_url?: string | null
+          config_id?: string | null
           created_at?: string | null
           followup_count?: number | null
           group_name?: string | null
@@ -243,6 +251,7 @@ export type Database = {
           ai_paused?: boolean | null
           ai_pending_at?: string | null
           avatar_url?: string | null
+          config_id?: string | null
           created_at?: string | null
           followup_count?: number | null
           group_name?: string | null
@@ -263,7 +272,15 @@ export type Database = {
           updated_at?: string | null
           video_sent?: boolean | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_config"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_labels: {
         Row: {
