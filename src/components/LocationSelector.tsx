@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, X, MapPin, Building2, Map } from 'lucide-react';
+import { Plus, X, MapPin, Building2, Map, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,6 +24,8 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
   const [bulkState, setBulkState] = useState('');
   const [stateWideState, setStateWideState] = useState('');
   const [cityCount, setCityCount] = useState([10]);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<'badges' | 'compact'>('badges');
 
   const maxCities = useMemo(() => {
     return stateWideState ? getTotalCitiesForState(stateWideState) : 50;
@@ -37,6 +39,18 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
   const totalPopulation = useMemo(() => {
     return selectedCities.reduce((sum, c) => sum + c.population, 0);
   }, [selectedCities]);
+
+  // Agrupar localizações por estado
+  const groupedLocations = useMemo(() => {
+    const groups: Record<string, Location[]> = {};
+    locations.forEach(loc => {
+      if (!groups[loc.state]) {
+        groups[loc.state] = [];
+      }
+      groups[loc.state].push(loc);
+    });
+    return groups;
+  }, [locations]);
 
   const handleAddSingle = () => {
     if (city.trim() && state) {
@@ -62,7 +76,6 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
 
   const handleAddStateWide = () => {
     if (stateWideState && selectedCities.length > 0) {
-      // Verificar quais cidades já estão na lista
       const existingCities = new Set(
         locations
           .filter(l => l.state === stateWideState)
@@ -78,7 +91,6 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
       });
 
       if (addedCount === 0) {
-        // Todas já existem
         console.log('Todas as cidades selecionadas já estão na lista');
       }
     }
@@ -90,6 +102,34 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
       handleAddSingle();
     }
   };
+
+  const handleClearAll = () => {
+    for (let i = locations.length - 1; i >= 0; i--) {
+      onRemove(i);
+    }
+  };
+
+  const handleRemoveByState = (stateToRemove: string) => {
+    const indicesToRemove = locations
+      .map((loc, idx) => loc.state === stateToRemove ? idx : -1)
+      .filter(idx => idx !== -1)
+      .reverse();
+    
+    indicesToRemove.forEach(idx => onRemove(idx));
+  };
+
+  // Determinar altura dinâmica baseada na quantidade
+  const containerHeight = isExpanded 
+    ? 'max-h-[400px]' 
+    : locations.length > 15 
+      ? 'max-h-[280px]' 
+      : 'max-h-[200px]';
+
+  const scrollHeight = isExpanded 
+    ? 'h-[340px]' 
+    : locations.length > 15 
+      ? 'h-[220px]' 
+      : 'h-[140px]';
 
   return (
     <div className="space-y-4">
@@ -240,48 +280,119 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
         </TabsContent>
       </Tabs>
 
-      {/* Área de cidades selecionadas */}
-      <div className="border rounded-md p-3 min-h-[120px] max-h-[200px] bg-muted/30">
+      {/* Área de cidades selecionadas - melhorada */}
+      <div className={`border rounded-md p-3 min-h-[120px] ${containerHeight} bg-muted/30 transition-all duration-200`}>
         {locations.length === 0 ? (
           <p className="text-muted-foreground text-sm text-center py-8">
             Nenhuma localização adicionada
           </p>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-muted-foreground">{locations.length} localização(ões)</span>
-              {locations.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    // Remover todas
-                    for (let i = locations.length - 1; i >= 0; i--) {
-                      onRemove(i);
-                    }
-                  }}
-                  className="text-xs text-destructive hover:text-destructive h-6 px-2"
-                >
-                  Limpar todas
-                </Button>
-              )}
-            </div>
-            <ScrollArea className="h-full max-h-[140px]">
-              <div className="flex flex-wrap gap-2">
-                {locations.map((loc, index) => (
-                  <Badge key={index} variant="secondary" className="flex items-center gap-1 py-1.5 px-3 text-sm">
-                    {loc.city}, {loc.state}
-                    <button
-                      type="button"
-                      onClick={() => onRemove(index)}
-                      className="ml-1 hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
+            {/* Header com contador e controles */}
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-border/50">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium">
+                  {locations.length} {locations.length === 1 ? 'cidade' : 'cidades'}
+                </span>
+                {Object.keys(groupedLocations).length > 1 && (
+                  <span className="text-xs text-muted-foreground">
+                    ({Object.keys(groupedLocations).length} estados)
+                  </span>
+                )}
               </div>
+              <div className="flex items-center gap-2">
+                {/* Toggle modo de visualização */}
+                {locations.length > 10 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setViewMode(viewMode === 'badges' ? 'compact' : 'badges')}
+                    className="text-xs h-7 px-2"
+                  >
+                    {viewMode === 'badges' ? 'Compacto' : 'Detalhado'}
+                  </Button>
+                )}
+                {/* Toggle expandir */}
+                {locations.length > 10 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="text-xs h-7 px-2 gap-1"
+                  >
+                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    {isExpanded ? 'Recolher' : 'Expandir'}
+                  </Button>
+                )}
+                {locations.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearAll}
+                    className="text-xs text-destructive hover:text-destructive h-7 px-2"
+                  >
+                    Limpar todas
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <ScrollArea className={scrollHeight}>
+              {viewMode === 'compact' ? (
+                /* Modo compacto - agrupado por estado */
+                <div className="space-y-2">
+                  {Object.entries(groupedLocations).map(([stateKey, cities]) => (
+                    <div 
+                      key={stateKey} 
+                      className="flex items-center justify-between p-2 rounded-md bg-background/50 hover:bg-background/80 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-semibold">
+                          {stateKey}
+                        </Badge>
+                        <span className="text-sm">
+                          {cities.length} {cities.length === 1 ? 'cidade' : 'cidades'}
+                        </span>
+                        <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                          ({cities.slice(0, 3).map(c => c.city).join(', ')}{cities.length > 3 ? '...' : ''})
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveByState(stateKey)}
+                        className="h-7 px-2 text-destructive hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Modo badges - todas as cidades */
+                <div className="flex flex-wrap gap-2">
+                  {locations.map((loc, index) => (
+                    <Badge 
+                      key={`${loc.city}-${loc.state}-${index}`} 
+                      variant="secondary" 
+                      className="flex items-center gap-1 py-1.5 px-3 text-sm"
+                    >
+                      {loc.city}, {loc.state}
+                      <button
+                        type="button"
+                        onClick={() => onRemove(index)}
+                        className="ml-1 hover:text-destructive transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </ScrollArea>
           </>
         )}
