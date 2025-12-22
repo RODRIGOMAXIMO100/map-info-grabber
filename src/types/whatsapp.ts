@@ -33,7 +33,9 @@ export interface WhatsAppConversation {
   site_sent: boolean;
   created_at: string;
   updated_at: string;
-  // New CRM fields
+  // CRM fields
+  is_crm_lead?: boolean;
+  dna_id?: string;
   reminder_at?: string;
   estimated_value?: number;
   custom_tags?: string[];
