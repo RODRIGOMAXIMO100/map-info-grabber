@@ -419,14 +419,14 @@ export default function WhatsAppChat() {
                 key={conv.id}
                 onClick={() => setSelectedConversation(conv)}
                 className={cn(
-                  'p-3 border-b cursor-pointer hover:bg-muted/50 transition-colors',
+                  'px-3 py-2.5 border-b cursor-pointer hover:bg-muted/50 transition-colors',
                   selectedConversation?.id === conv.id && 'bg-muted'
                 )}
               >
-                <div className="flex items-start gap-3">
-                  <div className="relative">
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-shrink-0">
                     <Avatar className="h-10 w-10">
-                      <AvatarFallback>
+                      <AvatarFallback className="text-sm">
                         {conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)}
                       </AvatarFallback>
                     </Avatar>
@@ -434,39 +434,31 @@ export default function WhatsAppChat() {
                       <div 
                         className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
                         style={{ backgroundColor: conv.instance.color }}
-                        title={conv.instance.name}
                       />
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium truncate">
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium truncate text-sm">
                         {conv.name || conv.phone}
                       </span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatTime(conv.last_message_at)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {formatPreview(conv.last_message_preview)}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      {conv.tags?.slice(0, 1).map((tag) => (
-                        <Badge key={tag} variant="secondary" className={cn('text-xs px-1.5 py-0', getLabelColor(tag))}>
-                          {getLabelName(tag)}
-                        </Badge>
-                      ))}
-                      <div className="flex items-center gap-1 ml-auto">
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
                         {conv.ai_paused && (
                           <BotOff className="h-3.5 w-3.5 text-orange-500" />
                         )}
                         {(conv.unread_count ?? 0) > 0 && (
-                          <Badge className="h-5 min-w-5 flex items-center justify-center text-xs">
+                          <Badge className="h-5 min-w-5 flex items-center justify-center text-xs px-1.5">
                             {conv.unread_count}
                           </Badge>
                         )}
+                        <span className="text-xs text-muted-foreground">
+                          {formatTime(conv.last_message_at)}
+                        </span>
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {formatPreview(conv.last_message_preview)}
+                    </p>
                   </div>
                 </div>
               </div>
