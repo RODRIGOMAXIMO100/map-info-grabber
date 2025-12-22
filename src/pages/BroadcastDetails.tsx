@@ -33,6 +33,10 @@ interface QueueItem {
   image_url: string | null;
 }
 
+const DEFAULT_MESSAGE = `Olá, meu nome é Rodrigo, encontrei você [nome da empresa] pelo google e gostaria de apresentar uma solução que pode ajudar seu negócio.
+
+Podemos conversar?`;
+
 export default function BroadcastDetails() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -45,6 +49,7 @@ export default function BroadcastDetails() {
   const [editedMessage, setEditedMessage] = useState('');
   const [editedImageUrl, setEditedImageUrl] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -93,7 +98,7 @@ export default function BroadcastDetails() {
     };
     
     setList(typedData);
-    setEditedMessage(data.message_template || '');
+    setEditedMessage(data.message_template || DEFAULT_MESSAGE);
     setEditedImageUrl(data.image_url || '');
   };
 
@@ -138,6 +143,59 @@ export default function BroadcastDetails() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !list) return;
+
+    // Validate file type
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    
+    if (!isImage && !isVideo) {
+      toast({ title: 'Tipo de arquivo não suportado. Use imagem ou vídeo.', variant: 'destructive' });
+      return;
+    }
+
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast({ title: 'Arquivo muito grande. Máximo 50MB.', variant: 'destructive' });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${list.id}/${Date.now()}.${fileExt}`;
+      
+      const { error } = await supabase.storage
+        .from('broadcast-media')
+        .upload(fileName, file, { upsert: true });
+      
+      if (error) throw error;
+      
+      const { data: urlData } = supabase.storage
+        .from('broadcast-media')
+        .getPublicUrl(fileName);
+      
+      setEditedImageUrl(urlData.publicUrl);
+      toast({ title: 'Mídia enviada com sucesso!' });
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast({ title: 'Erro ao enviar mídia', variant: 'destructive' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const isVideoUrl = (url: string) => {
+    return /\.(mp4|mov|webm|avi|mkv)$/i.test(url);
+  };
+
+  const removeMedia = () => {
+    setEditedImageUrl('');
   };
 
   const startBroadcast = async () => {
@@ -472,27 +530,53 @@ export default function BroadcastDetails() {
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <ImageIcon className="h-4 w-4" />
-                    URL da Imagem (opcional)
+                    Mídia (opcional) - Imagem ou Vídeo
                   </Label>
-                  <Input
-                    value={editedImageUrl}
-                    onChange={(e) => setEditedImageUrl(e.target.value)}
-                    placeholder="https://exemplo.com/imagem.jpg"
-                    disabled={list.status === 'sending'}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept="image/*,video/*"
+                      onChange={handleFileUpload}
+                      disabled={list.status === 'sending' || uploading}
+                      className="flex-1"
+                    />
+                    {uploading && <Loader2 className="h-5 w-5 animate-spin" />}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Formatos aceitos: JPG, PNG, GIF, MP4, MOV, WEBM (máx. 50MB)
+                  </p>
                 </div>
 
                 {editedImageUrl && (
                   <div className="border rounded-lg p-4">
-                    <p className="text-sm text-muted-foreground mb-2">Preview da imagem:</p>
-                    <img 
-                      src={editedImageUrl} 
-                      alt="Preview" 
-                      className="max-w-xs max-h-48 object-contain rounded"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="text-sm text-muted-foreground">Preview da mídia:</p>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={removeMedia}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <XCircle className="h-4 w-4 mr-1" />
+                        Remover
+                      </Button>
+                    </div>
+                    {isVideoUrl(editedImageUrl) ? (
+                      <video 
+                        src={editedImageUrl} 
+                        controls 
+                        className="max-w-xs max-h-48 rounded"
+                      />
+                    ) : (
+                      <img 
+                        src={editedImageUrl} 
+                        alt="Preview" 
+                        className="max-w-xs max-h-48 object-contain rounded"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    )}
                   </div>
                 )}
 
