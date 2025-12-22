@@ -40,8 +40,9 @@ const addInvisibleVariation = (message: string): string => {
 };
 
 // Process spintax: {option1|option2|option3} -> randomly selected option
+// Only matches patterns that contain a pipe (|) to avoid capturing variables like {nome_empresa}
 const processSpintax = (text: string): string => {
-  return text.replace(/\{([^{}]+)\}/g, (match, group) => {
+  return text.replace(/\{([^{}]*\|[^{}]*)\}/g, (match, group) => {
     const options = group.split('|');
     return options[Math.floor(Math.random() * options.length)];
   });
@@ -140,14 +141,14 @@ serve(async (req) => {
         // Process message with all anti-blocking techniques
         let processedMessage = queueItem.message;
         
-        // 1. Process spintax first
-        processedMessage = processSpintax(processedMessage);
-        
-        // 2. Replace variables with lead data
+        // 1. Replace variables FIRST (before spintax, so {nome_empresa} etc are replaced)
         processedMessage = replaceVariables(
           processedMessage, 
           queueItem.lead_data as Record<string, unknown> | null
         );
+        
+        // 2. Process spintax AFTER variables (only matches patterns with pipes like {opt1|opt2})
+        processedMessage = processSpintax(processedMessage);
         
         // 3. Add invisible character variation
         processedMessage = addInvisibleVariation(processedMessage);
