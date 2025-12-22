@@ -20,6 +20,14 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { BroadcastList, LeadData } from '@/types/whatsapp';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Dna } from 'lucide-react';
 
 interface QueueItem {
   id: string;
@@ -31,6 +39,12 @@ interface QueueItem {
   processed_at: string | null;
   created_at: string;
   image_url: string | null;
+}
+
+interface DNA {
+  id: string;
+  name: string;
+  description: string | null;
 }
 
 const DEFAULT_MESSAGE = `Oi! Vi a {nome_empresa} aqui em {cidade} e achei interessante.
@@ -88,6 +102,8 @@ export default function BroadcastDetails() {
   
   const [list, setList] = useState<BroadcastList | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [dnas, setDnas] = useState<DNA[]>([]);
+  const [selectedDnaId, setSelectedDnaId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editedMessage, setEditedMessage] = useState('');
@@ -115,8 +131,18 @@ export default function BroadcastDetails() {
 
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([loadList(), loadQueue()]);
+    await Promise.all([loadList(), loadQueue(), loadDnas()]);
     setLoading(false);
+  };
+
+  const loadDnas = async () => {
+    const { data } = await supabase
+      .from('ai_dnas')
+      .select('id, name, description')
+      .eq('is_active', true)
+      .order('name');
+    
+    setDnas(data || []);
   };
 
   const loadList = async () => {
@@ -144,6 +170,7 @@ export default function BroadcastDetails() {
     setList(typedData);
     setEditedMessage(data.message_template || DEFAULT_MESSAGE);
     setEditedImageUrl(data.image_url || '');
+    setSelectedDnaId((data as { dna_id?: string }).dna_id || '');
   };
 
   const loadQueue = async () => {
@@ -173,6 +200,7 @@ export default function BroadcastDetails() {
         .update({ 
           message_template: editedMessage,
           image_url: editedImageUrl || null,
+          dna_id: selectedDnaId || null,
           updated_at: new Date().toISOString() 
         })
         .eq('id', list.id);
@@ -277,7 +305,7 @@ export default function BroadcastDetails() {
             message: list.message_template!,
             image_url: list.image_url || null,
             status: 'pending' as const,
-            lead_data: leadInfo || null,
+            lead_data: leadInfo ? { ...leadInfo, dna_id: selectedDnaId || null } : { dna_id: selectedDnaId || null },
           };
         });
 
@@ -564,6 +592,41 @@ export default function BroadcastDetails() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* DNA Selector */}
+                {dnas.length > 0 && (
+                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-2">
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <Dna className="h-4 w-4 text-primary" />
+                      DNA do Agente IA
+                    </Label>
+                    <Select
+                      value={selectedDnaId}
+                      onValueChange={setSelectedDnaId}
+                      disabled={list.status === 'sending'}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um DNA (opcional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Nenhum (usar config padrão)</SelectItem>
+                        {dnas.map((dna) => (
+                          <SelectItem key={dna.id} value={dna.id}>
+                            {dna.name}
+                            {dna.description && (
+                              <span className="text-muted-foreground text-xs ml-2">
+                                - {dna.description}
+                              </span>
+                            )}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      O DNA define a persona e comportamento da IA nas respostas automáticas.
+                    </p>
+                  </div>
+                )}
+
                 {/* Available Variables */}
                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                   <Label className="text-sm font-medium">Variáveis Disponíveis</Label>

@@ -16,6 +16,9 @@ import AILogs from "./pages/AILogs";
 import Dashboard from "./pages/Dashboard";
 import Reminders from "./pages/Reminders";
 import AntiBlockConfig from "./pages/AntiBlockConfig";
+import DNAManager from "./pages/DNAManager";
+import DNAEditor from "./pages/DNAEditor";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -37,6 +40,8 @@ const App = () => (
             <Route path="/ai-config" element={<AIConfig />} />
             <Route path="/ai-logs" element={<AILogs />} />
             <Route path="/anti-block" element={<AntiBlockConfig />} />
+            <Route path="/dnas" element={<DNAManager />} />
+            <Route path="/dnas/:id" element={<DNAEditor />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

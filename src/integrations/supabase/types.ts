@@ -14,10 +14,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_dnas: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          offer_description: string | null
+          payment_link: string | null
+          persona_name: string | null
+          site_url: string | null
+          system_prompt: string
+          target_audience: string | null
+          tone: string | null
+          updated_at: string | null
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          offer_description?: string | null
+          payment_link?: string | null
+          persona_name?: string | null
+          site_url?: string | null
+          system_prompt: string
+          target_audience?: string | null
+          tone?: string | null
+          updated_at?: string | null
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          offer_description?: string | null
+          payment_link?: string | null
+          persona_name?: string | null
+          site_url?: string | null
+          system_prompt?: string
+          target_audience?: string | null
+          tone?: string | null
+          updated_at?: string | null
+          video_url?: string | null
+        }
+        Relationships: []
+      }
       broadcast_lists: {
         Row: {
           created_at: string | null
           description: string | null
+          dna_id: string | null
           failed_count: number | null
           id: string
           image_url: string | null
@@ -33,6 +85,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           description?: string | null
+          dna_id?: string | null
           failed_count?: number | null
           id?: string
           image_url?: string | null
@@ -48,6 +101,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           description?: string | null
+          dna_id?: string | null
           failed_count?: number | null
           id?: string
           image_url?: string | null
@@ -60,7 +114,15 @@ export type Database = {
           status?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_lists_dna_id_fkey"
+            columns: ["dna_id"]
+            isOneToOne: false
+            referencedRelation: "ai_dnas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_ai_config: {
         Row: {
@@ -233,6 +295,7 @@ export type Database = {
           converted_at: string | null
           created_at: string | null
           custom_tags: string[] | null
+          dna_id: string | null
           estimated_value: number | null
           followup_count: number | null
           group_name: string | null
@@ -265,6 +328,7 @@ export type Database = {
           converted_at?: string | null
           created_at?: string | null
           custom_tags?: string[] | null
+          dna_id?: string | null
           estimated_value?: number | null
           followup_count?: number | null
           group_name?: string | null
@@ -297,6 +361,7 @@ export type Database = {
           converted_at?: string | null
           created_at?: string | null
           custom_tags?: string[] | null
+          dna_id?: string | null
           estimated_value?: number | null
           followup_count?: number | null
           group_name?: string | null
@@ -326,6 +391,13 @@ export type Database = {
             columns: ["config_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_config"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_conversations_dna_id_fkey"
+            columns: ["dna_id"]
+            isOneToOne: false
+            referencedRelation: "ai_dnas"
             referencedColumns: ["id"]
           },
         ]

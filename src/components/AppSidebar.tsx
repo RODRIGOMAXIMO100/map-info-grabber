@@ -11,6 +11,7 @@ import {
   ScrollText,
   Bell,
   Shield,
+  Dna,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,6 +40,7 @@ const menuItems = [
 ];
 
 const configItems = [
+  { title: "DNAs", url: "/dnas", icon: Dna },
   { title: "Agente IA", url: "/ai-config", icon: Bot },
   { title: "Logs IA", url: "/ai-logs", icon: ScrollText },
   { title: "WhatsApp", url: "/whatsapp/config", icon: Settings },
