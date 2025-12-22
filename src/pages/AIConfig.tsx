@@ -25,8 +25,6 @@ export default function AIConfig() {
     video_url: '',
     payment_link: '',
     site_url: '',
-    working_hours_start: '08:00',
-    working_hours_end: '22:00',
     auto_reply_delay_seconds: 5,
   });
 
@@ -51,8 +49,6 @@ export default function AIConfig() {
           video_url: data.video_url || '',
           payment_link: data.payment_link || '',
           site_url: data.site_url || '',
-          working_hours_start: data.working_hours_start || '08:00',
-          working_hours_end: data.working_hours_end || '22:00',
           auto_reply_delay_seconds: data.auto_reply_delay_seconds || 5,
         });
       }
@@ -75,8 +71,6 @@ export default function AIConfig() {
             video_url: config.video_url || null,
             payment_link: config.payment_link || null,
             site_url: config.site_url || null,
-            working_hours_start: config.working_hours_start,
-            working_hours_end: config.working_hours_end,
             auto_reply_delay_seconds: config.auto_reply_delay_seconds,
             updated_at: new Date().toISOString(),
           })
@@ -92,8 +86,6 @@ export default function AIConfig() {
             video_url: config.video_url || null,
             payment_link: config.payment_link || null,
             site_url: config.site_url || null,
-            working_hours_start: config.working_hours_start,
-            working_hours_end: config.working_hours_end,
             auto_reply_delay_seconds: config.auto_reply_delay_seconds,
           })
           .select()
@@ -236,47 +228,29 @@ export default function AIConfig() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5" />
-              Configurações de Tempo
+              Delay de Resposta
             </CardTitle>
+            <CardDescription>
+              Quando ativo, o agente funciona 24 horas por dia
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Horário de Início</Label>
-                <Input
-                  type="time"
-                  value={config.working_hours_start}
-                  onChange={(e) => setConfig(prev => ({ ...prev, working_hours_start: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Horário de Término</Label>
-                <Input
-                  type="time"
-                  value={config.working_hours_end}
-                  onChange={(e) => setConfig(prev => ({ ...prev, working_hours_end: e.target.value }))}
-                />
-              </div>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Tempo de espera</Label>
+              <span className="text-sm text-muted-foreground">
+                {config.auto_reply_delay_seconds} segundos
+              </span>
             </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Delay de Resposta</Label>
-                <span className="text-sm text-muted-foreground">
-                  {config.auto_reply_delay_seconds} segundos
-                </span>
-              </div>
-              <Slider
-                value={[config.auto_reply_delay_seconds || 5]}
-                onValueChange={([value]) => setConfig(prev => ({ ...prev, auto_reply_delay_seconds: value }))}
-                min={1}
-                max={30}
-                step={1}
-              />
-              <p className="text-xs text-muted-foreground">
-                Tempo de espera antes de enviar a resposta automática
-              </p>
-            </div>
+            <Slider
+              value={[config.auto_reply_delay_seconds || 5]}
+              onValueChange={([value]) => setConfig(prev => ({ ...prev, auto_reply_delay_seconds: value }))}
+              min={1}
+              max={30}
+              step={1}
+            />
+            <p className="text-xs text-muted-foreground">
+              Tempo de espera antes de enviar a resposta automática
+            </p>
           </CardContent>
         </Card>
 
