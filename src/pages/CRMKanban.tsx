@@ -36,13 +36,47 @@ export default function CRMKanban() {
 
   const loadConversations = async () => {
     try {
-      const { data, error } = await supabase
+      // 1. Buscar telefones da fila de disparos
+      const { data: queuePhones } = await supabase
+        .from('whatsapp_queue')
+        .select('phone');
+
+      // 2. Buscar lead_data das broadcast_lists
+      const { data: lists } = await supabase
+        .from('broadcast_lists')
+        .select('lead_data, phones');
+
+      // 3. Extrair todos os telefones de broadcast
+      const broadcastPhones = new Set<string>();
+      
+      // Telefones da queue
+      queuePhones?.forEach(q => broadcastPhones.add(q.phone));
+      
+      // Telefones das listas (lead_data e phones)
+      lists?.forEach(list => {
+        // lead_data é um array de objetos com phone
+        const leadData = list.lead_data as Array<{ phone?: string }> | null;
+        leadData?.forEach(lead => {
+          if (lead.phone) broadcastPhones.add(lead.phone);
+        });
+        // phones é um array direto de telefones
+        list.phones?.forEach(phone => broadcastPhones.add(phone));
+      });
+
+      // 4. Buscar todas as conversas
+      const { data: allConversations, error } = await supabase
         .from('whatsapp_conversations')
         .select('*')
         .order('last_message_at', { ascending: false });
 
       if (error) throw error;
-      setConversations(data || []);
+
+      // 5. Filtrar apenas conversas com números de broadcast
+      const filtered = allConversations?.filter(conv => 
+        broadcastPhones.has(conv.phone)
+      ) || [];
+
+      setConversations(filtered);
     } catch (error) {
       console.error('Error loading conversations:', error);
     } finally {
