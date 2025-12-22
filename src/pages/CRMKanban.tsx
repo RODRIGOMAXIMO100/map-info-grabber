@@ -268,6 +268,15 @@ export default function CRMKanban() {
             {formatTime(conv.last_message_at)}
           </span>
         </div>
+        
+        {/* AI Summary / Handoff Reason */}
+        {conv.ai_handoff_reason && (
+          <div className="mt-2 p-2 rounded text-xs bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800">
+            <p className="text-orange-700 dark:text-orange-300 line-clamp-3 whitespace-pre-line">
+              {conv.ai_handoff_reason}
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

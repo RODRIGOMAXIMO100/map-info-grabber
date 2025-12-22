@@ -124,8 +124,16 @@ async function processAIResponse(
         
         if (aiResult.should_handoff || aiResult.label_id === HANDOFF_LABEL) {
           updateData.ai_paused = true;
-          updateData.ai_handoff_reason = aiResult.handoff_reason || 'Lead qualificado para vendedor';
+          
+          // Build complete handoff reason with conversation summary
+          let handoffInfo = `⚠️ ${aiResult.handoff_reason || 'Lead qualificado para vendedor'}`;
+          if (aiResult.conversation_summary) {
+            handoffInfo += `\n\n${aiResult.conversation_summary}`;
+          }
+          updateData.ai_handoff_reason = handoffInfo;
+          
           console.log('[AI] Handoff triggered:', aiResult.handoff_reason);
+          console.log('[AI] Conversation summary:', aiResult.conversation_summary);
         }
         
         await supabase
