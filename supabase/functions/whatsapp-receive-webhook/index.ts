@@ -574,10 +574,10 @@ serve(async (req) => {
       totalBroadcastPhones: broadcastPhones.size 
     });
 
-    // Processa IA para TODOS os leads (removido filtro isFromBroadcast)
+    // IA só responde para leads que vieram do broadcast (funil)
     const hasValidContent = typeof messageContent === 'string' && messageContent.trim().length > 0;
     
-    if (!isFromMe && !isGroup && hasValidContent && isInAIControlledStage && !aiPaused) {
+    if (!isFromMe && !isGroup && hasValidContent && isInAIControlledStage && !aiPaused && isFromBroadcast) {
       console.log('[AI] Triggering background AI processing for conversation:', conversationId);
       
       processAIResponse(
@@ -595,7 +595,8 @@ serve(async (req) => {
         isGroup, 
         hasValidContent, 
         isInAIControlledStage, 
-        aiPaused
+        aiPaused,
+        isFromBroadcast
       });
     }
 
