@@ -21,9 +21,16 @@ type SearchSource = 'maps' | 'instagram' | 'both';
 export default function Index() {
   const [keyword, setKeyword] = useState('');
   const [locations, setLocations] = useState<Location[]>([]);
-  const [maxResults, setMaxResults] = useState(20);
+  const [maxResultsPerCity, setMaxResultsPerCity] = useState(20);
+  const [totalMaxResults, setTotalMaxResults] = useState(100);
   const [searchSource, setSearchSource] = useState<SearchSource>('both');
   const [filterWhatsAppOnly, setFilterWhatsAppOnly] = useState(false);
+
+  // Estimate total leads
+  const estimatedLeads = useMemo(() => {
+    const sources = searchSource === 'both' ? 2 : 1;
+    return locations.length * maxResultsPerCity * sources;
+  }, [locations.length, maxResultsPerCity, searchSource]);
   
   const { search: searchMaps, cancel: cancelMaps, results: mapsResults, isLoading: mapsLoading, error: mapsError, progress: mapsProgress } = useBusinessSearch();
   const { search: searchInstagram, scrapeProfiles, results: instagramResults, isLoading: instagramLoading, isScraping, error: instagramError, progress: instagramProgress } = useInstagramSearch();
@@ -118,15 +125,15 @@ export default function Index() {
       return;
     }
     
-    // Search based on selected sources
+    // Search based on selected sources with total limit
     const promises: Promise<void>[] = [];
     
     if (searchSource === 'maps' || searchSource === 'both') {
-      promises.push(searchMaps(keyword, locations, maxResults));
+      promises.push(searchMaps(keyword, locations, maxResultsPerCity, totalMaxResults));
     }
     
     if (searchSource === 'instagram' || searchSource === 'both') {
-      promises.push(searchInstagram(keyword, locations, maxResults));
+      promises.push(searchInstagram(keyword, locations, maxResultsPerCity, totalMaxResults));
     }
     
     await Promise.all(promises);
@@ -228,19 +235,32 @@ export default function Index() {
                 />
               </div>
 
-              <div className="flex items-center gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Quantidade por cidade</label>
+                  <label className="text-sm font-medium mb-2 block">Por cidade</label>
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
                       min={1}
                       max={200}
-                      value={maxResults}
-                      onChange={(e) => setMaxResults(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
-                      className="w-24"
+                      value={maxResultsPerCity}
+                      onChange={(e) => setMaxResultsPerCity(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
+                      className="w-full"
                     />
-                    <span className="text-sm text-muted-foreground">(máx. 200)</span>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Limite total</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10000}
+                      value={totalMaxResults}
+                      onChange={(e) => setTotalMaxResults(Math.max(1, Math.min(10000, Number(e.target.value) || 100)))}
+                      className="w-full"
+                    />
                   </div>
                 </div>
                 
@@ -255,6 +275,19 @@ export default function Index() {
                   </Label>
                 </div>
               </div>
+
+              {/* Estimation */}
+              {locations.length > 0 && (
+                <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3 flex items-center gap-2">
+                  <Database className="h-4 w-4" />
+                  <span>
+                    Estimativa: {locations.length} cidade{locations.length !== 1 ? 's' : ''} × {maxResultsPerCity} = ~{estimatedLeads.toLocaleString()} leads
+                    {estimatedLeads > totalMaxResults && (
+                      <span className="text-primary font-medium"> (limitado a {totalMaxResults.toLocaleString()})</span>
+                    )}
+                  </span>
+                </div>
+              )}
 
               <div className="flex gap-2 pt-2">
                 <Button type="submit" disabled={isLoading} className="flex-1">

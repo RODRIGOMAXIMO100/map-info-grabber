@@ -59,7 +59,7 @@ export function useBusinessSearch() {
   const [progress, setProgress] = useState<Progress>({ current: 0, total: 0, currentCity: '' });
   const abortController = useRef<AbortController | null>(null);
 
-  const search = async (keyword: string, locations: Location[], maxResults: number = 20) => {
+  const search = async (keyword: string, locations: Location[], maxResultsPerCity: number = 20, totalMax: number = 100) => {
     setIsLoading(true);
     setError(null);
     setResults([]);
@@ -74,7 +74,7 @@ export function useBusinessSearch() {
 
       // Check cache for each location in parallel
       const cacheChecks = locations.map(async (location) => {
-        const cacheKey = generateCacheKey(keyword, location.city, location.state, maxResults);
+        const cacheKey = generateCacheKey(keyword, location.city, location.state, maxResultsPerCity);
         
         const { data: cached } = await supabase
           .from('search_cache')
@@ -91,11 +91,20 @@ export function useBusinessSearch() {
 
       const cacheResults = await Promise.all(cacheChecks);
       
-      // Separate cached and non-cached
+      // Separate cached and non-cached, respecting total limit
       for (const { location, cached, cacheKey } of cacheResults) {
+        // Early exit if we've reached the total limit
+        if (allResults.length >= totalMax) {
+          console.log(`Limite total atingido: ${allResults.length}/${totalMax}`);
+          break;
+        }
+        
         if (cached) {
           console.log(`Cache hit for ${location.city}, ${location.state}`);
-          allResults.push(...(cached as unknown as Business[]));
+          // Only add results up to the limit
+          const remaining = totalMax - allResults.length;
+          const resultsToAdd = (cached as unknown as Business[]).slice(0, remaining);
+          allResults.push(...resultsToAdd);
         } else {
           tasksToFetch.push({ location, cacheKey });
         }
@@ -103,7 +112,14 @@ export function useBusinessSearch() {
 
       // Update results with cached data immediately
       if (allResults.length > 0) {
-        setResults(allResults);
+        setResults(allResults.slice(0, totalMax));
+      }
+      
+      // Skip fetching if we already have enough results
+      if (allResults.length >= totalMax) {
+        console.log(`Limite atingido com cache. Total: ${allResults.length}`);
+        setResults(allResults.slice(0, totalMax));
+        return;
       }
 
       // Fetch non-cached locations in parallel with concurrency limit
@@ -115,13 +131,18 @@ export function useBusinessSearch() {
         });
 
         const fetchTasks = tasksToFetch.map(({ location, cacheKey }) => async () => {
+          // Early exit check before starting request
+          if (allResults.length >= totalMax) {
+            return [];
+          }
+          
           setProgress(prev => ({ 
             ...prev, 
             currentCity: `${location.city}, ${location.state}` 
           }));
 
           const { data, error: fnError } = await supabase.functions.invoke<SearchResult>('search-businesses', {
-            body: { keyword, locations: [location], maxResults },
+            body: { keyword, locations: [location], maxResults: maxResultsPerCity },
           });
 
           if (fnError) {
@@ -159,15 +180,20 @@ export function useBusinessSearch() {
           }
         );
 
-        // Add fetched results
+        // Add fetched results, respecting total limit
         for (const cityResults of fetchedResults) {
-          allResults.push(...cityResults);
+          if (allResults.length >= totalMax) break;
+          
+          const remaining = totalMax - allResults.length;
+          const resultsToAdd = cityResults.slice(0, remaining);
+          allResults.push(...resultsToAdd);
           // Update results progressively
           setResults([...allResults]);
         }
       }
 
-      setResults(allResults);
+      // Final results, truncated to limit
+      setResults(allResults.slice(0, totalMax));
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         console.log('Search cancelled');
