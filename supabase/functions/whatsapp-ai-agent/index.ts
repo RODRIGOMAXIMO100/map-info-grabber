@@ -36,6 +36,13 @@ const SDR_SYSTEM_PROMPT = `Você é o SDR (Sales Development Representative) da 
 - Cases com grandes indústrias do Brasil
 - Metodologia OCRC exclusiva (Onde, Como, Recursos, Controle)
 
+## COLETA DE NOME (IMPORTANTE!)
+- Na PRIMEIRA interação, pergunte o nome do lead de forma natural
+- Exemplos: "Antes de continuar, com quem estou falando?" ou "Qual seu nome pra eu te chamar?"
+- Se o lead disser o nome, use-o nas próximas mensagens
+- Se ele não quiser dar o nome, continue normalmente sem insistir
+- SEMPRE que souber o nome, inclua na resposta JSON: "lead_name": "Nome do Lead"
+
 ## REGRAS SOBRE PREÇOS E VALORES (CRÍTICO!)
 - NUNCA revele preços, valores, tickets, investimentos ou custos
 - NUNCA diga "a partir de", "em média", "geralmente custa" ou qualquer indicação de valor
@@ -101,8 +108,9 @@ const SDR_SYSTEM_PROMPT = `Você é o SDR (Sales Development Representative) da 
 - Respostas objetivas mas completas (max 400 caracteres)
 
 ## EXEMPLOS DE ABORDAGEM
-- "Olá! Sou da Vijay, especialistas em estruturação comercial para indústrias 🏭 Vocês estão com algum desafio específico na área de vendas?"
-- "Interessante! Com o método OCRC, já ajudamos indústrias a aumentar vendas em até 40%. Qual é o principal gargalo do comercial de vocês hoje?"
+- "Olá! Sou da Vijay, especialistas em estruturação comercial para indústrias 🏭 Com quem estou falando?"
+- "Prazer, [Nome]! Vocês estão com algum desafio específico na área de vendas?"
+- "Interessante, [Nome]! Com o método OCRC, já ajudamos indústrias a aumentar vendas em até 40%. Qual é o principal gargalo do comercial de vocês hoje?"
 - "Entendi! Isso é muito comum em indústrias desse porte. Posso te mostrar um case parecido que resolvemos?"
 
 ## TRATAMENTO DE MÍDIA
@@ -181,6 +189,7 @@ RESPONDA EM JSON COM ESTE FORMATO EXATO:
 {
   "response": "sua resposta aqui (max 400 chars)",
   "stage": "STAGE_1" ou "STAGE_2" ou "STAGE_3" ou "STAGE_4" ou "STAGE_5",
+  "lead_name": "nome do lead se identificado, ou null",
   "should_send_video": true/false,
   "should_send_site": true/false,
   "should_handoff": true/false,
@@ -204,6 +213,7 @@ ${historyMessages.slice(0, -1).map((m: { role: string; content: string }) => `${
 Última mensagem do lead: "${incoming_message}"
 
 IMPORTANTE: 
+- Se o lead disser o nome dele, extraia e coloque em "lead_name"
 - Se detectar mídia (PDF, áudio, vídeo), agradeça e continue
 - Não avance mais que 1 estágio por mensagem
 - Se should_handoff=true, defina stage=STAGE_5
@@ -300,6 +310,7 @@ IMPORTANTE:
         response: parsedResponse.response,
         stage: finalStage,
         label_id: labelId,
+        lead_name: parsedResponse.lead_name || null,
         should_send_video: shouldSendVideo,
         should_send_site: shouldSendSite,
         should_handoff: needsHuman,
