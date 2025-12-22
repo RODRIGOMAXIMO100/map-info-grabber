@@ -9,6 +9,7 @@ import {
   Bot,
   Settings,
   ScrollText,
+  Bell,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,6 +34,7 @@ const menuItems = [
   { title: "Broadcast", url: "/whatsapp/broadcast", icon: Send },
   { title: "Chat", url: "/whatsapp/chat", icon: MessageSquare },
   { title: "CRM", url: "/crm", icon: Users },
+  { title: "Lembretes", url: "/lembretes", icon: Bell },
 ];
 
 const configItems = [
@@ -46,6 +48,7 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const location = useLocation();
   const [handoffCount, setHandoffCount] = useState(0);
+  const [reminderCount, setReminderCount] = useState(0);
   const [aiActive, setAiActive] = useState(false);
 
   useEffect(() => {
@@ -68,12 +71,23 @@ export function AppSidebar() {
 
   const loadAlerts = async () => {
     // Contar handoffs pendentes
-    const { count } = await supabase
+    const { count: handoffs } = await supabase
       .from('whatsapp_conversations')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'handoff');
     
-    setHandoffCount(count || 0);
+    setHandoffCount(handoffs || 0);
+
+    // Contar lembretes vencidos ou de hoje
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const { count: reminders } = await supabase
+      .from('whatsapp_conversations')
+      .select('*', { count: 'exact', head: true })
+      .not('reminder_at', 'is', null)
+      .lte('reminder_at', today.toISOString());
+    
+    setReminderCount(reminders || 0);
 
     // Status da IA
     const { data: aiConfig } = await supabase
@@ -129,6 +143,11 @@ export function AppSidebar() {
                       {!collapsed && item.url === "/crm" && handoffCount > 0 && (
                         <Badge variant="destructive" className="ml-auto text-xs">
                           {handoffCount}
+                        </Badge>
+                      )}
+                      {!collapsed && item.url === "/lembretes" && reminderCount > 0 && (
+                        <Badge variant="outline" className="ml-auto text-xs border-yellow-500 text-yellow-600">
+                          {reminderCount}
                         </Badge>
                       )}
                     </NavLink>

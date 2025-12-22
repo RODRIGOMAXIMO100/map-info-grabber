@@ -15,7 +15,6 @@ import {
   ReminderModal,
   TagModal,
   ValueModal,
-  RemindersPanel,
   type PeriodFilter,
   type AIStatusFilter,
   type UrgencyFilter,
@@ -396,16 +395,6 @@ export default function CRMKanban() {
 
         {/* Metrics Bar */}
         <CRMMetricsBar conversations={conversations} />
-
-        {/* Reminders Panel */}
-        <RemindersPanel
-          conversations={conversations}
-          onLeadClick={(lead) => {
-            setSelectedLead(lead);
-            setSheetOpen(true);
-          }}
-          onRemoveReminder={handleRemoveReminder}
-        />
 
         {/* Filters */}
         <CRMFilters
