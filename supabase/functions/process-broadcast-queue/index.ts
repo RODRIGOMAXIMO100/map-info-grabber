@@ -350,6 +350,30 @@ serve(async (req) => {
         continue;
       }
 
+      // ============= DUPLICATE CHECK =============
+      // Check if this phone already received a message from this broadcast in the last 24 hours
+      if (queueItem.broadcast_list_id) {
+        const { data: existingSent } = await supabase
+          .from('whatsapp_queue')
+          .select('id')
+          .eq('phone', queueItem.phone)
+          .eq('broadcast_list_id', queueItem.broadcast_list_id)
+          .eq('status', 'sent')
+          .neq('id', queueItem.id)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingSent) {
+          console.log(`[Broadcast] Skipping duplicate: phone ${queueItem.phone} already received message from broadcast ${queueItem.broadcast_list_id}`);
+          await supabase
+            .from('whatsapp_queue')
+            .update({ status: 'failed', error_message: 'Duplicata: já enviado para este número neste broadcast' })
+            .eq('id', queueItem.id);
+          continue;
+        }
+      }
+      // ============= END DUPLICATE CHECK =============
+
       // Round-robin: select config
       const selectedConfig = availableConfigs[configIndex % availableConfigs.length];
       configIndex++;
