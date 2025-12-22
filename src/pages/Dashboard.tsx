@@ -86,9 +86,24 @@ export default function Dashboard() {
 
   const loadDashboardData = async () => {
     try {
-      // Função para normalizar telefone (remover tudo exceto dígitos)
+      // Função para normalizar telefone brasileiro (lidar com variações de formato)
       const normalizePhone = (phone: string): string => {
-        return phone.replace(/\D/g, '');
+        // Remove tudo que não é dígito
+        let digits = phone.replace(/\D/g, '');
+        
+        // Se começa com 55 e tem mais de 11 dígitos, remove o 55 (código do Brasil)
+        if (digits.startsWith('55') && digits.length > 11) {
+          digits = digits.substring(2);
+        }
+        
+        // Se tem mais de 11 dígitos ainda, pega os últimos 11 (DDD + 9 dígitos)
+        if (digits.length > 11) {
+          digits = digits.slice(-11);
+        }
+        
+        // Se tem 11 dígitos com 9 na frente do número (celular), mantém
+        // Se tem 10 dígitos (fixo), mantém também
+        return digits;
       };
 
       // Buscar telefones válidos (do broadcast)
