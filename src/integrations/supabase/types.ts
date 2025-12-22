@@ -200,7 +200,10 @@ export type Database = {
           ai_pending_at: string | null
           avatar_url: string | null
           config_id: string | null
+          converted_at: string | null
           created_at: string | null
+          custom_tags: string[] | null
+          estimated_value: number | null
           followup_count: number | null
           group_name: string | null
           id: string
@@ -211,8 +214,11 @@ export type Database = {
           last_message_preview: string | null
           muted_until: string | null
           name: string | null
+          next_action: string | null
+          notes: string | null
           phone: string
           pinned: boolean | null
+          reminder_at: string | null
           site_sent: boolean | null
           status: string
           tags: string[] | null
@@ -226,7 +232,10 @@ export type Database = {
           ai_pending_at?: string | null
           avatar_url?: string | null
           config_id?: string | null
+          converted_at?: string | null
           created_at?: string | null
+          custom_tags?: string[] | null
+          estimated_value?: number | null
           followup_count?: number | null
           group_name?: string | null
           id?: string
@@ -237,8 +246,11 @@ export type Database = {
           last_message_preview?: string | null
           muted_until?: string | null
           name?: string | null
+          next_action?: string | null
+          notes?: string | null
           phone: string
           pinned?: boolean | null
+          reminder_at?: string | null
           site_sent?: boolean | null
           status?: string
           tags?: string[] | null
@@ -252,7 +264,10 @@ export type Database = {
           ai_pending_at?: string | null
           avatar_url?: string | null
           config_id?: string | null
+          converted_at?: string | null
           created_at?: string | null
+          custom_tags?: string[] | null
+          estimated_value?: number | null
           followup_count?: number | null
           group_name?: string | null
           id?: string
@@ -263,8 +278,11 @@ export type Database = {
           last_message_preview?: string | null
           muted_until?: string | null
           name?: string | null
+          next_action?: string | null
+          notes?: string | null
           phone?: string
           pinned?: boolean | null
+          reminder_at?: string | null
           site_sent?: boolean | null
           status?: string
           tags?: string[] | null

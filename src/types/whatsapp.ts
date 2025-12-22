@@ -33,6 +33,13 @@ export interface WhatsAppConversation {
   site_sent: boolean;
   created_at: string;
   updated_at: string;
+  // New CRM fields
+  reminder_at?: string;
+  estimated_value?: number;
+  custom_tags?: string[];
+  notes?: string;
+  next_action?: string;
+  converted_at?: string;
 }
 
 export interface WhatsAppMessage {
