@@ -33,9 +33,7 @@ interface QueueItem {
   image_url: string | null;
 }
 
-const DEFAULT_MESSAGE = `Olá, encontrei a {nome_empresa} pelo Google aqui em {cidade}.
-
-Vi que vocês têm avaliação {rating} ⭐ - parabéns pelo trabalho!
+const DEFAULT_MESSAGE = `Oi! Vi a {nome_empresa} aqui em {cidade} e achei interessante.
 
 Posso te fazer uma pergunta rápida?`;
 
