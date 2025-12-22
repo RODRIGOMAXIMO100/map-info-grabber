@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Settings, MessageSquare, Users, Bot, Send } from 'lucide-react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -89,25 +88,6 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted/30 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* Navigation */}
-        <div className="flex flex-wrap gap-2 justify-center">
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/whatsapp/config"><Settings className="h-4 w-4 mr-1" /> Config WhatsApp</Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/whatsapp/chat"><MessageSquare className="h-4 w-4 mr-1" /> Chat</Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/whatsapp/broadcast"><Send className="h-4 w-4 mr-1" /> Disparos</Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/crm"><Users className="h-4 w-4 mr-1" /> CRM</Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/ai-config"><Bot className="h-4 w-4 mr-1" /> Config IA</Link>
-          </Button>
-        </div>
-
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 text-primary">
             <MapPin className="h-8 w-8" />
