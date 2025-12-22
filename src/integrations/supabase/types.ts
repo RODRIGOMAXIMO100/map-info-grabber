@@ -657,6 +657,7 @@ export type Database = {
           processed_at: string | null
           schedule_id: string | null
           status: string
+          updated_at: string | null
         }
         Insert: {
           attempts?: number | null
@@ -672,6 +673,7 @@ export type Database = {
           processed_at?: string | null
           schedule_id?: string | null
           status?: string
+          updated_at?: string | null
         }
         Update: {
           attempts?: number | null
@@ -687,6 +689,7 @@ export type Database = {
           processed_at?: string | null
           schedule_id?: string | null
           status?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -768,6 +771,7 @@ export type Database = {
           processed_at: string | null
           schedule_id: string | null
           status: string
+          updated_at: string | null
         }[]
         SetofOptions: {
           from: "*"
