@@ -16,8 +16,26 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const payload = await req.json();
-    console.log('Webhook received:', JSON.stringify(payload, null, 2));
+    const rawBody = await req.text();
+    console.log('=== WEBHOOK RAW BODY ===');
+    console.log(rawBody);
+    
+    let payload;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (parseError) {
+      console.error('Failed to parse JSON:', parseError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid JSON' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log('=== WEBHOOK PARSED ===');
+    console.log('Event type:', payload.event);
+    console.log('Has messages:', !!payload.messages);
+    console.log('Has data:', !!payload.data);
+    console.log('Has chat:', !!payload.chat);
 
     // Extract message data from UAZAPI format
     let messageData = null;

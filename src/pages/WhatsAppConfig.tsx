@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, TestTube, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Save, TestTube, Loader2, CheckCircle, XCircle, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,9 @@ export default function WhatsAppConfig() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
+  const [copied, setCopied] = useState(false);
+  
+  const webhookUrl = `https://vorehtfxwvsbbivnskeq.supabase.co/functions/v1/whatsapp-receive-webhook`;
   
   const [config, setConfig] = useState({
     id: '',
@@ -130,23 +133,41 @@ export default function WhatsAppConfig() {
 
     try {
       const serverUrl = config.server_url.replace(/\/$/, '');
-      const response = await fetch(`${serverUrl}/instance/info`, {
-        method: 'GET',
-        headers: {
-          'token': config.instance_token,
-        },
-      });
+      
+      // Try multiple UAZAPI endpoints for compatibility
+      const endpoints = ['/status', '/session/status', '/instance/status'];
+      let success = false;
+      
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(`${serverUrl}${endpoint}`, {
+            method: 'GET',
+            headers: {
+              'token': config.instance_token,
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (response.ok) {
+            success = true;
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
 
-      if (response.ok) {
+      if (success) {
         setTestResult('success');
         toast({
           title: 'Conexão bem-sucedida!',
           description: 'O WhatsApp está conectado e funcionando.',
         });
       } else {
-        throw new Error('Falha na conexão');
+        throw new Error('Nenhum endpoint respondeu');
       }
     } catch (error) {
+      console.error('Test connection error:', error);
       setTestResult('error');
       toast({
         title: 'Falha na conexão',
@@ -156,6 +177,16 @@ export default function WhatsAppConfig() {
     } finally {
       setTesting(false);
     }
+  };
+
+  const copyWebhookUrl = async () => {
+    await navigator.clipboard.writeText(webhookUrl);
+    setCopied(true);
+    toast({
+      title: 'URL copiada!',
+      description: 'Cole esta URL no painel da UAZAPI.',
+    });
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (loading) {
@@ -178,6 +209,30 @@ export default function WhatsAppConfig() {
             <p className="text-muted-foreground">Configure a integração com UAZAPI</p>
           </div>
         </div>
+
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader>
+            <CardTitle>Webhook URL</CardTitle>
+            <CardDescription>
+              Configure esta URL no painel da UAZAPI para receber mensagens.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={webhookUrl}
+                className="font-mono text-sm bg-background"
+              />
+              <Button variant="outline" size="icon" onClick={copyWebhookUrl}>
+                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              ⚠️ Cole esta URL no campo de Webhook do painel UAZAPI para receber mensagens.
+            </p>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
