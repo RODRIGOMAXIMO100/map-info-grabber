@@ -11,6 +11,34 @@ const FUNNEL_LABELS = ['16', '13', '14', '20'];
 const HANDOFF_LABEL = '21';
 const INITIAL_STAGE = '16'; // Lead Novo
 
+// Check if phone is from a broadcast (replied to a sent message)
+async function isFromBroadcast(supabase: any, phone: string): Promise<boolean> {
+  const normalizedPhone = phone.replace(/\D/g, '');
+  
+  // Check whatsapp_queue for sent messages to this phone
+  const { data: queueItems, error } = await supabase
+    .from('whatsapp_queue')
+    .select('id, phone')
+    .in('status', ['sent', 'delivered', 'processing'])
+    .limit(1000);
+
+  if (error) {
+    console.error('[Broadcast Check] Error:', error);
+    return false;
+  }
+
+  // Check if any queue item matches this phone (normalized comparison)
+  const isMatch = (queueItems || []).some((item: any) => {
+    const queuePhone = (item.phone || '').replace(/\D/g, '');
+    return queuePhone === normalizedPhone || 
+           queuePhone.endsWith(normalizedPhone) || 
+           normalizedPhone.endsWith(queuePhone);
+  });
+
+  console.log(`[Broadcast Check] Phone ${normalizedPhone}: ${isMatch ? 'FOUND in broadcast' : 'NOT from broadcast'}`);
+  return isMatch;
+}
+
 // Process AI response in background
 async function processAIResponse(
   supabaseUrl: string,
@@ -454,10 +482,16 @@ serve(async (req) => {
         .update(updateData)
         .eq('id', conversationId);
     } else {
-      // NOVA CONVERSA: Automaticamente marca como lead e coloca no funil
+      // NOVA CONVERSA: Verificar se é do broadcast antes de ativar como lead
       console.log(`[Conversation] Creating new conversation for ${senderPhone}`);
       
-      conversationTags = [INITIAL_STAGE]; // Lead Novo - toda nova conversa entra no funil
+      const fromBroadcast = await isFromBroadcast(supabase, senderPhone);
+      
+      // Só marca como lead se veio do broadcast
+      const shouldBeLeadValue = fromBroadcast;
+      conversationTags = fromBroadcast ? [INITIAL_STAGE] : [];
+      
+      console.log(`[Conversation] From broadcast: ${fromBroadcast}, will be lead: ${shouldBeLeadValue}`);
       
       const { data: newConv, error: createError } = await supabase
         .from('whatsapp_conversations')
@@ -466,7 +500,7 @@ serve(async (req) => {
           name: isGroup ? 'Grupo' : (senderName || null),
           is_group: isGroup,
           tags: conversationTags,
-          is_crm_lead: true, // Toda conversa é lead automaticamente
+          is_crm_lead: shouldBeLeadValue, // Só é lead se veio do broadcast
           last_message_at: new Date().toISOString(),
           last_message_preview: isFromMe ? `Você: ${messagePreview}` : messagePreview,
           last_lead_message_at: isFromMe ? null : new Date().toISOString(),
@@ -482,7 +516,7 @@ serve(async (req) => {
       conversationId = newConv.id;
       existingConfigId = configId;
       
-      console.log(`[Conversation] Created: ${conversationId} with tags=${conversationTags}`);
+      console.log(`[Conversation] Created: ${conversationId}, is_crm_lead=${shouldBeLeadValue}, tags=${conversationTags}`);
     }
 
     // === AUTO BLACKLIST: Detect opt-out keywords ===
@@ -557,14 +591,25 @@ serve(async (req) => {
         status: isFromMe ? 'sent' : 'received'
       });
 
-    // ========== SIMPLIFIED AI LOGIC ==========
-    // IA responde se:
-    // 1. Não é mensagem própria
-    // 2. Não é grupo
-    // 3. Não está pausado
-    // 4. Não está na blacklist
-    // 5. Tem conteúdo válido
+    // ========== OPTION B: AI RESPONDS ONLY TO LEADS ==========
+    // IA responde APENAS se:
+    // 1. is_crm_lead = true (veio do broadcast OU ativado manualmente)
+    // 2. Não é mensagem própria
+    // 3. Não é grupo
+    // 4. Não está pausado
+    // 5. Não está na blacklist
+    // 6. Tem conteúdo válido
+    
     const hasValidContent = typeof messageContent === 'string' && messageContent.trim().length > 0;
+    
+    // Buscar is_crm_lead atualizado
+    const { data: convCheck } = await supabase
+      .from('whatsapp_conversations')
+      .select('is_crm_lead')
+      .eq('id', conversationId)
+      .single();
+    
+    const isCrmLead = convCheck?.is_crm_lead === true;
 
     console.log('[AI] Decision check:', { 
       isFromMe, 
@@ -572,20 +617,22 @@ serve(async (req) => {
       aiPaused, 
       isBlacklisted,
       hasValidContent,
+      isCrmLead,
       tags: conversationTags
     });
 
-    if (!isFromMe && !isGroup && !aiPaused && !isBlacklisted && hasValidContent) {
+    // DECISÃO: IA só responde se for lead (broadcast ou manual)
+    if (!isFromMe && !isGroup && !aiPaused && !isBlacklisted && hasValidContent && isCrmLead) {
       // Se não tem tag de funil, adiciona Lead Novo
       if (!conversationTags.some(tag => FUNNEL_LABELS.includes(tag) || tag === HANDOFF_LABEL)) {
         conversationTags = [INITIAL_STAGE];
         await supabase
           .from('whatsapp_conversations')
-          .update({ tags: conversationTags, is_crm_lead: true })
+          .update({ tags: conversationTags })
           .eq('id', conversationId);
       }
       
-      console.log('[AI] ✅ Triggering AI response for:', conversationId);
+      console.log('[AI] ✅ Triggering AI response for lead:', conversationId);
       
       processAIResponse(
         supabaseUrl,
@@ -603,6 +650,7 @@ serve(async (req) => {
       else if (aiPaused) skipReason = 'AI_PAUSED';
       else if (isBlacklisted) skipReason = 'BLACKLISTED';
       else if (!hasValidContent) skipReason = 'NO_VALID_CONTENT';
+      else if (!isCrmLead) skipReason = 'NOT_A_LEAD (random person)';
 
       console.log(`[AI] ⏭️ Skip reason: ${skipReason}`);
     }
