@@ -5,6 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import WhatsAppConfig from "./pages/WhatsAppConfig";
+import WhatsAppChat from "./pages/WhatsAppChat";
+import BroadcastManager from "./pages/BroadcastManager";
+import CRMKanban from "./pages/CRMKanban";
+import AIConfig from "./pages/AIConfig";
 
 const queryClient = new QueryClient();
 
@@ -16,6 +21,11 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/whatsapp/config" element={<WhatsAppConfig />} />
+          <Route path="/whatsapp/chat" element={<WhatsAppChat />} />
+          <Route path="/whatsapp/broadcast" element={<BroadcastManager />} />
+          <Route path="/crm" element={<CRMKanban />} />
+          <Route path="/ai-config" element={<AIConfig />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
