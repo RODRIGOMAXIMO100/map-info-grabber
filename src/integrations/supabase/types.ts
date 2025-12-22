@@ -194,9 +194,12 @@ export type Database = {
           ai_pending_at: string | null
           avatar_url: string | null
           created_at: string | null
+          followup_count: number | null
           group_name: string | null
           id: string
           is_group: boolean | null
+          last_followup_at: string | null
+          last_lead_message_at: string | null
           last_message_at: string | null
           last_message_preview: string | null
           muted_until: string | null
@@ -216,9 +219,12 @@ export type Database = {
           ai_pending_at?: string | null
           avatar_url?: string | null
           created_at?: string | null
+          followup_count?: number | null
           group_name?: string | null
           id?: string
           is_group?: boolean | null
+          last_followup_at?: string | null
+          last_lead_message_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
           muted_until?: string | null
@@ -238,9 +244,12 @@ export type Database = {
           ai_pending_at?: string | null
           avatar_url?: string | null
           created_at?: string | null
+          followup_count?: number | null
           group_name?: string | null
           id?: string
           is_group?: boolean | null
+          last_followup_at?: string | null
+          last_lead_message_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
           muted_until?: string | null

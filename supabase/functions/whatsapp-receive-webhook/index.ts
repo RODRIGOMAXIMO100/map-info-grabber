@@ -109,6 +109,15 @@ async function processAIResponse(
         console.log('[AI] Message sent successfully');
       }
 
+      // Update conversation with lead name if provided
+      if (aiResult.lead_name) {
+        console.log('[AI] Lead name identified:', aiResult.lead_name);
+        await supabase
+          .from('whatsapp_conversations')
+          .update({ name: aiResult.lead_name })
+          .eq('id', conversationId);
+      }
+
       // Update conversation label if stage changed
       if (aiResult.label_id && aiResult.label_id !== currentStageId) {
         console.log('[AI] Updating label to:', aiResult.label_id);
@@ -117,7 +126,11 @@ async function processAIResponse(
         const newTags = tags.filter(t => !allStageLabels.includes(t));
         newTags.push(aiResult.label_id);
         
-        const updateData: Record<string, unknown> = { tags: newTags };
+        const updateData: Record<string, unknown> = { 
+          tags: newTags,
+          followup_count: 0, // Reset follow-up count when lead responds
+          last_followup_at: null
+        };
         
         // Se for handoff, pausar IA e registrar motivo
         if (aiResult.should_handoff || aiResult.label_id === HANDOFF_LABEL) {
@@ -143,6 +156,15 @@ async function processAIResponse(
             label_id: aiResult.label_id
           })
         });
+      } else {
+        // Mesmo se não mudou o estágio, reset follow-up count
+        await supabase
+          .from('whatsapp_conversations')
+          .update({ 
+            followup_count: 0, 
+            last_followup_at: null 
+          })
+          .eq('id', conversationId);
       }
 
       // Send video if AI suggests (usually STAGE_2 or STAGE_3)
@@ -346,6 +368,7 @@ serve(async (req) => {
 
       if (!isFromMe) {
         updateData.unread_count = (existingConv.unread_count || 0) + 1;
+        updateData.last_lead_message_at = new Date().toISOString(); // Track when lead last messaged
       }
 
       if (!isGroup && senderName) {
@@ -369,8 +392,10 @@ serve(async (req) => {
           tags: conversationTags,
           last_message_at: new Date().toISOString(),
           last_message_preview: isFromMe ? `Você: ${messagePreview}` : messagePreview,
+          last_lead_message_at: isFromMe ? null : new Date().toISOString(),
           unread_count: isFromMe ? 0 : 1,
-          status: 'active'
+          status: 'active',
+          followup_count: 0
         })
         .select()
         .single();
