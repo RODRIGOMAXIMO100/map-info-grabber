@@ -2,3 +2,21 @@ project_id = "vorehtfxwvsbbivnskeq"
 
 [functions.search-businesses]
 verify_jwt = false
+
+[functions.whatsapp-receive-webhook]
+verify_jwt = false
+
+[functions.whatsapp-send-message]
+verify_jwt = false
+
+[functions.whatsapp-ai-agent]
+verify_jwt = false
+
+[functions.process-ai-responses]
+verify_jwt = false
+
+[functions.update-whatsapp-label]
+verify_jwt = false
+
+[functions.process-broadcast-queue]
+verify_jwt = false
