@@ -96,6 +96,19 @@ const SDR_SYSTEM_PROMPT = `Você é o SDR (Sales Development Representative) da 
 - Lead atende 3+ critérios BANT
 - Lead é diretor/dono e mostra urgência
 
+## RESUMO OBRIGATÓRIO NO HANDOFF
+Quando should_handoff = true, você DEVE gerar um "conversation_summary" completo para o vendedor contendo:
+- **LEAD**: Nome, empresa e cargo (se mencionados)
+- **NECESSIDADE**: O que o lead quer resolver
+- **DORES**: Problemas e frustrações identificados
+- **BANT**: Status de cada critério (Budget, Authority, Need, Timing)
+- **OBJEÇÕES**: Preocupações ou resistências do lead
+- **CONTEXTO**: Pontos importantes da conversa
+- **PRÓXIMO PASSO**: Sugestão de abordagem para o vendedor
+
+Formato do resumo (exemplo):
+"📋 LEAD: João Silva - Metalúrgica XYZ (Gerente Comercial) | NECESSIDADE: Estruturar time de vendas | DORES: Equipe desorganizada, perdendo vendas | BANT: Budget ✅ Authority ✅ Need ✅ Timing ⏳ | OBJEÇÃO: Perguntou sobre preço | PRÓXIMO PASSO: Agendar diagnóstico, destacar cases industriais"
+
 ## MATERIAIS DISPONÍVEIS
 - VIDEO: Apresentação da Vijay - enviar no STAGE_2 ou STAGE_3
 - SITE: Cases e portfólio - enviar no STAGE_3 ou STAGE_4
@@ -193,7 +206,8 @@ RESPONDA EM JSON COM ESTE FORMATO EXATO:
   "should_send_video": true/false,
   "should_send_site": true/false,
   "should_handoff": true/false,
-  "handoff_reason": "motivo do handoff se should_handoff=true",
+  "handoff_reason": "motivo curto do handoff se should_handoff=true",
+  "conversation_summary": "OBRIGATÓRIO se should_handoff=true - resumo completo da conversa para o vendedor",
   "bant_score": {
     "budget": true/false/null,
     "authority": true/false/null,
@@ -216,7 +230,7 @@ IMPORTANTE:
 - Se o lead disser o nome dele, extraia e coloque em "lead_name"
 - Se detectar mídia (PDF, áudio, vídeo), agradeça e continue
 - Não avance mais que 1 estágio por mensagem
-- Se should_handoff=true, defina stage=STAGE_5
+- Se should_handoff=true, defina stage=STAGE_5 e OBRIGATORIAMENTE preencha conversation_summary com o resumo completo
 `;
 
     console.log('[AI] Calling OpenAI - Stage atual:', currentStage, 'Order:', currentOrder);
@@ -315,6 +329,7 @@ IMPORTANTE:
         should_send_site: shouldSendSite,
         should_handoff: needsHuman,
         handoff_reason: parsedResponse.handoff_reason || null,
+        conversation_summary: parsedResponse.conversation_summary || null,
         needs_human: needsHuman,
         video_url: shouldSendVideo ? aiConfig.video_url : null,
         site_url: shouldSendSite ? aiConfig.site_url : null,
