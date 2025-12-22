@@ -146,32 +146,7 @@ export default function WhatsAppChat() {
 
   const loadConversations = async () => {
     try {
-      // 1. Buscar telefones da fila de disparos
-      const { data: queuePhones } = await supabase
-        .from('whatsapp_queue')
-        .select('phone');
-
-      // 2. Buscar lead_data das broadcast_lists
-      const { data: lists } = await supabase
-        .from('broadcast_lists')
-        .select('lead_data, phones');
-
-      // 3. Extrair todos os telefones de broadcast (normalizados)
-      const broadcastPhones = new Set<string>();
-      
-      // Telefones da queue (normalizados)
-      queuePhones?.forEach(q => broadcastPhones.add(normalizePhone(q.phone)));
-      
-      // Telefones das listas (lead_data e phones) - normalizados
-      lists?.forEach(list => {
-        const leadData = list.lead_data as Array<{ phone?: string }> | null;
-        leadData?.forEach(lead => {
-          if (lead.phone) broadcastPhones.add(normalizePhone(lead.phone));
-        });
-        list.phones?.forEach(phone => broadcastPhones.add(normalizePhone(phone)));
-      });
-
-      // 4. Buscar todas as conversas com config_id
+      // Buscar TODAS as conversas (sem filtro de broadcast)
       const { data: allConversations, error } = await supabase
         .from('whatsapp_conversations')
         .select('*')
@@ -179,7 +154,7 @@ export default function WhatsAppChat() {
 
       if (error) throw error;
 
-      // 5. Buscar instâncias
+      // Buscar instâncias
       const { data: instancesData } = await supabase
         .from('whatsapp_config')
         .select('id, name, color, instance_phone, is_active');
@@ -193,15 +168,13 @@ export default function WhatsAppChat() {
         is_active: i.is_active ?? true,
       }));
 
-      // 6. Filtrar conversas com números de broadcast (comparação normalizada)
-      const filtered = (allConversations || [])
-        .filter(conv => broadcastPhones.has(normalizePhone(conv.phone)))
-        .map(conv => ({
-          ...conv,
-          instance: conv.config_id ? instanceMap.get(conv.config_id) : undefined,
-        })) as ConversationWithInstance[];
+      // Mapear conversas com instâncias (sem filtro)
+      const mapped = (allConversations || []).map(conv => ({
+        ...conv,
+        instance: conv.config_id ? instanceMap.get(conv.config_id) : undefined,
+      })) as ConversationWithInstance[];
 
-      setConversations(filtered);
+      setConversations(mapped);
     } catch (error) {
       console.error('Error loading conversations:', error);
     } finally {
