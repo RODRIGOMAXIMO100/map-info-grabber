@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { LeadDetailsSheet } from '@/components/LeadDetailsSheet';
+import { useReminderNotifications } from '@/hooks/useReminderNotifications';
 import {
   CRMMetricsBar,
   CRMFilters,
@@ -14,6 +15,7 @@ import {
   ReminderModal,
   TagModal,
   ValueModal,
+  RemindersPanel,
   type PeriodFilter,
   type AIStatusFilter,
   type UrgencyFilter,
@@ -44,11 +46,26 @@ export default function CRMKanban() {
   const [aiStatusFilter, setAIStatusFilter] = useState<AIStatusFilter>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter>('all');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
+  const [showRemindersOnly, setShowRemindersOnly] = useState(false);
 
   // Modal states
   const [reminderModal, setReminderModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
   const [tagModal, setTagModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
   const [valueModal, setValueModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
+
+  // Reminder notifications
+  useReminderNotifications({
+    conversations,
+    onReminderTriggered: (conv) => {
+      setSelectedLead(conv);
+      setSheetOpen(true);
+    },
+  });
+
+  // Count pending reminders
+  const pendingRemindersCount = useMemo(() => {
+    return conversations.filter(c => c.reminder_at).length;
+  }, [conversations]);
 
   useEffect(() => {
     loadConversations();
@@ -135,6 +152,11 @@ export default function CRMKanban() {
   const filteredConversations = useMemo(() => {
     let result = [...conversations];
 
+    // Reminders filter
+    if (showRemindersOnly) {
+      result = result.filter(c => c.reminder_at);
+    }
+
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -198,7 +220,7 @@ export default function CRMKanban() {
     }
 
     return result;
-  }, [conversations, searchQuery, periodFilter, aiStatusFilter, urgencyFilter, sortOption]);
+  }, [conversations, searchQuery, periodFilter, aiStatusFilter, urgencyFilter, sortOption, showRemindersOnly]);
 
   const getConversationsForStage = (stage: CRMStage) => {
     return filteredConversations.filter(conv => 
@@ -270,6 +292,24 @@ export default function CRMKanban() {
     } catch (error) {
       console.error('Error saving reminder:', error);
       toast({ title: 'Erro ao salvar lembrete', variant: 'destructive' });
+    }
+  };
+
+  const handleRemoveReminder = async (lead?: WhatsAppConversation) => {
+    const targetLead = lead || reminderModal.lead;
+    if (!targetLead) return;
+
+    try {
+      await supabase
+        .from('whatsapp_conversations')
+        .update({ reminder_at: null, updated_at: new Date().toISOString() })
+        .eq('id', targetLead.id);
+
+      toast({ title: 'Lembrete removido' });
+      loadConversations();
+    } catch (error) {
+      console.error('Error removing reminder:', error);
+      toast({ title: 'Erro ao remover lembrete', variant: 'destructive' });
     }
   };
 
@@ -357,6 +397,16 @@ export default function CRMKanban() {
         {/* Metrics Bar */}
         <CRMMetricsBar conversations={conversations} />
 
+        {/* Reminders Panel */}
+        <RemindersPanel
+          conversations={conversations}
+          onLeadClick={(lead) => {
+            setSelectedLead(lead);
+            setSheetOpen(true);
+          }}
+          onRemoveReminder={handleRemoveReminder}
+        />
+
         {/* Filters */}
         <CRMFilters
           searchQuery={searchQuery}
@@ -369,6 +419,9 @@ export default function CRMKanban() {
           onUrgencyChange={setUrgencyFilter}
           sortOption={sortOption}
           onSortChange={setSortOption}
+          showRemindersOnly={showRemindersOnly}
+          onRemindersFilterChange={setShowRemindersOnly}
+          pendingRemindersCount={pendingRemindersCount}
         />
       </div>
 
@@ -469,6 +522,9 @@ export default function CRMKanban() {
         onOpenChange={(open) => setReminderModal({ open, lead: open ? reminderModal.lead : null })}
         leadName={reminderModal.lead?.name || reminderModal.lead?.phone || ''}
         onSave={handleSaveReminder}
+        onRemove={() => handleRemoveReminder()}
+        currentReminder={reminderModal.lead?.reminder_at}
+        lastContactAt={reminderModal.lead?.last_message_at}
       />
 
       <TagModal
@@ -489,9 +545,9 @@ export default function CRMKanban() {
 
       {/* Lead Details Sheet */}
       <LeadDetailsSheet
-        conversation={selectedLead}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+        conversation={selectedLead}
         onUpdate={loadConversations}
       />
     </div>
