@@ -396,7 +396,45 @@ serve(async (req) => {
     // IA controla apenas leads nos estágios STAGE_1 a STAGE_4 (labels 16, 13, 14, 20)
     const isInAIControlledStage = conversationTags.some(tag => FUNNEL_LABELS.includes(tag));
 
-    if (!isFromMe && !isGroup && messageContent && isInAIControlledStage && !aiPaused) {
+    // ===============================
+    // FILTRO DE BROADCAST - IA só responde leads de nossas listas
+    // ===============================
+    
+    // Buscar todos os telefones que vieram de NOSSOS broadcasts
+    const { data: broadcastLists } = await supabase
+      .from('broadcast_lists')
+      .select('phones');
+
+    const { data: queueItems } = await supabase
+      .from('whatsapp_queue')
+      .select('phone');
+
+    // Criar Set com todos os telefones de broadcast (normalizados)
+    const broadcastPhones = new Set<string>();
+
+    broadcastLists?.forEach(list => {
+      (list.phones as string[] || []).forEach((phone: string) => {
+        broadcastPhones.add(phone.replace(/\D/g, '')); // Remove não-dígitos
+      });
+    });
+
+    queueItems?.forEach(item => {
+      broadcastPhones.add(item.phone.replace(/\D/g, ''));
+    });
+
+    // Verificar se o remetente é um lead de broadcast
+    const senderNormalized = senderPhone.replace(/\D/g, '');
+    const isFromBroadcast = broadcastPhones.has(senderNormalized);
+
+    console.log('[AI] Broadcast check:', { 
+      senderPhone: senderNormalized, 
+      isFromBroadcast, 
+      totalBroadcastPhones: broadcastPhones.size 
+    });
+
+    // IA só responde se: não é minha mensagem, não é grupo, tem conteúdo, 
+    // está em estágio controlado, não está pausada E veio de broadcast
+    if (!isFromMe && !isGroup && messageContent && isInAIControlledStage && !aiPaused && isFromBroadcast) {
       console.log('[AI] Triggering background AI processing for conversation:', conversationId);
       
       // Process AI in background (fire and forget - doesn't block webhook response)
@@ -409,7 +447,14 @@ serve(async (req) => {
         conversationTags
       ).catch(err => console.error('[AI] Background processing failed:', err));
     } else {
-      console.log('[AI] Skipping AI:', { isFromMe, isGroup, hasContent: !!messageContent, isInAIControlledStage, aiPaused });
+      console.log('[AI] Skipping AI:', { 
+        isFromMe, 
+        isGroup, 
+        hasContent: !!messageContent, 
+        isInAIControlledStage, 
+        aiPaused,
+        isFromBroadcast // Novo campo de debug
+      });
     }
 
     return new Response(
