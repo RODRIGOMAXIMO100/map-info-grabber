@@ -12,6 +12,7 @@ interface LeadStatusPanelProps {
     ai_paused?: boolean;
     ai_handoff_reason?: string | null;
     is_group?: boolean;
+    is_crm_lead?: boolean;
     tags?: string[];
   };
   onUpdate?: () => void;
@@ -32,6 +33,7 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
   const [loading, setLoading] = useState(false);
 
   const currentStage = conversation.tags?.find(tag => Object.keys(STAGE_NAMES).includes(tag));
+  const isCrmLead = conversation.is_crm_lead === true;
 
   // Determine AI status
   const getAIStatus = () => {
@@ -40,6 +42,15 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
         status: 'blocked', 
         reason: 'Grupos não são atendidos pela IA',
         icon: Users,
+        color: 'text-muted-foreground'
+      };
+    }
+
+    if (!isCrmLead) {
+      return { 
+        status: 'not_lead', 
+        reason: 'Não é lead - IA não responderá',
+        icon: Ban,
         color: 'text-muted-foreground'
       };
     }
@@ -126,6 +137,39 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
     }
   };
 
+  const handleActivateAsLead = async () => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('whatsapp_conversations')
+        .update({ 
+          is_crm_lead: true,
+          tags: ['16'], // Lead Novo
+          ai_paused: false,
+          ai_handoff_reason: null
+        })
+        .eq('id', conversation.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Lead Ativado',
+        description: 'A IA começará a responder esta conversa.',
+      });
+
+      onUpdate?.();
+    } catch (error) {
+      console.error('Error activating lead:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível ativar o lead.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="bg-muted/50 rounded-lg p-3 space-y-2">
       {/* Status Header */}
@@ -134,13 +178,19 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
           <StatusIcon className={cn("h-4 w-4", aiStatus.color)} />
           <span className="text-sm font-medium">
             {aiStatus.status === 'active' ? 'IA Ativa' : 
-             aiStatus.status === 'paused' ? 'IA Pausada' : 'IA Bloqueada'}
+             aiStatus.status === 'paused' ? 'IA Pausada' : 
+             aiStatus.status === 'not_lead' ? 'Não é Lead' : 'IA Bloqueada'}
           </span>
         </div>
         
         {conversation.is_group && (
           <Badge variant="outline" className="text-xs">
             Grupo
+          </Badge>
+        )}
+        {isCrmLead && !conversation.is_group && (
+          <Badge variant="default" className="text-xs bg-green-600">
+            Lead
           </Badge>
         )}
       </div>
@@ -151,7 +201,7 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
       </p>
 
       {/* Current Stage */}
-      {currentStage && (
+      {currentStage && isCrmLead && (
         <Badge variant="secondary" className="text-xs">
           {STAGE_NAMES[currentStage] || currentStage}
         </Badge>
@@ -160,7 +210,22 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
       {/* Action Buttons */}
       {!conversation.is_group && (
         <div className="flex gap-2 pt-1">
-          {conversation.ai_paused ? (
+          {!isCrmLead ? (
+            <Button 
+              size="sm" 
+              variant="default"
+              onClick={handleActivateAsLead}
+              disabled={loading}
+              className="text-xs h-7 gap-1 bg-green-600 hover:bg-green-700"
+            >
+              {loading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Bot className="h-3 w-3" />
+              )}
+              Ativar como Lead
+            </Button>
+          ) : conversation.ai_paused ? (
             <Button 
               size="sm" 
               variant="default"
