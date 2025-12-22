@@ -131,10 +131,16 @@ export interface CRMStage {
   name: string;
   color: number;
   order: number;
+  is_ai_controlled: boolean;
 }
 
+// SDR Funnel - 7 estágios completos
 export const CRM_STAGES: CRMStage[] = [
-  { id: '1', label_id: '16', name: 'Lead Frio', color: 1, order: 1 },
-  { id: '2', label_id: '13', name: 'Demonstrou Interesse', color: 2, order: 2 },
-  { id: '3', label_id: '14', name: 'Quer Comprar', color: 3, order: 3 },
+  { id: '1', label_id: '16', name: 'Lead Novo', color: 1, order: 1, is_ai_controlled: true },
+  { id: '2', label_id: '13', name: 'MQL - Respondeu', color: 2, order: 2, is_ai_controlled: true },
+  { id: '3', label_id: '14', name: 'Engajado', color: 3, order: 3, is_ai_controlled: true },
+  { id: '4', label_id: '20', name: 'SQL - Qualificado', color: 4, order: 4, is_ai_controlled: true },
+  { id: '5', label_id: '21', name: 'Handoff - Vendedor', color: 5, order: 5, is_ai_controlled: false },
+  { id: '6', label_id: '22', name: 'Em Negociação', color: 6, order: 6, is_ai_controlled: false },
+  { id: '7', label_id: '23', name: 'Fechado/Perdido', color: 7, order: 7, is_ai_controlled: false },
 ];

@@ -104,13 +104,19 @@ export default function CRMKanban() {
   };
 
   const getStageColor = (stage: CRMStage) => {
-    const colors = {
-      1: 'border-t-blue-500',
-      2: 'border-t-yellow-500',
-      3: 'border-t-green-500',
+    const colors: Record<number, string> = {
+      1: 'border-t-blue-500',      // Lead Novo
+      2: 'border-t-cyan-500',      // MQL
+      3: 'border-t-yellow-500',    // Engajado
+      4: 'border-t-orange-500',    // SQL
+      5: 'border-t-purple-500',    // Handoff
+      6: 'border-t-green-500',     // Negociação
+      7: 'border-t-emerald-600',   // Fechado
     };
-    return colors[stage.order as keyof typeof colors] || 'border-t-gray-500';
+    return colors[stage.order] || 'border-t-gray-500';
   };
+
+  const isAIControlled = (stage: CRMStage) => stage.is_ai_controlled;
 
   const formatTime = (date: string) => {
     const d = new Date(date);
@@ -225,7 +231,12 @@ export default function CRMKanban() {
                   'mb-3 flex items-center justify-between p-3 rounded-lg border-t-4 bg-muted/50',
                   getStageColor(stage)
                 )}>
-                  <h3 className="font-semibold">{stage.name}</h3>
+                  <div className="flex flex-col">
+                    <h3 className="font-semibold">{stage.name}</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {isAIControlled(stage) ? '🤖 IA' : '👤 Vendedor'}
+                    </span>
+                  </div>
                   <Badge>{stageConversations.length}</Badge>
                 </div>
 
