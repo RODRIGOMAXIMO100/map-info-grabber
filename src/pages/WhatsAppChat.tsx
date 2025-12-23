@@ -1186,6 +1186,10 @@ export default function WhatsAppChat() {
                             });
                         }
                       }}
+                      onDelete={() => {
+                        setSelectedConversation(null);
+                        loadConversations();
+                      }}
                     />
                   </div>
 

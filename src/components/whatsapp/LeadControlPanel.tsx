@@ -1,4 +1,4 @@
-import { Bot, BotOff, Loader2, Radio, Megaphone } from 'lucide-react';
+import { Bot, BotOff, Loader2, Radio, Megaphone, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -9,6 +9,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
@@ -26,6 +37,7 @@ interface LeadControlPanelProps {
     tags?: string[];
   };
   onUpdate?: () => void;
+  onDelete?: () => void;
 }
 
 const ORIGINS = [
@@ -33,7 +45,7 @@ const ORIGINS = [
   { id: 'broadcast', label: 'Broadcast', icon: Megaphone }
 ];
 
-export function LeadControlPanel({ conversation, onUpdate }: LeadControlPanelProps) {
+export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadControlPanelProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -200,6 +212,43 @@ export function LeadControlPanel({ conversation, onUpdate }: LeadControlPanelPro
     }
   };
 
+  const handleDeleteConversation = async () => {
+    setLoading(true);
+    try {
+      // First delete all messages
+      const { error: messagesError } = await supabase
+        .from('whatsapp_messages')
+        .delete()
+        .eq('conversation_id', conversation.id);
+
+      if (messagesError) throw messagesError;
+
+      // Then delete the conversation
+      const { error: conversationError } = await supabase
+        .from('whatsapp_conversations')
+        .delete()
+        .eq('id', conversation.id);
+
+      if (conversationError) throw conversationError;
+
+      toast({
+        title: 'Conversa deletada',
+        description: 'A conversa e todas as mensagens foram removidas.',
+      });
+      
+      onDelete?.();
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível deletar a conversa.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Don't show controls for groups
   if (conversation.is_group) {
     return (
@@ -308,6 +357,40 @@ export function LeadControlPanel({ conversation, onUpdate }: LeadControlPanelPro
           </Select>
         </div>
       )}
+
+      {/* Delete Conversation */}
+      <div className="pt-2 border-t border-border">
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+              disabled={loading}
+            >
+              <Trash2 className="h-3 w-3 mr-1" />
+              Deletar Conversa
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Deletar conversa?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação não pode ser desfeita. Todas as mensagens desta conversa serão permanentemente removidas.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteConversation}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Deletar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
 
       {/* Loading indicator */}
       {loading && (
