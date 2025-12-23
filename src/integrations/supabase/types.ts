@@ -357,6 +357,7 @@ export type Database = {
           dna_id: string | null
           estimated_value: number | null
           followup_count: number | null
+          funnel_stage: string | null
           group_name: string | null
           id: string
           is_crm_lead: boolean | null
@@ -369,6 +370,7 @@ export type Database = {
           name: string | null
           next_action: string | null
           notes: string | null
+          origin: string | null
           phone: string
           pinned: boolean | null
           reminder_at: string | null
@@ -391,6 +393,7 @@ export type Database = {
           dna_id?: string | null
           estimated_value?: number | null
           followup_count?: number | null
+          funnel_stage?: string | null
           group_name?: string | null
           id?: string
           is_crm_lead?: boolean | null
@@ -403,6 +406,7 @@ export type Database = {
           name?: string | null
           next_action?: string | null
           notes?: string | null
+          origin?: string | null
           phone: string
           pinned?: boolean | null
           reminder_at?: string | null
@@ -425,6 +429,7 @@ export type Database = {
           dna_id?: string | null
           estimated_value?: number | null
           followup_count?: number | null
+          funnel_stage?: string | null
           group_name?: string | null
           id?: string
           is_crm_lead?: boolean | null
@@ -437,6 +442,7 @@ export type Database = {
           name?: string | null
           next_action?: string | null
           notes?: string | null
+          origin?: string | null
           phone?: string
           pinned?: boolean | null
           reminder_at?: string | null
