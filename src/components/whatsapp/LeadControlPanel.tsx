@@ -215,7 +215,15 @@ export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadContr
   const handleDeleteConversation = async () => {
     setLoading(true);
     try {
-      // First delete all messages
+      // First delete AI logs (foreign key constraint)
+      const { error: logsError } = await supabase
+        .from('whatsapp_ai_logs')
+        .delete()
+        .eq('conversation_id', conversation.id);
+
+      if (logsError) throw logsError;
+
+      // Then delete all messages
       const { error: messagesError } = await supabase
         .from('whatsapp_messages')
         .delete()
@@ -223,7 +231,7 @@ export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadContr
 
       if (messagesError) throw messagesError;
 
-      // Then delete the conversation
+      // Finally delete the conversation
       const { error: conversationError } = await supabase
         .from('whatsapp_conversations')
         .delete()
