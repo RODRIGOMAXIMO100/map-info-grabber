@@ -693,17 +693,16 @@ serve(async (req) => {
           .eq('id', conversationId);
       }
       
-      console.log('[AI] ✅ Triggering AI response for lead:', conversationId);
+      console.log('[AI] ✅ Setting ai_pending_at for lead:', conversationId);
       
-      processAIResponse(
-        supabaseUrl,
-        supabaseServiceKey,
-        conversationId,
-        messageContent,
-        senderPhone,
-        conversationTags,
-        existingConfigId
-      ).catch(err => console.error('[AI] Background processing failed:', err));
+      // Set ai_pending_at to queue for processing by process-ai-responses cron
+      await supabase
+        .from('whatsapp_conversations')
+        .update({ 
+          ai_pending_at: new Date().toISOString(),
+          tags: conversationTags 
+        })
+        .eq('id', conversationId);
     } else {
       let skipReason = 'UNKNOWN';
       if (isFromMe) skipReason = 'IS_OWN_MESSAGE';
