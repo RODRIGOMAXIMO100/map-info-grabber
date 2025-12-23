@@ -433,39 +433,19 @@ serve(async (req) => {
       );
     }
 
-    // ========== BUSCAR PROMPT ESPECÍFICO DA FASE (NOVO!) ==========
-    // Primeiro tenta encontrar prompt para DNA + stage, depois genérico para stage
+    // ========== BUSCAR PROMPT GENÉRICO DA FASE ==========
     let stagePrompt = null;
     
-    if (dnaIdToUse) {
-      const { data: dnaStagePrompt } = await supabase
-        .from('ai_stage_prompts')
-        .select('*')
-        .eq('stage_id', currentStage)
-        .eq('dna_id', dnaIdToUse)
-        .eq('is_active', true)
-        .maybeSingle();
-      
-      if (dnaStagePrompt) {
-        stagePrompt = dnaStagePrompt;
-        console.log('[AI] Using DNA-specific stage prompt for', currentStage);
-      }
-    }
+    const { data: genericStagePrompt } = await supabase
+      .from('ai_stage_prompts')
+      .select('*')
+      .eq('stage_id', currentStage)
+      .eq('is_active', true)
+      .maybeSingle();
     
-    // Fallback para prompt genérico da fase
-    if (!stagePrompt) {
-      const { data: genericStagePrompt } = await supabase
-        .from('ai_stage_prompts')
-        .select('*')
-        .eq('stage_id', currentStage)
-        .is('dna_id', null)
-        .eq('is_active', true)
-        .maybeSingle();
-      
-      if (genericStagePrompt) {
-        stagePrompt = genericStagePrompt;
-        console.log('[AI] Using generic stage prompt for', currentStage);
-      }
+    if (genericStagePrompt) {
+      stagePrompt = genericStagePrompt;
+      console.log('[AI] Using stage prompt for', currentStage);
     }
 
     // Contar mensagens nesta fase

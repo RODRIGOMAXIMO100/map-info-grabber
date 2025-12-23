@@ -36,7 +36,6 @@ interface StagePrompt {
   success_criteria: string | null;
   failure_criteria: string | null;
   is_active: boolean;
-  dna_id: string | null;
 }
 
 const STAGE_COLORS: Record<string, string> = {
@@ -71,7 +70,6 @@ export default function FunnelStagesManager() {
     const { data, error } = await supabase
       .from('ai_stage_prompts')
       .select('*')
-      .is('dna_id', null) // Pegar apenas os prompts globais (sem DNA específico)
       .order('stage_id', { ascending: true });
 
     if (error) {
@@ -181,8 +179,9 @@ export default function FunnelStagesManager() {
               <div className="text-sm">
                 <p className="font-medium mb-1">Como funciona?</p>
                 <p className="text-muted-foreground">
-                  A IA usa prompts específicos para cada fase do funil. Quando o lead avança de fase, 
-                  o comportamento da IA muda automaticamente para atender aos objetivos daquela etapa.
+                  A IA usa prompts genéricos para cada fase do funil. O contexto do negócio (nome, URLs, oferta) 
+                  é injetado automaticamente a partir do DNA configurado. Quando o lead avança de fase, 
+                  o comportamento da IA muda para atender aos objetivos daquela etapa.
                 </p>
               </div>
             </div>

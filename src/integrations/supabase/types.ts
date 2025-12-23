@@ -68,7 +68,6 @@ export type Database = {
       ai_stage_prompts: {
         Row: {
           created_at: string | null
-          dna_id: string | null
           failure_criteria: string | null
           id: string
           is_active: boolean | null
@@ -82,7 +81,6 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
-          dna_id?: string | null
           failure_criteria?: string | null
           id?: string
           is_active?: boolean | null
@@ -96,7 +94,6 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
-          dna_id?: string | null
           failure_criteria?: string | null
           id?: string
           is_active?: boolean | null
@@ -108,15 +105,7 @@ export type Database = {
           system_prompt?: string
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "ai_stage_prompts_dna_id_fkey"
-            columns: ["dna_id"]
-            isOneToOne: false
-            referencedRelation: "ai_dnas"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       broadcast_lists: {
         Row: {
