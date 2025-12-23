@@ -2,7 +2,8 @@ import { Bot, BotOff, Clock, HandshakeIcon, Sparkles, MessageCircle, CheckCircle
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
-export type FunnelStageId = 'new' | 'contacted' | 'negotiating' | 'handoff' | 'converted' | 'lost';
+// Unified funnel stage IDs - same as CRM_STAGES in types/whatsapp.ts
+export type FunnelStageId = 'new' | 'presentation' | 'interest' | 'negotiating' | 'handoff' | 'converted' | 'lost';
 
 export interface FunnelStage {
   id: FunnelStageId;
@@ -13,8 +14,9 @@ export interface FunnelStage {
 }
 
 export const FUNNEL_STAGES: FunnelStage[] = [
-  { id: 'new', label: 'Novo', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', icon: Sparkles },
-  { id: 'contacted', label: 'Apresentação', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', icon: MessageCircle },
+  { id: 'new', label: 'Lead Novo', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', icon: Sparkles },
+  { id: 'presentation', label: 'Apresentação', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', icon: MessageCircle },
+  { id: 'interest', label: 'Interesse', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', icon: Sparkles },
   { id: 'negotiating', label: 'Negociando', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', icon: Clock },
   { id: 'handoff', label: 'Handoff', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', icon: HandshakeIcon },
   { id: 'converted', label: 'Convertido', color: 'text-emerald-600', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30', icon: CheckCircle },
@@ -33,15 +35,17 @@ interface Conversation {
   tags?: string[];
   last_message_at?: string;
   last_lead_message_at?: string;
+  funnel_stage?: string;
 }
 
+const VALID_STAGES: FunnelStageId[] = ['new', 'presentation', 'interest', 'negotiating', 'handoff', 'converted', 'lost'];
+
 export function detectFunnelStage(conv: Conversation): FunnelStageId {
-  if (!conv.is_crm_lead) return 'new';
-  if (conv.converted_at) return 'converted';
-  if (conv.status === 'lost') return 'lost';
-  if (conv.ai_handoff_reason) return 'handoff';
-  if (conv.site_sent || conv.video_sent) return 'negotiating';
-  if (conv.tags?.length) return 'contacted';
+  // Use funnel_stage from database directly
+  if (conv.funnel_stage && VALID_STAGES.includes(conv.funnel_stage as FunnelStageId)) {
+    return conv.funnel_stage as FunnelStageId;
+  }
+  // Fallback to 'new' if not set
   return 'new';
 }
 
