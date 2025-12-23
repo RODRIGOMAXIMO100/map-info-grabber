@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users } from 'lucide-react';
 import { LeadStatusPanel } from '@/components/whatsapp/LeadStatusPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
 type FilterType = 'all' | 'no_reply' | 'unread' | 'ai_paused' | 'waiting';
+type ConversationType = 'all' | 'contacts' | 'groups';
 
 interface WhatsAppInstance {
   id: string;
@@ -45,6 +46,12 @@ export default function WhatsAppChat() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [conversationType, setConversationType] = useState<ConversationType>('all');
+
+  // Helper to detect if a conversation is a group
+  const isGroup = (conv: ConversationWithInstance): boolean => {
+    return conv.is_group === true || conv.phone.includes('@g.us');
+  };
 
   useEffect(() => {
     loadInstances();
@@ -284,8 +291,14 @@ export default function WhatsAppChat() {
       return matchesSearch && matchesInstance;
     });
 
+    // Type counts (groups vs contacts)
+    const contacts = baseFiltered.filter(c => !isGroup(c));
+    const groups = baseFiltered.filter(c => isGroup(c));
+
     return {
       all: baseFiltered.length,
+      contacts: contacts.length,
+      groups: groups.length,
       no_reply: baseFiltered.filter(c => !c.last_lead_message_at).length,
       unread: baseFiltered.filter(c => (c.unread_count ?? 0) > 0).length,
       ai_paused: baseFiltered.filter(c => c.ai_paused).length,
@@ -306,7 +319,12 @@ export default function WhatsAppChat() {
       
       const matchesInstance = selectedInstance === 'all' || conv.config_id === selectedInstance;
       
-      if (!matchesSearch || !matchesInstance) return false;
+      // Type filter (groups vs contacts)
+      const matchesType = conversationType === 'all' || 
+        (conversationType === 'contacts' && !isGroup(conv)) ||
+        (conversationType === 'groups' && isGroup(conv));
+      
+      if (!matchesSearch || !matchesInstance || !matchesType) return false;
 
       switch (activeFilter) {
         case 'no_reply':
@@ -324,7 +342,7 @@ export default function WhatsAppChat() {
           return true;
       }
     });
-  }, [conversations, searchTerm, selectedInstance, activeFilter]);
+  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType]);
 
   const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -414,6 +432,39 @@ export default function WhatsAppChat() {
                 className="pl-9"
               />
             </div>
+            {/* Type tabs (Contacts/Groups) */}
+            <div className="flex gap-1 p-1 bg-muted rounded-lg">
+              <button
+                onClick={() => setConversationType('all')}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  conversationType === 'all' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                )}
+              >
+                Todos
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.all}</Badge>
+              </button>
+              <button
+                onClick={() => setConversationType('contacts')}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  conversationType === 'contacts' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                )}
+              >
+                <User className="h-3.5 w-3.5" />
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.contacts}</Badge>
+              </button>
+              <button
+                onClick={() => setConversationType('groups')}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  conversationType === 'groups' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                )}
+              >
+                <Users className="h-3.5 w-3.5" />
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.groups}</Badge>
+              </button>
+            </div>
             <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
               <SelectTrigger className="w-full">
                 <div className="flex items-center gap-2">
@@ -492,7 +543,11 @@ export default function WhatsAppChat() {
                   <div className="relative flex-shrink-0">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback className="text-sm">
-                        {conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)}
+                        {isGroup(conv) ? (
+                          <Users className="h-5 w-5" />
+                        ) : (
+                          conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)
+                        )}
                       </AvatarFallback>
                     </Avatar>
                     {conv.instance && (
@@ -504,9 +559,12 @@ export default function WhatsAppChat() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium truncate text-sm max-w-[180px]">
-                        {conv.name || conv.phone}
-                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {isGroup(conv) && <Users className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+                        <span className="font-medium truncate text-sm max-w-[160px]">
+                          {conv.name || conv.group_name || conv.phone}
+                        </span>
+                      </div>
                       <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
                         {formatTime(conv.last_message_at)}
                       </span>
@@ -663,6 +721,39 @@ export default function WhatsAppChat() {
                     className="pl-9"
                   />
                 </div>
+                {/* Type tabs (Contacts/Groups) - Desktop */}
+                <div className="flex gap-1 p-1 bg-muted rounded-lg">
+                  <button
+                    onClick={() => setConversationType('all')}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      conversationType === 'all' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                    )}
+                  >
+                    Todos
+                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.all}</Badge>
+                  </button>
+                  <button
+                    onClick={() => setConversationType('contacts')}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      conversationType === 'contacts' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                    )}
+                  >
+                    <User className="h-3.5 w-3.5" />
+                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.contacts}</Badge>
+                  </button>
+                  <button
+                    onClick={() => setConversationType('groups')}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      conversationType === 'groups' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                    )}
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.groups}</Badge>
+                  </button>
+                </div>
                 <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
                   <SelectTrigger className="w-full">
                     <div className="flex items-center gap-2">
@@ -741,7 +832,11 @@ export default function WhatsAppChat() {
                       <div className="relative flex-shrink-0">
                         <Avatar className="h-10 w-10">
                           <AvatarFallback className="text-sm">
-                            {conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)}
+                            {isGroup(conv) ? (
+                              <Users className="h-5 w-5" />
+                            ) : (
+                              conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)
+                            )}
                           </AvatarFallback>
                         </Avatar>
                         {conv.instance && (
@@ -753,9 +848,12 @@ export default function WhatsAppChat() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium truncate text-sm max-w-[140px]">
-                            {conv.name || conv.phone}
-                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {isGroup(conv) && <Users className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+                            <span className="font-medium truncate text-sm max-w-[120px]">
+                              {conv.name || conv.group_name || conv.phone}
+                            </span>
+                          </div>
                           <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
                             {formatTime(conv.last_message_at)}
                           </span>
