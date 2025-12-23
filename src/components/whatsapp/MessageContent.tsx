@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Image, Video, Mic, FileText, Play, Download, Loader2, CheckCircle2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Image, Video, Mic, FileText, Play, Download, Loader2, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -117,6 +117,191 @@ function inferMediaType(normalized: ReturnType<typeof normalizeMediaData>): stri
   if (normalized.mediaKey || normalized.directPath) return 'image'; // Default encrypted media to image
   
   return null;
+}
+
+// Audio Player component with error handling and fallbacks
+interface AudioPlayerProps {
+  audioUrl: string | null;
+  duration: number | null;
+  mimetype: string | null;
+  isOutgoing: boolean;
+  hasEncryptedMedia: boolean;
+  onDownload: () => void;
+  isDownloading: boolean;
+  downloadProgress: number;
+  downloadStatus: 'idle' | 'downloading' | 'processing' | 'success' | 'error';
+}
+
+function AudioPlayer({ 
+  audioUrl, 
+  duration, 
+  mimetype, 
+  isOutgoing, 
+  hasEncryptedMedia, 
+  onDownload,
+  isDownloading,
+  downloadProgress,
+  downloadStatus
+}: AudioPlayerProps) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [audioError, setAudioError] = useState(false);
+  const [audioLoaded, setAudioLoaded] = useState(false);
+
+  const handleAudioError = () => {
+    console.log('[Audio] Playback error for:', audioUrl?.substring(0, 50), 'mimetype:', mimetype);
+    setAudioError(true);
+  };
+
+  const handleAudioCanPlay = () => {
+    setAudioLoaded(true);
+    setAudioError(false);
+  };
+
+  // Download button for audio (inline version)
+  const AudioDownloadButton = () => {
+    if (downloadStatus === 'success') {
+      return (
+        <div className={cn(
+          "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium",
+          isOutgoing ? "bg-primary-foreground/20 text-primary-foreground" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+        )}>
+          <CheckCircle2 className="h-4 w-4" />
+          <span>Pronto!</span>
+        </div>
+      );
+    }
+
+    if (isDownloading) {
+      return (
+        <div className={cn(
+          "flex flex-col gap-2 min-w-[140px]",
+          isOutgoing ? "text-primary-foreground" : ""
+        )}>
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm font-medium">
+              {downloadStatus === 'processing' ? 'Processando...' : 'Baixando...'}
+            </span>
+          </div>
+          <Progress 
+            value={downloadProgress} 
+            className={cn(
+              "h-1.5",
+              isOutgoing ? "[&>div]:bg-primary-foreground/80" : ""
+            )}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onDownload}
+        disabled={isDownloading}
+        className={cn(
+          "gap-2 transition-all",
+          isOutgoing 
+            ? "border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20" 
+            : "hover:bg-primary/10"
+        )}
+      >
+        <Download className="h-4 w-4" />
+        Baixar áudio
+      </Button>
+    );
+  };
+
+  // If we have a URL, try to play it
+  if (audioUrl) {
+    return (
+      <div className="space-y-2 min-w-[180px]">
+        {!audioError ? (
+          <audio 
+            ref={audioRef}
+            src={audioUrl}
+            controls 
+            className="h-10 max-w-full w-full"
+            onError={handleAudioError}
+            onCanPlay={handleAudioCanPlay}
+          />
+        ) : (
+          // Error fallback - browser can't play the format
+          <div className={cn(
+            "flex flex-col gap-2 p-3 rounded-lg",
+            isOutgoing ? "bg-primary-foreground/10" : "bg-muted/50"
+          )}>
+            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">Formato não suportado</span>
+            </div>
+            {mimetype && (
+              <span className={cn(
+                "text-xs",
+                isOutgoing ? "text-primary-foreground/60" : "text-muted-foreground"
+              )}>
+                {mimetype}
+              </span>
+            )}
+            <div className="flex gap-2 mt-1">
+              <a 
+                href={audioUrl}
+                download
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors",
+                  isOutgoing 
+                    ? "bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30" 
+                    : "bg-primary/10 text-primary hover:bg-primary/20"
+                )}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Baixar
+              </a>
+              <a 
+                href={audioUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors",
+                  isOutgoing 
+                    ? "bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20" 
+                    : "bg-muted text-foreground hover:bg-muted/80"
+                )}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Abrir
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  // No URL - show placeholder with download option
+  return (
+    <div className="space-y-2">
+      <div className={cn(
+        "flex items-center gap-2 py-1 min-w-[120px]",
+        isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
+      )}>
+        <div className={cn(
+          "p-2 rounded-full",
+          isOutgoing ? "bg-primary-foreground/20" : "bg-muted"
+        )}>
+          <Mic className="h-4 w-4" />
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium">Áudio</span>
+          {duration !== null && (
+            <span className="text-xs opacity-70">{formatDuration(duration)}</span>
+          )}
+        </div>
+      </div>
+      {hasEncryptedMedia && <AudioDownloadButton />}
+    </div>
+  );
 }
 
 export function MessageContent({ content, messageType, mediaUrl, direction, messageId }: MessageContentProps) {
@@ -343,43 +528,18 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
   
   // Handle audio type
   if (effectiveType === 'audio' || effectiveType === 'ptt') {
-    const audioUrl = downloadedUrl || mediaUrl || normalized.mediaUrl || (!hasEncryptedMedia ? normalized.url : null);
-    
-    if (audioUrl) {
-      return (
-        <div className="flex items-center gap-2 min-w-[180px]">
-          <audio 
-            src={audioUrl}
-            controls 
-            className="h-10 max-w-full"
-            style={{ width: '100%' }}
-          />
-        </div>
-      );
-    }
-    
-    // Fallback: show duration or icon with download
     return (
-      <div className="space-y-2">
-        <div className={cn(
-          "flex items-center gap-2 py-1 min-w-[120px]",
-          isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
-        )}>
-          <div className={cn(
-            "p-2 rounded-full",
-            isOutgoing ? "bg-primary-foreground/20" : "bg-muted"
-          )}>
-            <Mic className="h-4 w-4" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">Áudio</span>
-            {normalized.seconds !== null && (
-              <span className="text-xs opacity-70">{formatDuration(normalized.seconds)}</span>
-            )}
-          </div>
-        </div>
-        {hasEncryptedMedia && <DownloadButton />}
-      </div>
+      <AudioPlayer 
+        audioUrl={downloadedUrl || mediaUrl || normalized.mediaUrl || (!hasEncryptedMedia ? normalized.url : null)}
+        duration={normalized.seconds}
+        mimetype={normalized.mimetype}
+        isOutgoing={isOutgoing}
+        hasEncryptedMedia={hasEncryptedMedia}
+        onDownload={handleDownloadMedia}
+        isDownloading={isDownloading}
+        downloadProgress={downloadProgress}
+        downloadStatus={downloadStatus}
+      />
     );
   }
   
