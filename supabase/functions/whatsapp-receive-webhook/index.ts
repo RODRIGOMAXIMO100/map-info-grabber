@@ -377,9 +377,40 @@ serve(async (req) => {
     let mediaUrl = '';
     let rawMediaData: Record<string, unknown> | null = null;
 
-    if (messageData.text) {
+    // UAZAPI sends messageType like "ImageMessage", "AudioMessage", etc.
+    const uazapiMessageType = messageData.messageType || '';
+    console.log('[Media Debug] messageData.messageType:', uazapiMessageType);
+    console.log('[Media Debug] typeof messageData.content:', typeof messageData.content);
+    
+    // Check if content is a media object (UAZAPI structure)
+    if (typeof messageData.content === 'object' && messageData.content !== null) {
+      console.log('[Media Debug] messageData.content is object:', JSON.stringify(messageData.content).substring(0, 500));
+      rawMediaData = messageData.content;
+      
+      // Determine message type from UAZAPI messageType field
+      if (uazapiMessageType === 'ImageMessage' || uazapiMessageType.toLowerCase().includes('image')) {
+        messageType = 'image';
+      } else if (uazapiMessageType === 'AudioMessage' || uazapiMessageType === 'PttMessage' || uazapiMessageType.toLowerCase().includes('audio') || uazapiMessageType.toLowerCase().includes('ptt')) {
+        messageType = 'audio';
+      } else if (uazapiMessageType === 'VideoMessage' || uazapiMessageType.toLowerCase().includes('video')) {
+        messageType = 'video';
+      } else if (uazapiMessageType === 'DocumentMessage' || uazapiMessageType.toLowerCase().includes('document')) {
+        messageType = 'document';
+      } else if (uazapiMessageType === 'StickerMessage' || uazapiMessageType.toLowerCase().includes('sticker')) {
+        messageType = 'sticker';
+      }
+      
+      // Store the complete media data as JSON
+      messageContent = JSON.stringify(rawMediaData);
+      
+      // Extract caption if available
+      const caption = (rawMediaData as any)?.Caption || (rawMediaData as any)?.caption || '';
+      if (caption) {
+        console.log('[Media Debug] Found caption:', caption);
+      }
+    } else if (messageData.text) {
       messageContent = messageData.text;
-    } else if (messageData.content) {
+    } else if (typeof messageData.content === 'string') {
       messageContent = messageData.content;
     } else if (messageData.message?.conversation) {
       messageContent = messageData.message.conversation;
@@ -387,79 +418,99 @@ serve(async (req) => {
       messageContent = messageData.message.extendedTextMessage.text;
     }
     
-    if (messageData.mediaType || messageData.type) {
-      const type = messageData.mediaType || messageData.type;
-      if (type === 'image' || messageData.message?.imageMessage) {
+    // Fallback: check for media in messageData.message structure (alternative webhook format)
+    if (messageType === 'text' && messageData.message) {
+      if (messageData.message.imageMessage) {
         messageType = 'image';
-        rawMediaData = messageData.message?.imageMessage || messageData;
-        // Store the complete media data as JSON for frontend to use thumbnail
-        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
-          messageContent = JSON.stringify(rawMediaData);
-        } else {
-          messageContent = messageContent || '[Imagem]';
-        }
-      } else if (type === 'audio' || type === 'ptt' || messageData.message?.audioMessage) {
+        rawMediaData = messageData.message.imageMessage;
+        messageContent = JSON.stringify(rawMediaData);
+      } else if (messageData.message.audioMessage) {
         messageType = 'audio';
-        rawMediaData = messageData.message?.audioMessage || messageData;
-        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
-          messageContent = JSON.stringify(rawMediaData);
-        } else {
-          messageContent = '[Áudio]';
-        }
-      } else if (type === 'video' || messageData.message?.videoMessage) {
+        rawMediaData = messageData.message.audioMessage;
+        messageContent = JSON.stringify(rawMediaData);
+      } else if (messageData.message.videoMessage) {
         messageType = 'video';
-        rawMediaData = messageData.message?.videoMessage || messageData;
-        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
-          messageContent = JSON.stringify(rawMediaData);
-        } else {
-          messageContent = messageContent || '[Vídeo]';
-        }
-      } else if (type === 'document' || messageData.message?.documentMessage) {
+        rawMediaData = messageData.message.videoMessage;
+        messageContent = JSON.stringify(rawMediaData);
+      } else if (messageData.message.documentMessage) {
         messageType = 'document';
-        rawMediaData = messageData.message?.documentMessage || messageData;
-        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
-          messageContent = JSON.stringify(rawMediaData);
-        } else {
-          messageContent = '[Documento/PDF]';
-        }
-      } else if (type === 'sticker' || messageData.message?.stickerMessage) {
+        rawMediaData = messageData.message.documentMessage;
+        messageContent = JSON.stringify(rawMediaData);
+      } else if (messageData.message.stickerMessage) {
         messageType = 'sticker';
-        rawMediaData = messageData.message?.stickerMessage || messageData;
-        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
-          messageContent = JSON.stringify(rawMediaData);
-        } else {
-          messageContent = '[Figurinha]';
-        }
+        rawMediaData = messageData.message.stickerMessage;
+        messageContent = JSON.stringify(rawMediaData);
+      }
+    }
+    
+    // Also check mediaType field (another common format)
+    if (messageType === 'text' && (messageData.mediaType || messageData.type)) {
+      const type = messageData.mediaType || messageData.type;
+      if (type === 'image') messageType = 'image';
+      else if (type === 'audio' || type === 'ptt') messageType = 'audio';
+      else if (type === 'video') messageType = 'video';
+      else if (type === 'document') messageType = 'document';
+      else if (type === 'sticker') messageType = 'sticker';
+      
+      if (messageType !== 'text') {
+        rawMediaData = messageData;
+        messageContent = JSON.stringify(messageData);
       }
     }
 
     const messageIdWhatsapp = messageData.messageid || messageData.id || messageData.key?.id || '';
 
     // Try to download and persist media if URL is available
-    if (rawMediaData) {
-      const tempMediaUrl = (rawMediaData as { URL?: string }).URL || 
-                           (rawMediaData as { url?: string }).url || 
-                           (rawMediaData as { MediaUrl?: string }).MediaUrl;
+    if (rawMediaData && messageType !== 'text') {
+      const tempMediaUrl = (rawMediaData as any).URL || 
+                           (rawMediaData as any).url || 
+                           (rawMediaData as any).MediaUrl ||
+                           (rawMediaData as any).mediaUrl;
+      
+      console.log('[Media Debug] Looking for URL in rawMediaData. Found:', tempMediaUrl ? 'Yes' : 'No');
       
       if (tempMediaUrl) {
         try {
           console.log('[Media] Attempting to download from:', tempMediaUrl);
           
-          const mediaResponse = await fetch(tempMediaUrl);
+          // Try with headers that might be needed for WhatsApp URLs
+          const mediaResponse = await fetch(tempMediaUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            }
+          });
+          
           if (mediaResponse.ok) {
             const blob = await mediaResponse.blob();
-            const extension = messageType === 'image' ? 'jpg' 
-                            : messageType === 'audio' ? 'mp3' 
+            
+            // Get extension from mimetype if available
+            const mimetype = (rawMediaData as any).Mimetype || (rawMediaData as any).mimetype || blob.type || '';
+            const mimeToExt: Record<string, string> = {
+              'image/jpeg': 'jpg',
+              'image/png': 'png',
+              'image/webp': 'webp',
+              'image/gif': 'gif',
+              'audio/ogg': 'ogg',
+              'audio/ogg; codecs=opus': 'ogg',
+              'audio/mpeg': 'mp3',
+              'audio/mp4': 'm4a',
+              'video/mp4': 'mp4',
+              'video/webm': 'webm',
+              'application/pdf': 'pdf',
+            };
+            const extension = mimeToExt[mimetype] || 
+                            (messageType === 'image' ? 'jpg' 
+                            : messageType === 'audio' ? 'ogg' 
                             : messageType === 'video' ? 'mp4' 
                             : messageType === 'document' ? 'pdf'
-                            : 'bin';
+                            : 'bin');
             
             const fileName = `media/${Date.now()}_${messageIdWhatsapp || crypto.randomUUID()}.${extension}`;
             
             const { error: uploadError } = await supabase.storage
               .from('broadcast-media')
               .upload(fileName, blob, {
-                contentType: blob.type || `${messageType}/*`,
+                contentType: mimetype || blob.type || `${messageType}/*`,
                 upsert: false
               });
             
@@ -474,16 +525,23 @@ serve(async (req) => {
               console.log('[Media] Uploaded successfully:', mediaUrl);
               
               // Update the JSON content with the permanent URL
-              const contentObj = JSON.parse(messageContent);
-              contentObj.media_url = mediaUrl;
-              messageContent = JSON.stringify(contentObj);
+              try {
+                const contentObj = JSON.parse(messageContent);
+                contentObj.media_url = mediaUrl;
+                messageContent = JSON.stringify(contentObj);
+              } catch {
+                // If content isn't valid JSON, create new object
+                messageContent = JSON.stringify({ ...rawMediaData, media_url: mediaUrl });
+              }
             }
           } else {
-            console.log('[Media] Failed to fetch media:', mediaResponse.status);
+            console.log('[Media] Failed to fetch media. Status:', mediaResponse.status, 'StatusText:', mediaResponse.statusText);
           }
         } catch (mediaError) {
           console.error('[Media] Error downloading/uploading media:', mediaError);
         }
+      } else {
+        console.log('[Media Debug] No URL found in rawMediaData, keeping JSON with thumbnail if available');
       }
     }
     
