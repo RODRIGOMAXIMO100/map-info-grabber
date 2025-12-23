@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Phone, 
@@ -10,8 +9,6 @@ import {
   Tag,
   DollarSign,
   AlertTriangle,
-  FileText,
-  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -30,10 +27,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { WhatsAppConversation } from '@/types/whatsapp';
-import { format, isPast, isToday, isTomorrow, formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { format, isPast, isToday, isTomorrow } from 'date-fns';
 
 interface LeadCardProps {
   conv: WhatsAppConversation;
@@ -57,33 +51,6 @@ export function LeadCard({
   bantScore,
 }: LeadCardProps) {
   const navigate = useNavigate();
-  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
-  const [localSummary, setLocalSummary] = useState<string | null>(conv.conversation_summary || null);
-  const [summaryUpdatedAt, setSummaryUpdatedAt] = useState<string | null>(conv.summary_updated_at || null);
-
-  const generateSummary = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsGeneratingSummary(true);
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-conversation-summary', {
-        body: { conversation_id: conv.id }
-      });
-
-      if (error) throw error;
-      
-      if (data?.summary) {
-        setLocalSummary(data.summary);
-        setSummaryUpdatedAt(data.updated_at);
-        toast.success('Resumo gerado com sucesso!');
-      }
-    } catch (err) {
-      console.error('Error generating summary:', err);
-      toast.error('Erro ao gerar resumo');
-    } finally {
-      setIsGeneratingSummary(false);
-    }
-  };
 
   const formatPhone = (phone: string): string => {
     const digits = phone.replace(/\D/g, '');
@@ -353,54 +320,6 @@ export function LeadCard({
             </p>
           </div>
         )}
-
-        {/* Row 6: Conversation Summary */}
-        <div className="mt-2">
-          {localSummary ? (
-            <div className="p-2 rounded bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-              <div className="flex items-start justify-between gap-1">
-                <p className="text-[10px] text-blue-700 dark:text-blue-300 line-clamp-3 flex-1">
-                  <FileText className="h-3 w-3 inline mr-1" />
-                  {localSummary}
-                </p>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-5 w-5 flex-shrink-0 text-blue-500 hover:text-blue-700"
-                  onClick={generateSummary}
-                  disabled={isGeneratingSummary}
-                >
-                  <RefreshCw className={cn("h-3 w-3", isGeneratingSummary && "animate-spin")} />
-                </Button>
-              </div>
-              {summaryUpdatedAt && (
-                <p className="text-[8px] text-blue-500 dark:text-blue-400 mt-1">
-                  Atualizado {formatDistanceToNow(new Date(summaryUpdatedAt), { addSuffix: true, locale: ptBR })}
-                </p>
-              )}
-            </div>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full h-7 text-[10px] gap-1"
-              onClick={generateSummary}
-              disabled={isGeneratingSummary}
-            >
-              {isGeneratingSummary ? (
-                <>
-                  <RefreshCw className="h-3 w-3 animate-spin" />
-                  Gerando resumo...
-                </>
-              ) : (
-                <>
-                  <FileText className="h-3 w-3" />
-                  Gerar resumo da conversa
-                </>
-              )}
-            </Button>
-          )}
-        </div>
       </CardContent>
     </Card>
   );
