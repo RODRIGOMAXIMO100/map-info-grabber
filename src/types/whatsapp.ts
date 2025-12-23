@@ -44,6 +44,8 @@ export interface WhatsAppConversation {
   converted_at?: string;
   funnel_stage?: string;
   origin?: string;
+  conversation_summary?: string;
+  summary_updated_at?: string;
 }
 
 export interface WhatsAppMessage {

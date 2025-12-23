@@ -332,6 +332,7 @@ export type Database = {
           ai_pending_at: string | null
           avatar_url: string | null
           config_id: string | null
+          conversation_summary: string | null
           converted_at: string | null
           created_at: string | null
           custom_tags: string[] | null
@@ -357,6 +358,7 @@ export type Database = {
           reminder_at: string | null
           site_sent: boolean | null
           status: string
+          summary_updated_at: string | null
           tags: string[] | null
           unread_count: number | null
           updated_at: string | null
@@ -368,6 +370,7 @@ export type Database = {
           ai_pending_at?: string | null
           avatar_url?: string | null
           config_id?: string | null
+          conversation_summary?: string | null
           converted_at?: string | null
           created_at?: string | null
           custom_tags?: string[] | null
@@ -393,6 +396,7 @@ export type Database = {
           reminder_at?: string | null
           site_sent?: boolean | null
           status?: string
+          summary_updated_at?: string | null
           tags?: string[] | null
           unread_count?: number | null
           updated_at?: string | null
@@ -404,6 +408,7 @@ export type Database = {
           ai_pending_at?: string | null
           avatar_url?: string | null
           config_id?: string | null
+          conversation_summary?: string | null
           converted_at?: string | null
           created_at?: string | null
           custom_tags?: string[] | null
@@ -429,6 +434,7 @@ export type Database = {
           reminder_at?: string | null
           site_sent?: boolean | null
           status?: string
+          summary_updated_at?: string | null
           tags?: string[] | null
           unread_count?: number | null
           updated_at?: string | null
