@@ -418,14 +418,48 @@ serve(async (req) => {
         messageContent = messageData.message.extendedTextMessage.text;
       }
 
-      // Important: some UAZAPI media events send caption as string in content
-      // while media URL lives on the root messageData.
+      // IMPORTANT: For media types (audio, image, video, etc.), ALWAYS save the full messageData as JSON
+      // This ensures we have mediaKey, directPath, url, mimetype for later decryption/download
       const inferredType = detectUazapiMediaType(uazapiMessageType);
       if (inferredType !== 'text') {
         messageType = inferredType;
         rawMediaData = messageData as Record<string, unknown>;
-        messageContent = JSON.stringify({ ...messageData, caption: messageContent });
-        console.log('[Media Debug] Media inferred from messageType; using root messageData as rawMediaData');
+        
+        // Build complete metadata object for audio/media
+        const mediaMetadata: Record<string, unknown> = {
+          messageType: uazapiMessageType,
+          type: inferredType,
+          // Include all possible media fields
+          MediaKey: messageData.MediaKey || messageData.mediaKey,
+          mediaKey: messageData.mediaKey || messageData.MediaKey,
+          DirectPath: messageData.DirectPath || messageData.directPath,
+          directPath: messageData.directPath || messageData.DirectPath,
+          URL: messageData.URL || messageData.url,
+          url: messageData.url || messageData.URL,
+          Mimetype: messageData.Mimetype || messageData.mimetype,
+          mimetype: messageData.mimetype || messageData.Mimetype,
+          Seconds: messageData.Seconds || messageData.seconds,
+          seconds: messageData.seconds || messageData.Seconds,
+          FileLength: messageData.FileLength || messageData.fileLength,
+          fileLength: messageData.fileLength || messageData.FileLength,
+          FileName: messageData.FileName || messageData.fileName,
+          fileName: messageData.fileName || messageData.FileName,
+          caption: messageContent || '',
+        };
+        
+        // Also check nested content/message if exists
+        if (messageData.content && typeof messageData.content === 'object') {
+          Object.assign(mediaMetadata, messageData.content);
+        }
+        if (messageData.message && typeof messageData.message === 'object') {
+          const msgKey = `${inferredType}Message`;
+          if (messageData.message[msgKey]) {
+            Object.assign(mediaMetadata, messageData.message[msgKey]);
+          }
+        }
+        
+        messageContent = JSON.stringify(mediaMetadata);
+        console.log('[Media Debug] Media inferred from messageType; saved complete metadata:', messageContent.substring(0, 300));
       }
     }
     // Fallback: check for media in messageData.message structure (alternative webhook format)
