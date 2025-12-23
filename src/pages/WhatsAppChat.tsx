@@ -3,11 +3,9 @@ import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users, Megaphone, Shuffle } from 'lucide-react';
 import { 
   LeadStatusPanel, 
-  ChatMetricsBar, 
   AIStatusIcon, 
   FunnelStageBadge, 
   WaitingTimeBadge,
-  FunnelStageFilter,
   detectFunnelStage,
   type FunnelStageId
 } from '@/components/whatsapp';
@@ -516,135 +514,60 @@ export default function WhatsAppChat() {
                 className="pl-9"
               />
             </div>
-            {/* Type tabs (Contacts/Groups) */}
-            <div className="flex gap-1 p-1 bg-muted rounded-lg">
-              <button
-                onClick={() => setConversationType('all')}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                  conversationType === 'all' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                )}
-              >
-                Todos
-                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.all}</Badge>
-              </button>
-              <button
-                onClick={() => setConversationType('contacts')}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                  conversationType === 'contacts' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                )}
-              >
-                <User className="h-3.5 w-3.5" />
-                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.contacts}</Badge>
-              </button>
-              <button
-                onClick={() => setConversationType('groups')}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                  conversationType === 'groups' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                )}
-              >
-                <Users className="h-3.5 w-3.5" />
-                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.groups}</Badge>
-              </button>
+            {/* Compact Filter Dropdowns - Mobile */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Type Filter */}
+              <Select value={conversationType} onValueChange={(value) => setConversationType(value as ConversationType)}>
+                <SelectTrigger className="h-8 flex-1 min-w-[80px] text-xs">
+                  <div className="flex items-center gap-1">
+                    {conversationType === 'all' && <span>Tipo</span>}
+                    {conversationType === 'contacts' && <><User className="h-3 w-3" /><span>Contatos</span></>}
+                    {conversationType === 'groups' && <><Users className="h-3 w-3" /><span>Grupos</span></>}
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos ({filterCounts.all})</SelectItem>
+                  <SelectItem value="contacts"><div className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" />Contatos ({filterCounts.contacts})</div></SelectItem>
+                  <SelectItem value="groups"><div className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />Grupos ({filterCounts.groups})</div></SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Origin Filter */}
+              <Select value={originType} onValueChange={(value) => setOriginType(value as OriginType)}>
+                <SelectTrigger className="h-8 flex-1 min-w-[90px] text-xs">
+                  <div className="flex items-center gap-1">
+                    {originType === 'all' && <span>Origem</span>}
+                    {originType === 'broadcast' && <><Megaphone className="h-3 w-3" /><span>Broadcast</span></>}
+                    {originType === 'random' && <><Shuffle className="h-3 w-3" /><span>Aleatório</span></>}
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="broadcast"><div className="flex items-center gap-1.5"><Megaphone className="h-3.5 w-3.5" />Broadcast ({filterCounts.broadcast})</div></SelectItem>
+                  <SelectItem value="random"><div className="flex items-center gap-1.5"><Shuffle className="h-3.5 w-3.5" />Aleatório ({filterCounts.random})</div></SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Status Filter */}
+              <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
+                <SelectTrigger className="h-8 flex-1 min-w-[80px] text-xs">
+                  <div className="flex items-center gap-1">
+                    <Filter className="h-3 w-3" />
+                    {activeFilter === 'all' && <span>Status</span>}
+                    {activeFilter !== 'all' && <span>{activeFilter === 'no_reply' ? 'S/ Resp' : activeFilter === 'unread' ? 'N/ Lidas' : activeFilter === 'ai_paused' ? 'IA Pausada' : activeFilter === 'ai_active' ? 'IA Ativa' : activeFilter === 'handoff' ? 'Handoff' : 'Aguard.'}</span>}
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos ({filterCounts.all})</SelectItem>
+                  <SelectItem value="ai_active"><div className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5 text-emerald-500" />IA Ativa ({filterCounts.ai_active})</div></SelectItem>
+                  <SelectItem value="ai_paused"><div className="flex items-center gap-1.5"><BotOff className="h-3.5 w-3.5 text-amber-500" />IA Pausada ({filterCounts.ai_paused})</div></SelectItem>
+                  <SelectItem value="handoff"><div className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-red-500" />Handoff ({filterCounts.handoff})</div></SelectItem>
+                  <SelectItem value="unread"><div className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />Não Lidas ({filterCounts.unread})</div></SelectItem>
+                  <SelectItem value="no_reply"><div className="flex items-center gap-1.5"><MessageSquareOff className="h-3.5 w-3.5" />Sem Resposta ({filterCounts.no_reply})</div></SelectItem>
+                  <SelectItem value="waiting"><div className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />Aguardando ({filterCounts.waiting})</div></SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            {/* Origin tabs (Broadcast/Random) - Mobile */}
-            <div className="flex gap-1 p-1 bg-muted rounded-lg">
-              <button
-                onClick={() => setOriginType('all')}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                  originType === 'all' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                )}
-              >
-                Todos
-              </button>
-              <button
-                onClick={() => setOriginType('broadcast')}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                  originType === 'broadcast' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                )}
-              >
-                <Megaphone className="h-3.5 w-3.5" />
-                <span>Broadcast</span>
-                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.broadcast}</Badge>
-              </button>
-              <button
-                onClick={() => setOriginType('random')}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                  originType === 'random' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                )}
-              >
-                <Shuffle className="h-3.5 w-3.5" />
-                <span>Aleatório</span>
-                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.random}</Badge>
-              </button>
-            </div>
-            <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
-              <SelectTrigger className="w-full">
-                <div className="flex items-center gap-2">
-                  <Filter className="h-4 w-4" />
-                  <span>
-                    {activeFilter === 'all' && `Todos (${filterCounts.all})`}
-                    {activeFilter === 'no_reply' && `Sem Resposta (${filterCounts.no_reply})`}
-                    {activeFilter === 'unread' && `Não Lidas (${filterCounts.unread})`}
-                    {activeFilter === 'ai_paused' && `IA Pausada (${filterCounts.ai_paused})`}
-                    {activeFilter === 'waiting' && `Aguardando (${filterCounts.waiting})`}
-                  </span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  <div className="flex items-center justify-between w-full gap-4">
-                    <span>Todos</span>
-                    <Badge variant="secondary" className="ml-auto">{filterCounts.all}</Badge>
-                  </div>
-                </SelectItem>
-                <SelectItem value="no_reply">
-                  <div className="flex items-center justify-between w-full gap-4">
-                    <div className="flex items-center gap-2">
-                      <MessageSquareOff className="h-4 w-4" />
-                      <span>Sem Resposta</span>
-                    </div>
-                    <Badge variant="secondary" className="ml-auto">{filterCounts.no_reply}</Badge>
-                  </div>
-                </SelectItem>
-                <SelectItem value="unread">
-                  <div className="flex items-center justify-between w-full gap-4">
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-4 w-4" />
-                      <span>Não Lidas</span>
-                    </div>
-                    {filterCounts.unread > 0 ? (
-                      <Badge variant="destructive" className="ml-auto">{filterCounts.unread}</Badge>
-                    ) : (
-                      <Badge variant="secondary" className="ml-auto">0</Badge>
-                    )}
-                  </div>
-                </SelectItem>
-                <SelectItem value="ai_paused">
-                  <div className="flex items-center justify-between w-full gap-4">
-                    <div className="flex items-center gap-2">
-                      <BotOff className="h-4 w-4" />
-                      <span>IA Pausada</span>
-                    </div>
-                    <Badge variant="secondary" className="ml-auto">{filterCounts.ai_paused}</Badge>
-                  </div>
-                </SelectItem>
-                <SelectItem value="waiting">
-                  <div className="flex items-center justify-between w-full gap-4">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4" />
-                      <span>Aguardando</span>
-                    </div>
-                    <Badge variant="secondary" className="ml-auto">{filterCounts.waiting}</Badge>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           <ScrollArea className="flex-1">
@@ -844,90 +767,187 @@ export default function WhatsAppChat() {
                     className="pl-9"
                   />
                 </div>
-                {/* Type tabs (Contacts/Groups) - Desktop */}
-                <div className="flex gap-1 p-1 bg-muted rounded-lg">
-                  <button
-                    onClick={() => setConversationType('all')}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                      conversationType === 'all' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                    )}
-                  >
-                    Todos
-                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.all}</Badge>
-                  </button>
-                  <button
-                    onClick={() => setConversationType('contacts')}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                      conversationType === 'contacts' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                    )}
-                  >
-                    <User className="h-3.5 w-3.5" />
-                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.contacts}</Badge>
-                  </button>
-                  <button
-                    onClick={() => setConversationType('groups')}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                      conversationType === 'groups' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                    )}
-                  >
-                    <Users className="h-3.5 w-3.5" />
-                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.groups}</Badge>
-                  </button>
-                </div>
-                {/* Origin tabs (Broadcast/Random) - Desktop */}
-                <div className="flex gap-1 p-1 bg-muted rounded-lg">
-                  <button
-                    onClick={() => setOriginType('all')}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                      originType === 'all' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                    )}
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setOriginType('broadcast')}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                      originType === 'broadcast' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                    )}
-                  >
-                    <Megaphone className="h-3.5 w-3.5" />
-                    <span>Broadcast</span>
-                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.broadcast}</Badge>
-                  </button>
-                  <button
-                    onClick={() => setOriginType('random')}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
-                      originType === 'random' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                    )}
-                  >
-                    <Shuffle className="h-3.5 w-3.5" />
-                    <span>Aleatório</span>
-                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.random}</Badge>
-                  </button>
+                {/* Compact Filter Row with Dropdowns */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Type Filter (Contacts/Groups) */}
+                  <Select value={conversationType} onValueChange={(value) => setConversationType(value as ConversationType)}>
+                    <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
+                      <div className="flex items-center gap-1.5">
+                        {conversationType === 'all' && <><span>Tipo</span><Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.all}</Badge></>}
+                        {conversationType === 'contacts' && <><User className="h-3 w-3" /><span>Contatos</span><Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.contacts}</Badge></>}
+                        {conversationType === 'groups' && <><Users className="h-3 w-3" /><span>Grupos</span><Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.groups}</Badge></>}
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Todos</span>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.all}</Badge>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="contacts">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" /><span>Contatos</span></div>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.contacts}</Badge>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="groups">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /><span>Grupos</span></div>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.groups}</Badge>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Origin Filter (Broadcast/Random) */}
+                  <Select value={originType} onValueChange={(value) => setOriginType(value as OriginType)}>
+                    <SelectTrigger className="h-8 w-auto min-w-[110px] text-xs">
+                      <div className="flex items-center gap-1.5">
+                        {originType === 'all' && <span>Origem</span>}
+                        {originType === 'broadcast' && <><Megaphone className="h-3 w-3" /><span>Broadcast</span><Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.broadcast}</Badge></>}
+                        {originType === 'random' && <><Shuffle className="h-3 w-3" /><span>Aleatório</span><Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.random}</Badge></>}
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="broadcast">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><Megaphone className="h-3.5 w-3.5" /><span>Broadcast</span></div>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.broadcast}</Badge>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="random">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><Shuffle className="h-3.5 w-3.5" /><span>Aleatório</span></div>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.random}</Badge>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Status Filter */}
+                  <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
+                    <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <Filter className="h-3 w-3" />
+                        {activeFilter === 'all' && <span>Status</span>}
+                        {activeFilter === 'no_reply' && <><MessageSquareOff className="h-3 w-3" /><span>S/ Resposta</span></>}
+                        {activeFilter === 'unread' && <><Mail className="h-3 w-3" /><span>Não Lidas</span></>}
+                        {activeFilter === 'ai_paused' && <><BotOff className="h-3 w-3" /><span>IA Pausada</span></>}
+                        {activeFilter === 'ai_active' && <><Bot className="h-3 w-3" /><span>IA Ativa</span></>}
+                        {activeFilter === 'handoff' && <><Phone className="h-3 w-3" /><span>Handoff</span></>}
+                        {activeFilter === 'waiting' && <><Clock className="h-3 w-3" /><span>Aguardando</span></>}
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Todos</span>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.all}</Badge>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="ai_active">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5 text-emerald-500" /><span>IA Ativa</span></div>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.ai_active}</Badge>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="ai_paused">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><BotOff className="h-3.5 w-3.5 text-amber-500" /><span>IA Pausada</span></div>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.ai_paused}</Badge>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="handoff">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-red-500" /><span>Handoff</span></div>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.handoff}</Badge>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="unread">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /><span>Não Lidas</span></div>
+                          <Badge variant={filterCounts.unread > 0 ? "destructive" : "secondary"} className="h-4 px-1 text-[10px]">{filterCounts.unread}</Badge>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="no_reply">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><MessageSquareOff className="h-3.5 w-3.5" /><span>Sem Resposta</span></div>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.no_reply}</Badge>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="waiting">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /><span>Aguardando</span></div>
+                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.waiting}</Badge>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Funnel Stage Filter - only when broadcast */}
+                  {originType === 'broadcast' && (
+                    <Select value={funnelStageFilter} onValueChange={(value) => setFunnelStageFilter(value as FunnelStageId | 'all')}>
+                      <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
+                        <div className="flex items-center gap-1.5">
+                          {funnelStageFilter === 'all' && <span>Funil</span>}
+                          {funnelStageFilter === 'new' && <span>🆕 Novo</span>}
+                          {funnelStageFilter === 'contacted' && <span>📞 Contatado</span>}
+                          {funnelStageFilter === 'negotiating' && <span>💬 Negociando</span>}
+                          {funnelStageFilter === 'handoff' && <span>🤝 Handoff</span>}
+                          {funnelStageFilter === 'converted' && <span>✅ Convertido</span>}
+                          {funnelStageFilter === 'lost' && <span>❌ Perdido</span>}
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Todos</span>
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.all}</Badge>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="new">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>🆕 Novo</span>
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.new}</Badge>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="contacted">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>📞 Contatado</span>
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.contacted}</Badge>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="negotiating">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>💬 Negociando</span>
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.negotiating}</Badge>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="handoff">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>🤝 Handoff</span>
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.handoff}</Badge>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="converted">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>✅ Convertido</span>
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.converted}</Badge>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="lost">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>❌ Perdido</span>
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.lost}</Badge>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
-
-              {/* Metrics Bar - only visible when in broadcast mode */}
-              {originType === 'broadcast' && (
-                <>
-                  <ChatMetricsBar 
-                    metrics={chatMetrics}
-                    onFilterClick={handleMetricsFilterClick}
-                    activeFilter={activeFilter}
-                  />
-                  <FunnelStageFilter
-                    selectedStage={funnelStageFilter}
-                    onStageChange={setFunnelStageFilter}
-                    stageCounts={funnelStageCounts}
-                  />
-                </>
-              )}
 
               <ScrollArea className="flex-1">
                 {filteredConversations.map((conv) => {
