@@ -8,7 +8,6 @@ import { Separator } from '@/components/ui/separator';
 import { 
   MessageCircle, 
   Phone, 
-  UserCheck, 
   Clock, 
   Bot, 
   User,
@@ -20,8 +19,13 @@ import {
   Calendar,
   MessageSquare,
   ArrowDownLeft,
-  ArrowUpRight
+  ArrowUpRight,
+  FileText,
+  RefreshCw
 } from 'lucide-react';
+import { toast as sonnerToast } from 'sonner';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { WhatsAppConversation } from '@/types/whatsapp';
@@ -66,6 +70,17 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
   const [messageCount, setMessageCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [assuming, setAssuming] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [localSummary, setLocalSummary] = useState<string | null>(null);
+  const [summaryUpdatedAt, setSummaryUpdatedAt] = useState<string | null>(null);
+
+  // Sync local summary state when conversation changes
+  useEffect(() => {
+    if (conversation) {
+      setLocalSummary(conversation.conversation_summary || null);
+      setSummaryUpdatedAt(conversation.summary_updated_at || null);
+    }
+  }, [conversation?.id, conversation?.conversation_summary, conversation?.summary_updated_at]);
 
   useEffect(() => {
     if (conversation && open) {
@@ -219,6 +234,31 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
     }
   };
 
+  const generateSummary = async () => {
+    if (!conversation) return;
+    setIsGeneratingSummary(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-conversation-summary', {
+        body: { conversation_id: conversation.id }
+      });
+
+      if (error) throw error;
+      
+      if (data?.summary) {
+        setLocalSummary(data.summary);
+        setSummaryUpdatedAt(data.updated_at);
+        sonnerToast.success('Resumo gerado com sucesso!');
+        onUpdate?.();
+      }
+    } catch (err) {
+      console.error('Error generating summary:', err);
+      sonnerToast.error('Erro ao gerar resumo');
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
+
   if (!conversation) return null;
 
   const currentStage = getCurrentStage();
@@ -308,6 +348,59 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
                   </Badge>
                 )}
               </div>
+            </div>
+
+            <Separator />
+
+            {/* Resumo da Conversa */}
+            <div>
+              <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Resumo da Conversa
+              </h4>
+              {localSummary ? (
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    {localSummary}
+                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    {summaryUpdatedAt && (
+                      <span className="text-xs text-blue-500 dark:text-blue-400">
+                        Atualizado {formatDistanceToNow(new Date(summaryUpdatedAt), { addSuffix: true, locale: ptBR })}
+                      </span>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                      onClick={generateSummary}
+                      disabled={isGeneratingSummary}
+                    >
+                      <RefreshCw className={`h-3 w-3 ${isGeneratingSummary ? 'animate-spin' : ''}`} />
+                      Atualizar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={generateSummary}
+                  disabled={isGeneratingSummary}
+                >
+                  {isGeneratingSummary ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Gerando resumo...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4" />
+                      Gerar Resumo
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
 
             <Separator />
@@ -501,7 +594,7 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
                 {assuming ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <UserCheck className="h-4 w-4" />
+                  <User className="h-4 w-4" />
                 )}
                 Assumir
               </Button>
