@@ -316,13 +316,22 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
   const mediaData = parseMediaContent(content);
   const normalized = normalizeMediaData(mediaData);
 
+  // Known media types that should be trusted from the database
+  const KNOWN_MEDIA_TYPES = ['image', 'video', 'audio', 'ptt', 'document', 'sticker'];
+  
   // Infer media type when backend stored message_type as "text" but content is JSON metadata
   const inferredType = inferMediaType(normalized);
-  const effectiveType = (messageType === 'text' || !messageType) && inferredType ? inferredType : messageType;
+  
+  // Priority: 1) Known messageType from DB, 2) inferredType from content, 3) fallback to messageType
+  const effectiveType = KNOWN_MEDIA_TYPES.includes(messageType) 
+    ? messageType 
+    : (inferredType || messageType);
 
   // Check if we have encrypted media that needs downloading
   const hasEncryptedMedia = !!(normalized.mediaKey && (normalized.url || normalized.directPath));
   const hasPlayableUrl = !!(mediaUrl || downloadedUrl || normalized.mediaUrl);
+  
+  console.log('[MessageContent]', { messageType, effectiveType, inferredType, hasMediaData: !!mediaData, hasEncryptedMedia, hasThumbnail: !!normalized.thumbnail });
 
   // Download encrypted media
   const handleDownloadMedia = async () => {
