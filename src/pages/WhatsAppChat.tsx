@@ -1164,6 +1164,7 @@ export default function WhatsAppChat() {
                         is_crm_lead: selectedConversation.is_crm_lead,
                         origin: (selectedConversation as any).origin,
                         funnel_stage: (selectedConversation as any).funnel_stage,
+                        tags: selectedConversation.tags,
                       }}
                       onUpdate={() => {
                         loadConversations();
