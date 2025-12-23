@@ -19,7 +19,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import type { WhatsAppConversation, WhatsAppMessage, WhatsAppLabel } from '@/types/whatsapp';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+// Removed ResizablePanelGroup - using fixed layout now
 
 type FilterType = 'all' | 'no_reply' | 'unread' | 'ai_paused' | 'waiting' | 'ai_active' | 'handoff';
 type ConversationType = 'all' | 'contacts' | 'groups';
@@ -747,12 +747,10 @@ export default function WhatsAppChat() {
         </div>
       </div>
 
-      {/* Desktop Layout with Resizable Panels */}
+      {/* Desktop Layout with Fixed Panels */}
       <div className="hidden md:flex flex-1 overflow-hidden">
-        <ResizablePanelGroup direction="horizontal" className="h-full">
-          {/* Conversations Panel */}
-          <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-            <div className="h-full flex flex-col bg-background min-w-0 overflow-hidden border-r">
+        {/* Conversations Panel - Fixed width 350px */}
+        <div className="w-[350px] flex-shrink-0 h-full flex flex-col bg-background min-w-0 overflow-hidden border-r">
               {/* Desktop Filter */}
               <div className="flex items-center gap-2 p-3 border-b">
                 <h2 className="font-semibold">Conversas</h2>
@@ -1065,16 +1063,11 @@ export default function WhatsAppChat() {
                   </div>
                 )}
               </ScrollArea>
-            </div>
-          </ResizablePanel>
+          </div>
 
-          {/* Resize Handle */}
-          <ResizableHandle withHandle className="w-1.5 bg-border hover:bg-primary/20 transition-colors" />
-
-          {/* Chat Panel */}
-          <ResizablePanel defaultSize={70} minSize={40}>
-            <div className="h-full flex flex-col bg-background">
-              {selectedConversation ? (
+          {/* Chat Panel - Flex grow to fill remaining space */}
+          <div className="flex-1 h-full flex flex-col bg-background">
+            {selectedConversation ? (
                 <>
                   {/* Chat Header */}
                   <div className="border-b p-3 space-y-2">
@@ -1221,10 +1214,8 @@ export default function WhatsAppChat() {
                   Selecione uma conversa para começar
                 </div>
               )}
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          </div>
+        </div>
       </div>
-    </div>
   );
 }
