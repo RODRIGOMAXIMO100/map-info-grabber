@@ -9,6 +9,7 @@ import {
   detectFunnelStage,
   type FunnelStageId
 } from '@/components/whatsapp';
+import { MessageContent, formatMessagePreview } from '@/components/whatsapp/MessageContent';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -1163,12 +1164,17 @@ export default function WhatsAppChat() {
                               msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'
                             )}>
                               <div className={cn(
-                                'max-w-[70%] rounded-lg px-3 py-2',
+                                'max-w-[70%] rounded-lg px-3 py-2 overflow-hidden',
                                 msg.direction === 'outgoing' 
                                   ? 'bg-primary text-primary-foreground' 
                                   : 'bg-muted'
                               )}>
-                                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                                <MessageContent
+                                  content={msg.content}
+                                  messageType={msg.message_type}
+                                  mediaUrl={msg.media_url}
+                                  direction={msg.direction as 'incoming' | 'outgoing'}
+                                />
                                 <span className={cn(
                                   'text-[10px] mt-1 block text-right',
                                   msg.direction === 'outgoing' 

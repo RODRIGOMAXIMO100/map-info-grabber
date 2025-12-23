@@ -375,6 +375,7 @@ serve(async (req) => {
     let messageContent = '';
     let messageType = 'text';
     let mediaUrl = '';
+    let rawMediaData: Record<string, unknown> | null = null;
 
     if (messageData.text) {
       messageContent = messageData.text;
@@ -390,20 +391,101 @@ serve(async (req) => {
       const type = messageData.mediaType || messageData.type;
       if (type === 'image' || messageData.message?.imageMessage) {
         messageType = 'image';
-        messageContent = messageContent || '[Imagem]';
+        rawMediaData = messageData.message?.imageMessage || messageData;
+        // Store the complete media data as JSON for frontend to use thumbnail
+        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
+          messageContent = JSON.stringify(rawMediaData);
+        } else {
+          messageContent = messageContent || '[Imagem]';
+        }
       } else if (type === 'audio' || type === 'ptt' || messageData.message?.audioMessage) {
         messageType = 'audio';
-        messageContent = '[Áudio]';
+        rawMediaData = messageData.message?.audioMessage || messageData;
+        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
+          messageContent = JSON.stringify(rawMediaData);
+        } else {
+          messageContent = '[Áudio]';
+        }
       } else if (type === 'video' || messageData.message?.videoMessage) {
         messageType = 'video';
-        messageContent = messageContent || '[Vídeo]';
+        rawMediaData = messageData.message?.videoMessage || messageData;
+        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
+          messageContent = JSON.stringify(rawMediaData);
+        } else {
+          messageContent = messageContent || '[Vídeo]';
+        }
       } else if (type === 'document' || messageData.message?.documentMessage) {
         messageType = 'document';
-        messageContent = '[Documento/PDF]';
+        rawMediaData = messageData.message?.documentMessage || messageData;
+        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
+          messageContent = JSON.stringify(rawMediaData);
+        } else {
+          messageContent = '[Documento/PDF]';
+        }
+      } else if (type === 'sticker' || messageData.message?.stickerMessage) {
+        messageType = 'sticker';
+        rawMediaData = messageData.message?.stickerMessage || messageData;
+        if (rawMediaData && Object.keys(rawMediaData).length > 0) {
+          messageContent = JSON.stringify(rawMediaData);
+        } else {
+          messageContent = '[Figurinha]';
+        }
       }
     }
 
     const messageIdWhatsapp = messageData.messageid || messageData.id || messageData.key?.id || '';
+
+    // Try to download and persist media if URL is available
+    if (rawMediaData) {
+      const tempMediaUrl = (rawMediaData as { URL?: string }).URL || 
+                           (rawMediaData as { url?: string }).url || 
+                           (rawMediaData as { MediaUrl?: string }).MediaUrl;
+      
+      if (tempMediaUrl) {
+        try {
+          console.log('[Media] Attempting to download from:', tempMediaUrl);
+          
+          const mediaResponse = await fetch(tempMediaUrl);
+          if (mediaResponse.ok) {
+            const blob = await mediaResponse.blob();
+            const extension = messageType === 'image' ? 'jpg' 
+                            : messageType === 'audio' ? 'mp3' 
+                            : messageType === 'video' ? 'mp4' 
+                            : messageType === 'document' ? 'pdf'
+                            : 'bin';
+            
+            const fileName = `media/${Date.now()}_${messageIdWhatsapp || crypto.randomUUID()}.${extension}`;
+            
+            const { error: uploadError } = await supabase.storage
+              .from('broadcast-media')
+              .upload(fileName, blob, {
+                contentType: blob.type || `${messageType}/*`,
+                upsert: false
+              });
+            
+            if (uploadError) {
+              console.error('[Media] Upload error:', uploadError);
+            } else {
+              const { data: publicUrlData } = supabase.storage
+                .from('broadcast-media')
+                .getPublicUrl(fileName);
+              
+              mediaUrl = publicUrlData.publicUrl;
+              console.log('[Media] Uploaded successfully:', mediaUrl);
+              
+              // Update the JSON content with the permanent URL
+              const contentObj = JSON.parse(messageContent);
+              contentObj.media_url = mediaUrl;
+              messageContent = JSON.stringify(contentObj);
+            }
+          } else {
+            console.log('[Media] Failed to fetch media:', mediaResponse.status);
+          }
+        } catch (mediaError) {
+          console.error('[Media] Error downloading/uploading media:', mediaError);
+        }
+      }
+    }
     
     console.log('Extracted data:', { senderPhone, senderName, isFromMe, messageContent, messageType, messageIdWhatsapp, configId });
 
