@@ -51,7 +51,7 @@ export function ChatMetricsBar({ metrics, onFilterClick, activeFilter }: ChatMet
     },
     { 
       key: 'handoff', 
-      label: 'Handoff', 
+      label: 'IA Bloqueada', 
       value: metrics.handoff, 
       icon: HandshakeIcon, 
       color: 'text-red-600',

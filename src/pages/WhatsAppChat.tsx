@@ -265,20 +265,26 @@ export default function WhatsAppChat() {
     try {
       const newPausedState = !conversation.ai_paused;
       
-      // Ao ativar IA: limpar ai_handoff_reason para remover do filtro de handoff
-      // Ao pausar IA: definir ai_handoff_reason para aparecer no filtro de handoff
+      // Ao ativar IA: também limpar ai_handoff_reason se houver bloqueio
+      // Ao pausar IA: apenas pausar, não setar ai_handoff_reason (handoff é para bloqueios reais)
+      const updateData: { ai_paused: boolean; ai_handoff_reason?: null } = { 
+        ai_paused: newPausedState 
+      };
+      
+      // Se estiver ativando a IA, limpar qualquer ai_handoff_reason existente
+      if (!newPausedState) {
+        updateData.ai_handoff_reason = null;
+      }
+      
       await supabase
         .from('whatsapp_conversations')
-        .update({ 
-          ai_paused: newPausedState,
-          ai_handoff_reason: newPausedState ? 'Pausado manualmente' : null
-        })
+        .update(updateData)
         .eq('id', conversation.id);
 
       setSelectedConversation(prev => prev ? { 
         ...prev, 
         ai_paused: newPausedState,
-        ai_handoff_reason: newPausedState ? 'Pausado manualmente' : null
+        ai_handoff_reason: newPausedState ? prev.ai_handoff_reason : null
       } : null);
       loadConversations();
 
@@ -570,14 +576,14 @@ export default function WhatsAppChat() {
                   <div className="flex items-center gap-1">
                     <Filter className="h-3 w-3" />
                     {activeFilter === 'all' && <span>Status</span>}
-                    {activeFilter !== 'all' && <span>{activeFilter === 'no_reply' ? 'S/ Resp' : activeFilter === 'unread' ? 'N/ Lidas' : activeFilter === 'ai_paused' ? 'IA Pausada' : activeFilter === 'ai_active' ? 'IA Ativa' : activeFilter === 'handoff' ? 'Handoff' : 'Aguard.'}</span>}
+                    {activeFilter !== 'all' && <span>{activeFilter === 'no_reply' ? 'S/ Resp' : activeFilter === 'unread' ? 'N/ Lidas' : activeFilter === 'ai_paused' ? 'IA Pausada' : activeFilter === 'ai_active' ? 'IA Ativa' : activeFilter === 'handoff' ? 'Bloqueada' : 'Aguard.'}</span>}
                   </div>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos ({filterCounts.all})</SelectItem>
                   <SelectItem value="ai_active"><div className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5 text-emerald-500" />IA Ativa ({filterCounts.ai_active})</div></SelectItem>
                   <SelectItem value="ai_paused"><div className="flex items-center gap-1.5"><BotOff className="h-3.5 w-3.5 text-amber-500" />IA Pausada ({filterCounts.ai_paused})</div></SelectItem>
-                  <SelectItem value="handoff"><div className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-red-500" />Handoff ({filterCounts.handoff})</div></SelectItem>
+                  <SelectItem value="handoff"><div className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-red-500" />IA Bloqueada ({filterCounts.handoff})</div></SelectItem>
                   <SelectItem value="unread"><div className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />Não Lidas ({filterCounts.unread})</div></SelectItem>
                   <SelectItem value="no_reply"><div className="flex items-center gap-1.5"><MessageSquareOff className="h-3.5 w-3.5" />Sem Resposta ({filterCounts.no_reply})</div></SelectItem>
                   <SelectItem value="waiting"><div className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />Aguardando ({filterCounts.waiting})</div></SelectItem>
@@ -852,7 +858,7 @@ export default function WhatsAppChat() {
                         {activeFilter === 'unread' && <><Mail className="h-3 w-3" /><span>Não Lidas</span></>}
                         {activeFilter === 'ai_paused' && <><BotOff className="h-3 w-3" /><span>IA Pausada</span></>}
                         {activeFilter === 'ai_active' && <><Bot className="h-3 w-3" /><span>IA Ativa</span></>}
-                        {activeFilter === 'handoff' && <><Phone className="h-3 w-3" /><span>Handoff</span></>}
+                        {activeFilter === 'handoff' && <><Phone className="h-3 w-3" /><span>IA Bloqueada</span></>}
                         {activeFilter === 'waiting' && <><Clock className="h-3 w-3" /><span>Aguardando</span></>}
                       </div>
                     </SelectTrigger>
@@ -877,7 +883,7 @@ export default function WhatsAppChat() {
                       </SelectItem>
                       <SelectItem value="handoff">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-red-500" /><span>Handoff</span></div>
+                          <div className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-red-500" /><span>IA Bloqueada</span></div>
                           <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.handoff}</Badge>
                         </div>
                       </SelectItem>
