@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users, Megaphone, Shuffle } from 'lucide-react';
-import { LeadStatusPanel } from '@/components/whatsapp/LeadStatusPanel';
+import { 
+  LeadStatusPanel, 
+  ChatMetricsBar, 
+  AIStatusIcon, 
+  FunnelStageBadge, 
+  WaitingTimeBadge,
+  FunnelStageFilter,
+  detectFunnelStage,
+  type FunnelStageId
+} from '@/components/whatsapp';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -14,7 +23,7 @@ import type { WhatsAppConversation, WhatsAppMessage, WhatsAppLabel } from '@/typ
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
-type FilterType = 'all' | 'no_reply' | 'unread' | 'ai_paused' | 'waiting';
+type FilterType = 'all' | 'no_reply' | 'unread' | 'ai_paused' | 'waiting' | 'ai_active' | 'handoff';
 type ConversationType = 'all' | 'contacts' | 'groups';
 type OriginType = 'all' | 'broadcast' | 'random';
 
@@ -49,6 +58,7 @@ export default function WhatsAppChat() {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [conversationType, setConversationType] = useState<ConversationType>('all');
   const [originType, setOriginType] = useState<OriginType>('all');
+  const [funnelStageFilter, setFunnelStageFilter] = useState<FunnelStageId | 'all'>('all');
 
   // Helper to detect if a conversation is a group
   const isGroup = (conv: ConversationWithInstance): boolean => {
@@ -301,6 +311,12 @@ export default function WhatsAppChat() {
     const broadcast = baseFiltered.filter(c => c.is_crm_lead === true);
     const random = baseFiltered.filter(c => c.is_crm_lead !== true);
 
+    // AI status counts (only for leads)
+    const leads = broadcast;
+    const aiActive = leads.filter(c => !c.ai_paused && !c.ai_handoff_reason).length;
+    const aiPaused = leads.filter(c => c.ai_paused && !c.ai_handoff_reason).length;
+    const handoff = leads.filter(c => !!c.ai_handoff_reason).length;
+
     return {
       all: baseFiltered.length,
       contacts: contacts.length,
@@ -309,7 +325,9 @@ export default function WhatsAppChat() {
       random: random.length,
       no_reply: baseFiltered.filter(c => !c.last_lead_message_at).length,
       unread: baseFiltered.filter(c => (c.unread_count ?? 0) > 0).length,
-      ai_paused: baseFiltered.filter(c => c.ai_paused).length,
+      ai_paused: aiPaused,
+      ai_active: aiActive,
+      handoff: handoff,
       waiting: baseFiltered.filter(c => {
         // Last message was outgoing and no reply for 1+ hour
         if (!c.last_message_at) return false;
@@ -319,6 +337,51 @@ export default function WhatsAppChat() {
       }).length,
     };
   }, [conversations, searchTerm, selectedInstance]);
+
+  // Funnel stage counts
+  const funnelStageCounts = useMemo(() => {
+    const leads = conversations.filter(c => c.is_crm_lead === true);
+    const counts: Record<FunnelStageId | 'all', number> = {
+      all: leads.length,
+      new: 0,
+      contacted: 0,
+      negotiating: 0,
+      handoff: 0,
+      converted: 0,
+      lost: 0,
+    };
+    
+    leads.forEach(conv => {
+      const stage = detectFunnelStage(conv);
+      counts[stage]++;
+    });
+    
+    return counts;
+  }, [conversations]);
+
+  // Chat metrics for the metrics bar
+  const chatMetrics = useMemo(() => ({
+    total: filterCounts.broadcast,
+    aiActive: filterCounts.ai_active,
+    aiPaused: filterCounts.ai_paused,
+    waiting: filterCounts.waiting,
+    handoff: filterCounts.handoff,
+  }), [filterCounts]);
+
+  // Handle metrics filter click
+  const handleMetricsFilterClick = (filter: string) => {
+    if (filter === 'all') {
+      setActiveFilter('all');
+    } else if (filter === 'ai_active') {
+      setActiveFilter('ai_active');
+    } else if (filter === 'ai_paused') {
+      setActiveFilter('ai_paused');
+    } else if (filter === 'waiting') {
+      setActiveFilter('waiting');
+    } else if (filter === 'handoff') {
+      setActiveFilter('handoff');
+    }
+  };
 
   const filteredConversations = useMemo(() => {
     return conversations.filter(conv => {
@@ -336,8 +399,12 @@ export default function WhatsAppChat() {
       const matchesOrigin = originType === 'all' ||
         (originType === 'broadcast' && conv.is_crm_lead === true) ||
         (originType === 'random' && conv.is_crm_lead !== true);
+
+      // Funnel stage filter
+      const matchesFunnelStage = funnelStageFilter === 'all' || 
+        detectFunnelStage(conv) === funnelStageFilter;
       
-      if (!matchesSearch || !matchesInstance || !matchesType || !matchesOrigin) return false;
+      if (!matchesSearch || !matchesInstance || !matchesType || !matchesOrigin || !matchesFunnelStage) return false;
 
       switch (activeFilter) {
         case 'no_reply':
@@ -345,7 +412,11 @@ export default function WhatsAppChat() {
         case 'unread':
           return (conv.unread_count ?? 0) > 0;
         case 'ai_paused':
-          return conv.ai_paused;
+          return conv.ai_paused && !conv.ai_handoff_reason;
+        case 'ai_active':
+          return conv.is_crm_lead && !conv.ai_paused && !conv.ai_handoff_reason;
+        case 'handoff':
+          return !!conv.ai_handoff_reason;
         case 'waiting':
           if (!conv.last_message_at) return false;
           const lastMsg = new Date(conv.last_message_at).getTime();
@@ -355,7 +426,7 @@ export default function WhatsAppChat() {
           return true;
       }
     });
-  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType, originType]);
+  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType, originType, funnelStageFilter]);
 
   const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -840,134 +911,104 @@ export default function WhatsAppChat() {
                     <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.random}</Badge>
                   </button>
                 </div>
-                <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
-                  <SelectTrigger className="w-full">
-                    <div className="flex items-center gap-2">
-                      <Filter className="h-4 w-4" />
-                      <span>
-                        {activeFilter === 'all' && `Todos (${filterCounts.all})`}
-                        {activeFilter === 'no_reply' && `Sem Resposta (${filterCounts.no_reply})`}
-                        {activeFilter === 'unread' && `Não Lidas (${filterCounts.unread})`}
-                        {activeFilter === 'ai_paused' && `IA Pausada (${filterCounts.ai_paused})`}
-                        {activeFilter === 'waiting' && `Aguardando (${filterCounts.waiting})`}
-                      </span>
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">
-                      <div className="flex items-center justify-between w-full gap-4">
-                        <span>Todos</span>
-                        <Badge variant="secondary" className="ml-auto">{filterCounts.all}</Badge>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="no_reply">
-                      <div className="flex items-center justify-between w-full gap-4">
-                        <div className="flex items-center gap-2">
-                          <MessageSquareOff className="h-4 w-4" />
-                          <span>Sem Resposta</span>
-                        </div>
-                        <Badge variant="secondary" className="ml-auto">{filterCounts.no_reply}</Badge>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="unread">
-                      <div className="flex items-center justify-between w-full gap-4">
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-4 w-4" />
-                          <span>Não Lidas</span>
-                        </div>
-                        {filterCounts.unread > 0 ? (
-                          <Badge variant="destructive" className="ml-auto">{filterCounts.unread}</Badge>
-                        ) : (
-                          <Badge variant="secondary" className="ml-auto">0</Badge>
-                        )}
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="ai_paused">
-                      <div className="flex items-center justify-between w-full gap-4">
-                        <div className="flex items-center gap-2">
-                          <BotOff className="h-4 w-4" />
-                          <span>IA Pausada</span>
-                        </div>
-                        <Badge variant="secondary" className="ml-auto">{filterCounts.ai_paused}</Badge>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="waiting">
-                      <div className="flex items-center justify-between w-full gap-4">
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          <span>Aguardando</span>
-                        </div>
-                        <Badge variant="secondary" className="ml-auto">{filterCounts.waiting}</Badge>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
+              {/* Metrics Bar - only visible when in broadcast mode */}
+              {originType === 'broadcast' && (
+                <>
+                  <ChatMetricsBar 
+                    metrics={chatMetrics}
+                    onFilterClick={handleMetricsFilterClick}
+                    activeFilter={activeFilter}
+                  />
+                  <FunnelStageFilter
+                    selectedStage={funnelStageFilter}
+                    onStageChange={setFunnelStageFilter}
+                    stageCounts={funnelStageCounts}
+                  />
+                </>
+              )}
+
               <ScrollArea className="flex-1">
-                {filteredConversations.map((conv) => (
-                  <div
-                    key={conv.id}
-                    onClick={() => setSelectedConversation(conv)}
-                    className={cn(
-                      'px-3 py-3 min-h-[56px] border-b cursor-pointer hover:bg-muted/50 transition-colors',
-                      selectedConversation?.id === conv.id && 'bg-muted'
-                    )}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="relative flex-shrink-0">
-                        <Avatar className="h-10 w-10">
-                          <AvatarFallback className="text-sm">
-                            {isGroup(conv) ? (
-                              <Users className="h-5 w-5" />
-                            ) : (
-                              conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)
-                            )}
-                          </AvatarFallback>
-                        </Avatar>
-                        {conv.instance && (
-                          <div 
-                            className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
-                            style={{ backgroundColor: conv.instance.color }}
-                          />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            {isGroup(conv) && <Users className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
-                            <span className="font-medium truncate text-sm max-w-[100px]">
-                              {conv.name || conv.group_name || conv.phone}
-                            </span>
-                            {conv.is_crm_lead && (
-                              <Badge variant="outline" className="h-4 px-1 text-[10px] bg-green-500/10 text-green-600 border-green-500/30 flex-shrink-0">
-                                Lead
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
-                            {formatTime(conv.last_message_at)}
-                          </span>
+                {filteredConversations.map((conv) => {
+                  const funnelStage = detectFunnelStage(conv);
+                  
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={() => setSelectedConversation(conv)}
+                      className={cn(
+                        'px-3 py-3 min-h-[56px] border-b cursor-pointer transition-colors',
+                        selectedConversation?.id === conv.id && 'bg-muted',
+                        // Background colors based on status
+                        conv.ai_handoff_reason 
+                          ? 'bg-red-50/50 hover:bg-red-100/50 dark:bg-red-950/20 dark:hover:bg-red-950/30'
+                          : conv.ai_paused 
+                            ? 'bg-amber-50/50 hover:bg-amber-100/50 dark:bg-amber-950/20 dark:hover:bg-amber-950/30'
+                            : conv.is_crm_lead && !conv.ai_paused 
+                              ? 'bg-emerald-50/30 hover:bg-emerald-100/30 dark:bg-emerald-950/10 dark:hover:bg-emerald-950/20'
+                              : 'hover:bg-muted/50'
+                      )}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="relative flex-shrink-0">
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="text-sm">
+                              {isGroup(conv) ? (
+                                <Users className="h-5 w-5" />
+                              ) : (
+                                conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)
+                              )}
+                            </AvatarFallback>
+                          </Avatar>
+                          {conv.instance && (
+                            <div 
+                              className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
+                              style={{ backgroundColor: conv.instance.color }}
+                            />
+                          )}
                         </div>
-                        <div className="flex items-center justify-between gap-2 mt-0.5">
-                          <p className="text-xs text-muted-foreground truncate max-w-[160px]">
-                            {formatPreview(conv.last_message_preview)}
-                          </p>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            {conv.ai_paused && (
-                              <BotOff className="h-3.5 w-3.5 text-orange-500" />
-                            )}
-                            {(conv.unread_count ?? 0) > 0 && (
-                              <Badge className="h-5 min-w-5 flex items-center justify-center text-xs px-1.5">
-                                {conv.unread_count}
-                              </Badge>
-                            )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {/* AI Status Icon */}
+                              {conv.is_crm_lead && (
+                                <AIStatusIcon conversation={conv} />
+                              )}
+                              {isGroup(conv) && <Users className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+                              <span className="font-medium truncate text-sm max-w-[80px]">
+                                {conv.name || conv.group_name || conv.phone}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {/* Funnel Stage Badge */}
+                              {conv.is_crm_lead && (
+                                <FunnelStageBadge stage={funnelStage} compact />
+                              )}
+                              <span className="text-xs text-muted-foreground tabular-nums">
+                                {formatTime(conv.last_message_at)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 mt-0.5">
+                            <p className="text-xs text-muted-foreground truncate max-w-[140px]">
+                              {formatPreview(conv.last_message_preview)}
+                            </p>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {/* Waiting Time Badge */}
+                              <WaitingTimeBadge lastMessageAt={conv.last_lead_message_at || conv.last_message_at} />
+                              {(conv.unread_count ?? 0) > 0 && (
+                                <Badge className="h-5 min-w-5 flex items-center justify-center text-xs px-1.5">
+                                  {conv.unread_count}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {filteredConversations.length === 0 && (
                   <div className="p-8 text-center text-muted-foreground">
