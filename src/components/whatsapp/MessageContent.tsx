@@ -1,19 +1,36 @@
 import { useState } from 'react';
-import { Image, Video, Mic, FileText, Play, Download } from 'lucide-react';
+import { Image, Video, Mic, FileText, Play, Download, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface MediaData {
+  // Support both uppercase (UAZAPI) and lowercase keys
   URL?: string;
+  url?: string;
   DirectPath?: string;
+  directPath?: string;
   JPEGThumbnail?: string;
+  jpegThumbnail?: string;
   Seconds?: number;
+  seconds?: number;
   Mimetype?: string;
+  mimetype?: string;
   Caption?: string;
+  caption?: string;
   FileName?: string;
+  fileName?: string;
   FileLength?: number;
+  fileLength?: number;
   FileSize?: number;
+  fileSize?: number;
+  MediaKey?: string;
+  mediaKey?: string;
   media_url?: string;
+  FileEncSha256?: string;
+  fileEncSha256?: string;
 }
 
 interface MessageContentProps {
@@ -21,13 +38,13 @@ interface MessageContentProps {
   messageType: string;
   mediaUrl?: string | null;
   direction: 'incoming' | 'outgoing';
+  messageId?: string;
 }
 
 // Parse JSON content safely
 function parseMediaContent(content: string | null): MediaData | null {
   if (!content) return null;
   
-  // Check if it looks like JSON
   const trimmed = content.trim();
   if (!trimmed.startsWith('{')) return null;
   
@@ -36,6 +53,37 @@ function parseMediaContent(content: string | null): MediaData | null {
   } catch {
     return null;
   }
+}
+
+// Normalize media data to handle both upper and lowercase keys
+function normalizeMediaData(data: MediaData | null): {
+  url: string | null;
+  directPath: string | null;
+  thumbnail: string | null;
+  seconds: number | null;
+  mimetype: string | null;
+  caption: string | null;
+  fileName: string | null;
+  fileLength: number | null;
+  mediaKey: string | null;
+  mediaUrl: string | null;
+} {
+  if (!data) {
+    return { url: null, directPath: null, thumbnail: null, seconds: null, mimetype: null, caption: null, fileName: null, fileLength: null, mediaKey: null, mediaUrl: null };
+  }
+  
+  return {
+    url: data.URL || data.url || null,
+    directPath: data.DirectPath || data.directPath || null,
+    thumbnail: data.JPEGThumbnail || data.jpegThumbnail || null,
+    seconds: data.Seconds ?? data.seconds ?? null,
+    mimetype: data.Mimetype || data.mimetype || null,
+    caption: data.Caption || data.caption || null,
+    fileName: data.FileName || data.fileName || null,
+    fileLength: data.FileLength || data.fileLength || data.FileSize || data.fileSize || null,
+    mediaKey: data.MediaKey || data.mediaKey || null,
+    mediaUrl: data.media_url || null,
+  };
 }
 
 // Format audio duration
@@ -52,68 +100,151 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function MessageContent({ content, messageType, mediaUrl, direction }: MessageContentProps) {
+// Infer media type from data
+function inferMediaType(normalized: ReturnType<typeof normalizeMediaData>): string | null {
+  const mime = (normalized.mimetype || '').toLowerCase();
+  
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('audio/') || mime.includes('ogg') || mime.includes('opus')) return 'audio';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('application/') || mime.includes('pdf') || mime.includes('document')) return 'document';
+  
+  // Fallback heuristics
+  if (normalized.thumbnail && !normalized.seconds) return 'image';
+  if (normalized.seconds !== null) return 'audio';
+  if (normalized.fileName || normalized.fileLength) return 'document';
+  if (normalized.mediaKey || normalized.directPath) return 'image'; // Default encrypted media to image
+  
+  return null;
+}
+
+export function MessageContent({ content, messageType, mediaUrl, direction, messageId }: MessageContentProps) {
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [fullImageUrl, setFullImageUrl] = useState<string>('');
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadedUrl, setDownloadedUrl] = useState<string | null>(null);
 
   const isOutgoing = direction === 'outgoing';
   const mediaData = parseMediaContent(content);
+  const normalized = normalizeMediaData(mediaData);
 
   // Infer media type when backend stored message_type as "text" but content is JSON metadata
-  const inferredType = (() => {
-    if (!mediaData) return null;
-    const mime = (mediaData.Mimetype || '').toLowerCase();
-    if (mime.startsWith('image/')) return 'image';
-    if (mime.startsWith('audio/')) return 'audio';
-    if (mime.startsWith('video/')) return 'video';
-    if (mime.startsWith('application/') || mime.includes('pdf')) return 'document';
-    // Some payloads don't include mimetype but include thumbnails/duration
-    if (mediaData.JPEGThumbnail) return 'image';
-    if (typeof mediaData.Seconds === 'number') return 'audio';
-    if (mediaData.FileName || mediaData.FileLength || mediaData.FileSize) return 'document';
-    return null;
-  })();
-
+  const inferredType = inferMediaType(normalized);
   const effectiveType = (messageType === 'text' || !messageType) && inferredType ? inferredType : messageType;
+
+  // Check if we have encrypted media that needs downloading
+  const hasEncryptedMedia = !!(normalized.mediaKey && (normalized.url || normalized.directPath));
+  const hasPlayableUrl = !!(mediaUrl || downloadedUrl || normalized.mediaUrl);
+
+  // Download encrypted media
+  const handleDownloadMedia = async () => {
+    if (!normalized.mediaKey || (!normalized.url && !normalized.directPath)) {
+      toast.error('Dados de mídia incompletos');
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-download-media', {
+        body: {
+          message_id: messageId,
+          encrypted_url: normalized.url || `https://mmg.whatsapp.net${normalized.directPath}`,
+          media_key: normalized.mediaKey,
+          media_type: effectiveType,
+          mimetype: normalized.mimetype,
+        }
+      });
+
+      if (error) {
+        console.error('Download error:', error);
+        toast.error('Erro ao baixar mídia');
+        return;
+      }
+
+      if (data?.media_url) {
+        setDownloadedUrl(data.media_url);
+        toast.success('Mídia baixada!');
+      } else {
+        toast.error('Falha ao baixar mídia');
+      }
+    } catch (err) {
+      console.error('Download exception:', err);
+      toast.error('Erro ao baixar mídia');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   // Get the best available image URL
   const getImageSource = (): string | null => {
+    if (downloadedUrl) return downloadedUrl;
     if (mediaUrl) return mediaUrl;
-    if (mediaData?.media_url) return mediaData.media_url;
-    if (mediaData?.JPEGThumbnail) return `data:image/jpeg;base64,${mediaData.JPEGThumbnail}`;
-    if (mediaData?.URL) return mediaData.URL;
+    if (normalized.mediaUrl) return normalized.mediaUrl;
+    if (normalized.thumbnail) return `data:image/jpeg;base64,${normalized.thumbnail}`;
+    if (normalized.url && !hasEncryptedMedia) return normalized.url;
     return null;
   };
+
+  // Download button component
+  const DownloadButton = () => (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleDownloadMedia}
+      disabled={isDownloading}
+      className={cn(
+        "gap-2",
+        isOutgoing ? "border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20" : ""
+      )}
+    >
+      {isDownloading ? (
+        <RefreshCw className="h-4 w-4 animate-spin" />
+      ) : (
+        <Download className="h-4 w-4" />
+      )}
+      {isDownloading ? 'Baixando...' : 'Baixar mídia'}
+    </Button>
+  );
 
   // Handle image type
   if (effectiveType === 'image') {
     const imageSrc = getImageSource();
-    const caption = mediaData?.Caption;
 
     if (imageSrc) {
+      const isOnlyThumbnail = imageSrc.startsWith('data:') && hasEncryptedMedia && !hasPlayableUrl;
+      
       return (
         <>
-          <div 
-            className="cursor-pointer"
-            onClick={() => {
-              // For full view, prefer the original URL if available
-              setFullImageUrl(mediaUrl || mediaData?.media_url || mediaData?.URL || imageSrc);
-              setImageModalOpen(true);
-            }}
-          >
-            <img 
-              src={imageSrc}
-              alt="Imagem"
-              className="max-w-full rounded-lg max-h-64 object-cover"
-              loading="lazy"
-            />
-            {caption && (
-              <p className="text-sm mt-2 whitespace-pre-wrap break-words">{caption}</p>
-            )}
+          <div className="space-y-2">
+            <div 
+              className="cursor-pointer"
+              onClick={() => {
+                if (!isOnlyThumbnail) {
+                  setFullImageUrl(downloadedUrl || mediaUrl || normalized.mediaUrl || normalized.url || imageSrc);
+                  setImageModalOpen(true);
+                }
+              }}
+            >
+              <img 
+                src={imageSrc}
+                alt="Imagem"
+                className={cn(
+                  "max-w-full rounded-lg max-h-64 object-cover",
+                  isOnlyThumbnail && "opacity-70"
+                )}
+                loading="lazy"
+              />
+              {normalized.caption && (
+                <p className="text-sm mt-2 whitespace-pre-wrap break-words">{normalized.caption}</p>
+              )}
+            </div>
+            {isOnlyThumbnail && <DownloadButton />}
           </div>
           
           <Dialog open={imageModalOpen} onOpenChange={setImageModalOpen}>
             <DialogContent className="max-w-4xl p-0 border-0 bg-transparent">
+              <DialogTitle className="sr-only">Imagem ampliada</DialogTitle>
+              <DialogDescription className="sr-only">Visualização em tela cheia da imagem</DialogDescription>
               <img 
                 src={fullImageUrl}
                 alt="Imagem ampliada"
@@ -125,22 +256,24 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
       );
     }
     
-    // Fallback: show icon placeholder
+    // Fallback: show icon placeholder with download option
     return (
-      <div className={cn(
-        "flex items-center gap-2 py-1",
-        isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
-      )}>
-        <Image className="h-4 w-4" />
-        <span className="text-sm">Imagem</span>
+      <div className="space-y-2">
+        <div className={cn(
+          "flex items-center gap-2 py-1",
+          isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
+        )}>
+          <Image className="h-4 w-4" />
+          <span className="text-sm">Imagem</span>
+        </div>
+        {hasEncryptedMedia && <DownloadButton />}
       </div>
     );
   }
   
   // Handle audio type
   if (effectiveType === 'audio' || effectiveType === 'ptt') {
-    const audioUrl = mediaUrl || mediaData?.media_url || mediaData?.URL;
-    const duration = mediaData?.Seconds;
+    const audioUrl = downloadedUrl || mediaUrl || normalized.mediaUrl || (!hasEncryptedMedia ? normalized.url : null);
     
     if (audioUrl) {
       return (
@@ -155,34 +288,34 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
       );
     }
     
-    // Fallback: show duration or icon
+    // Fallback: show duration or icon with download
     return (
-      <div className={cn(
-        "flex items-center gap-2 py-1 min-w-[120px]",
-        isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
-      )}>
+      <div className="space-y-2">
         <div className={cn(
-          "p-2 rounded-full",
-          isOutgoing ? "bg-primary-foreground/20" : "bg-muted"
+          "flex items-center gap-2 py-1 min-w-[120px]",
+          isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
         )}>
-          <Mic className="h-4 w-4" />
+          <div className={cn(
+            "p-2 rounded-full",
+            isOutgoing ? "bg-primary-foreground/20" : "bg-muted"
+          )}>
+            <Mic className="h-4 w-4" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">Áudio</span>
+            {normalized.seconds !== null && (
+              <span className="text-xs opacity-70">{formatDuration(normalized.seconds)}</span>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col">
-          <span className="text-sm font-medium">Áudio</span>
-          {duration && (
-            <span className="text-xs opacity-70">{formatDuration(duration)}</span>
-          )}
-        </div>
+        {hasEncryptedMedia && <DownloadButton />}
       </div>
     );
   }
   
   // Handle video type
   if (effectiveType === 'video') {
-    const videoUrl = mediaUrl || mediaData?.media_url || mediaData?.URL;
-    const thumbnail = mediaData?.JPEGThumbnail;
-    const caption = mediaData?.Caption;
-    const duration = mediaData?.Seconds;
+    const videoUrl = downloadedUrl || mediaUrl || normalized.mediaUrl || (!hasEncryptedMedia ? normalized.url : null);
     
     if (videoUrl) {
       return (
@@ -191,97 +324,104 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
             src={videoUrl}
             controls
             className="max-w-full rounded-lg max-h-64"
-            poster={thumbnail ? `data:image/jpeg;base64,${thumbnail}` : undefined}
+            poster={normalized.thumbnail ? `data:image/jpeg;base64,${normalized.thumbnail}` : undefined}
           />
-          {caption && (
-            <p className="text-sm mt-2 whitespace-pre-wrap break-words">{caption}</p>
+          {normalized.caption && (
+            <p className="text-sm mt-2 whitespace-pre-wrap break-words">{normalized.caption}</p>
           )}
         </div>
       );
     }
     
     // Fallback with thumbnail
-    if (thumbnail) {
+    if (normalized.thumbnail) {
       return (
-        <div className="relative cursor-pointer">
-          <img 
-            src={`data:image/jpeg;base64,${thumbnail}`}
-            alt="Vídeo"
-            className="max-w-full rounded-lg max-h-64 object-cover"
-          />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-black/50 rounded-full p-3">
-              <Play className="h-6 w-6 text-white fill-white" />
+        <div className="space-y-2">
+          <div className="relative">
+            <img 
+              src={`data:image/jpeg;base64,${normalized.thumbnail}`}
+              alt="Vídeo"
+              className="max-w-full rounded-lg max-h-64 object-cover opacity-70"
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="bg-black/50 rounded-full p-3">
+                <Play className="h-6 w-6 text-white fill-white" />
+              </div>
             </div>
+            {normalized.seconds !== null && (
+              <span className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
+                {formatDuration(normalized.seconds)}
+              </span>
+            )}
           </div>
-          {duration && (
-            <span className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
-              {formatDuration(duration)}
-            </span>
+          {normalized.caption && (
+            <p className="text-sm whitespace-pre-wrap break-words">{normalized.caption}</p>
           )}
-          {caption && (
-            <p className="text-sm mt-2 whitespace-pre-wrap break-words">{caption}</p>
-          )}
+          {hasEncryptedMedia && <DownloadButton />}
         </div>
       );
     }
     
     // Fallback: icon only
     return (
-      <div className={cn(
-        "flex items-center gap-2 py-1",
-        isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
-      )}>
-        <Video className="h-4 w-4" />
-        <span className="text-sm">Vídeo</span>
-        {duration && <span className="text-xs opacity-70">({formatDuration(duration)})</span>}
+      <div className="space-y-2">
+        <div className={cn(
+          "flex items-center gap-2 py-1",
+          isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
+        )}>
+          <Video className="h-4 w-4" />
+          <span className="text-sm">Vídeo</span>
+          {normalized.seconds !== null && <span className="text-xs opacity-70">({formatDuration(normalized.seconds)})</span>}
+        </div>
+        {hasEncryptedMedia && <DownloadButton />}
       </div>
     );
   }
   
   // Handle document type
   if (effectiveType === 'document') {
-    const docUrl = mediaUrl || mediaData?.media_url || mediaData?.URL;
-    const fileName = mediaData?.FileName || 'Documento';
-    const fileSize = mediaData?.FileLength || mediaData?.FileSize;
+    const docUrl = downloadedUrl || mediaUrl || normalized.mediaUrl || (!hasEncryptedMedia ? normalized.url : null);
     
     return (
-      <div className={cn(
-        "flex items-center gap-3 p-2 rounded-lg min-w-[200px]",
-        isOutgoing ? "bg-primary-foreground/10" : "bg-muted/50"
-      )}>
+      <div className="space-y-2">
         <div className={cn(
-          "p-2 rounded",
-          isOutgoing ? "bg-primary-foreground/20" : "bg-muted"
+          "flex items-center gap-3 p-2 rounded-lg min-w-[200px]",
+          isOutgoing ? "bg-primary-foreground/10" : "bg-muted/50"
         )}>
-          <FileText className="h-5 w-5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{fileName}</p>
-          {fileSize && (
-            <p className="text-xs opacity-70">{formatFileSize(fileSize)}</p>
+          <div className={cn(
+            "p-2 rounded",
+            isOutgoing ? "bg-primary-foreground/20" : "bg-muted"
+          )}>
+            <FileText className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{normalized.fileName || 'Documento'}</p>
+            {normalized.fileLength && (
+              <p className="text-xs opacity-70">{formatFileSize(normalized.fileLength)}</p>
+            )}
+          </div>
+          {docUrl && (
+            <a 
+              href={docUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                "p-1.5 rounded hover:bg-black/10",
+                isOutgoing ? "text-primary-foreground" : "text-foreground"
+              )}
+            >
+              <Download className="h-4 w-4" />
+            </a>
           )}
         </div>
-        {docUrl && (
-          <a 
-            href={docUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(
-              "p-1.5 rounded hover:bg-black/10",
-              isOutgoing ? "text-primary-foreground" : "text-foreground"
-            )}
-          >
-            <Download className="h-4 w-4" />
-          </a>
-        )}
+        {hasEncryptedMedia && !docUrl && <DownloadButton />}
       </div>
     );
   }
   
   // Handle sticker type
   if (effectiveType === 'sticker') {
-    const stickerUrl = mediaUrl || mediaData?.media_url || mediaData?.URL;
+    const stickerUrl = downloadedUrl || mediaUrl || normalized.mediaUrl || (!hasEncryptedMedia ? normalized.url : null);
     
     if (stickerUrl) {
       return (
@@ -294,18 +434,36 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
     }
     
     return (
-      <div className={cn(
-        "flex items-center gap-2 py-1",
-        isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
-      )}>
-        <span className="text-2xl">🏷️</span>
-        <span className="text-sm">Figurinha</span>
+      <div className="space-y-2">
+        <div className={cn(
+          "flex items-center gap-2 py-1",
+          isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
+        )}>
+          <span className="text-2xl">🏷️</span>
+          <span className="text-sm">Figurinha</span>
+        </div>
+        {hasEncryptedMedia && <DownloadButton />}
       </div>
     );
   }
   
-  // Default: text message
-  // Check if content is actually JSON that we couldn't handle
+  // Default: text message or unrecognized JSON
+  if (mediaData && hasEncryptedMedia) {
+    // It's encrypted media we couldn't handle - show download option
+    return (
+      <div className="space-y-2">
+        <div className={cn(
+          "flex items-center gap-2 py-1",
+          isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
+        )}>
+          <FileText className="h-4 w-4" />
+          <span className="text-sm">Mídia</span>
+        </div>
+        <DownloadButton />
+      </div>
+    );
+  }
+  
   if (mediaData) {
     // It's JSON but unrecognized type - show placeholder
     return (
@@ -331,21 +489,11 @@ export function formatMessagePreview(content: string | null, messageType: string
 
   const trimmed = content.trim();
   const mediaData = trimmed.startsWith('{') ? (() => {
-    try { return JSON.parse(trimmed) as any; } catch { return null; }
+    try { return JSON.parse(trimmed) as MediaData; } catch { return null; }
   })() : null;
 
-  const inferredType = (() => {
-    if (!mediaData) return null;
-    const mime = (mediaData.mimetype || mediaData.Mimetype || '').toLowerCase();
-    if (mime.startsWith('image/')) return 'image';
-    if (mime.startsWith('audio/')) return 'audio';
-    if (mime.startsWith('video/')) return 'video';
-    if (mime.includes('pdf') || mime.startsWith('application/')) return 'document';
-    if (mediaData.JPEGThumbnail) return 'image';
-    if (typeof mediaData.Seconds === 'number') return 'audio';
-    return null;
-  })();
-
+  const normalized = normalizeMediaData(mediaData);
+  const inferredType = inferMediaType(normalized);
   const effectiveType = (messageType === 'text' || !messageType) && inferredType ? inferredType : messageType;
 
   // If it's a media type, return appropriate label
@@ -359,10 +507,17 @@ export function formatMessagePreview(content: string | null, messageType: string
   }
   
   // If JSON, prefer caption when available
-  if (mediaData) {
-    if (mediaData.Caption) return mediaData.Caption;
-    if (mediaData.caption) return mediaData.caption;
-    return inferredType ? '📎 Mídia' : '📎 Anexo';
+  if (mediaData && normalized.caption) {
+    return normalized.caption;
   }
+  
+  if (mediaData && (normalized.mediaKey || normalized.directPath)) {
+    return '📎 Mídia';
+  }
+  
+  if (mediaData) {
+    return '📎 Anexo';
+  }
+  
   return content;
 }

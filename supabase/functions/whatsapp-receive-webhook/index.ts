@@ -472,18 +472,73 @@ serve(async (req) => {
 
     // Try to download and persist media if URL is available
     if (rawMediaData && messageType !== 'text') {
+      const mediaKey = (rawMediaData as any).MediaKey || (rawMediaData as any).mediaKey;
+      const directPath = (rawMediaData as any).DirectPath || (rawMediaData as any).directPath;
       const tempMediaUrl = (rawMediaData as any).URL || 
                            (rawMediaData as any).url || 
                            (rawMediaData as any).MediaUrl ||
                            (rawMediaData as any).mediaUrl;
+      const mimetype = (rawMediaData as any).Mimetype || (rawMediaData as any).mimetype || '';
       
-      console.log('[Media Debug] Looking for URL in rawMediaData. Found:', tempMediaUrl ? 'Yes' : 'No');
+      console.log('[Media Debug] mediaKey:', mediaKey ? 'YES' : 'NO');
+      console.log('[Media Debug] directPath:', directPath ? 'YES' : 'NO');
+      console.log('[Media Debug] tempMediaUrl:', tempMediaUrl ? 'YES' : 'NO');
       
-      if (tempMediaUrl) {
-        try {
-          console.log('[Media] Attempting to download from:', tempMediaUrl);
+      // If we have encrypted media (mediaKey + directPath/url), try to decrypt
+      if (mediaKey && (directPath || tempMediaUrl)) {
+        const encryptedUrl = tempMediaUrl || (directPath ? `https://mmg.whatsapp.net${directPath}` : null);
+        
+        if (encryptedUrl) {
+          console.log('[Media] Attempting encrypted media download/decrypt:', encryptedUrl.substring(0, 80));
           
-          // Try with headers that might be needed for WhatsApp URLs
+          try {
+            // Call our decrypt function
+            const decryptResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-download-media`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                message_id: messageIdWhatsapp,
+                encrypted_url: encryptedUrl,
+                media_key: mediaKey,
+                media_type: messageType,
+                mimetype: mimetype,
+              })
+            });
+
+            if (decryptResponse.ok) {
+              const decryptResult = await decryptResponse.json();
+              if (decryptResult.media_url) {
+                mediaUrl = decryptResult.media_url;
+                console.log('[Media] Decrypted and uploaded successfully:', mediaUrl);
+                
+                // Update content with the permanent URL
+                try {
+                  const contentObj = JSON.parse(messageContent);
+                  contentObj.media_url = mediaUrl;
+                  messageContent = JSON.stringify(contentObj);
+                } catch {
+                  messageContent = JSON.stringify({ ...rawMediaData, media_url: mediaUrl });
+                }
+              } else {
+                console.log('[Media] Decrypt function returned no URL:', decryptResult);
+              }
+            } else {
+              const errorText = await decryptResponse.text();
+              console.error('[Media] Decrypt function failed:', decryptResponse.status, errorText);
+            }
+          } catch (decryptError) {
+            console.error('[Media] Error calling decrypt function:', decryptError);
+          }
+        }
+      } 
+      // Fallback: try direct download if URL looks accessible (not encrypted)
+      else if (tempMediaUrl && !tempMediaUrl.includes('.enc')) {
+        try {
+          console.log('[Media] Attempting direct download from:', tempMediaUrl);
+          
           const mediaResponse = await fetch(tempMediaUrl, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -492,9 +547,6 @@ serve(async (req) => {
           
           if (mediaResponse.ok) {
             const blob = await mediaResponse.blob();
-            
-            // Get extension from mimetype if available
-            const mimetype = (rawMediaData as any).Mimetype || (rawMediaData as any).mimetype || blob.type || '';
             const mimeToExt: Record<string, string> = {
               'image/jpeg': 'jpg',
               'image/png': 'png',
@@ -532,26 +584,24 @@ serve(async (req) => {
                 .getPublicUrl(fileName);
               
               mediaUrl = publicUrlData.publicUrl;
-              console.log('[Media] Uploaded successfully:', mediaUrl);
+              console.log('[Media] Direct upload successful:', mediaUrl);
               
-              // Update the JSON content with the permanent URL
               try {
                 const contentObj = JSON.parse(messageContent);
                 contentObj.media_url = mediaUrl;
                 messageContent = JSON.stringify(contentObj);
               } catch {
-                // If content isn't valid JSON, create new object
                 messageContent = JSON.stringify({ ...rawMediaData, media_url: mediaUrl });
               }
             }
           } else {
-            console.log('[Media] Failed to fetch media. Status:', mediaResponse.status, 'StatusText:', mediaResponse.statusText);
+            console.log('[Media] Direct download failed:', mediaResponse.status);
           }
         } catch (mediaError) {
-          console.error('[Media] Error downloading/uploading media:', mediaError);
+          console.error('[Media] Error with direct download:', mediaError);
         }
       } else {
-        console.log('[Media Debug] No URL found in rawMediaData, keeping JSON with thumbnail if available');
+        console.log('[Media Debug] No downloadable URL, keeping JSON content for frontend handling');
       }
     }
     
