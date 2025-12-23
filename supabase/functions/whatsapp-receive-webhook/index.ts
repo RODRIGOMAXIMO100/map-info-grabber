@@ -674,7 +674,7 @@ serve(async (req) => {
     // Simple phone matching - exact match
     const { data: existingConv } = await supabase
       .from('whatsapp_conversations')
-      .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url')
+      .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name')
       .eq('phone', senderPhone)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -708,7 +708,11 @@ serve(async (req) => {
         updateData.last_lead_message_at = new Date().toISOString();
       }
 
-      if (!isGroup && senderName) {
+      // Update name - for groups, update if currently generic "Grupo"
+      if (isGroup && senderName && existingConv.name === 'Grupo') {
+        updateData.name = senderName;
+        updateData.group_name = senderName;
+      } else if (!isGroup && senderName) {
         updateData.name = senderName;
       }
       
@@ -737,7 +741,8 @@ serve(async (req) => {
         .from('whatsapp_conversations')
         .insert({
           phone: senderPhone,
-          name: isGroup ? 'Grupo' : (senderName || null),
+          name: senderName || (isGroup ? 'Grupo' : null),
+          group_name: isGroup ? (senderName || null) : null,
           avatar_url: senderProfilePic || null,
           is_group: isGroup,
           tags: conversationTags,
