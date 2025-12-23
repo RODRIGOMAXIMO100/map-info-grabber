@@ -178,15 +178,74 @@ function cleanIncomingMessage(raw: string): string {
   return raw;
 }
 
+// Extrai informações já respondidas do histórico para evitar repetição
+function extractAnsweredTopics(history: Array<{ direction: string; content: string }>): {
+  urgencyAnswered: boolean;
+  painAnswered: boolean;
+  nameIdentified: boolean;
+  businessContext: string | null;
+} {
+  const result = {
+    urgencyAnswered: false,
+    painAnswered: false,
+    nameIdentified: false,
+    businessContext: null as string | null
+  };
+  
+  const urgencyPatterns = [
+    /urgente/i, /urgência/i, /preciso resolver/i, /pressa/i, /rápido/i,
+    /muito urgente/i, /logo/i, /imediato/i, /ontem/i, /pra ontem/i
+  ];
+  
+  const painPatterns = [
+    /problema é/i, /dificuldade/i, /desafio/i, /dor de cabeça/i,
+    /não consigo/i, /preciso de/i, /falta de/i, /pouco/i, /baixo/i,
+    /vendas fracas/i, /demanda/i, /clientes/i, /lead/i, /tráfego/i
+  ];
+  
+  for (const msg of history) {
+    if (msg.direction === 'incoming' && msg.content) {
+      const content = msg.content.toLowerCase();
+      
+      // Verificar se urgência já foi respondida
+      for (const pattern of urgencyPatterns) {
+        if (pattern.test(content)) {
+          result.urgencyAnswered = true;
+          break;
+        }
+      }
+      
+      // Verificar se dor/problema já foi mencionado
+      for (const pattern of painPatterns) {
+        if (pattern.test(content)) {
+          result.painAnswered = true;
+          break;
+        }
+      }
+      
+      // Extrair contexto de negócio se mencionado
+      const businessMatch = content.match(/(trabalho com|minha empresa|meu negócio|faço|vendo|ofereço|área de|segmento de|setor de)\s*([^.,!?]+)/i);
+      if (businessMatch) {
+        result.businessContext = businessMatch[0];
+      }
+    }
+  }
+  
+  return result;
+}
+
+// Conta mensagens OUTGOING na fase atual baseado no campo da conversation
 function countMessagesInCurrentStage(
   history: Array<{ direction: string; content: string }>,
   currentStageOrder: number
 ): number {
+  // Conta mensagens outgoing consecutivas recentes (aproximação)
   let count = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     if (history[i].direction === 'outgoing') {
       count++;
     } else {
+      // Se encontra incoming (lead), para de contar
       break;
     }
   }
@@ -235,6 +294,15 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Buscar dados da conversa para pegar messages_in_current_stage do banco
+    const { data: conversationData } = await supabase
+      .from('whatsapp_conversations')
+      .select('messages_in_current_stage')
+      .eq('id', conversation_id)
+      .single();
+    
+    const dbMessagesInStage = conversationData?.messages_in_current_stage || 0;
 
     const cleanedMessage = cleanIncomingMessage(incoming_message);
     console.log('[AI] Incoming message cleaned:', cleanedMessage.substring(0, 100));
@@ -416,10 +484,11 @@ serve(async (req) => {
       console.log('[AI] Using stage prompt for', currentStage);
     }
 
-    const messagesInStage = countMessagesInCurrentStage(conversation_history || [], currentOrder);
+    // Usar valor do banco (mais preciso) ou fallback para contagem do histórico
+    const messagesInStage = dbMessagesInStage > 0 ? dbMessagesInStage : countMessagesInCurrentStage(conversation_history || [], currentOrder);
     const maxMessagesInStage = stagePrompt?.max_messages_in_stage || 5;
     
-    console.log('[AI] Messages in stage:', messagesInStage, '/', maxMessagesInStage);
+    console.log('[AI] Messages in stage (from DB):', dbMessagesInStage, '| calculated:', countMessagesInCurrentStage(conversation_history || [], currentOrder), '| using:', messagesInStage, '/', maxMessagesInStage);
 
     const forceAdvance = messagesInStage >= maxMessagesInStage;
     if (forceAdvance) {
@@ -432,6 +501,21 @@ serve(async (req) => {
       content: cleanIncomingMessage(msg.content || '')
     }));
     historyMessages.push({ role: 'user', content: cleanedMessage });
+
+    // ========== EXTRAIR TÓPICOS JÁ RESPONDIDOS (ANTI-REPETIÇÃO) ==========
+    const answeredTopics = extractAnsweredTopics(conversation_history || []);
+    console.log('[AI] Answered topics:', JSON.stringify(answeredTopics));
+    
+    // Construir contexto anti-repetição para a IA
+    let antiRepetitionContext = '';
+    if (answeredTopics.urgencyAnswered || answeredTopics.painAnswered || answeredTopics.businessContext) {
+      antiRepetitionContext = `
+⚠️ INFORMAÇÕES JÁ COLETADAS (NÃO PERGUNTE DE NOVO):
+${answeredTopics.urgencyAnswered ? '- ✅ URGÊNCIA: Lead JÁ disse que é urgente - NÃO pergunte novamente!' : ''}
+${answeredTopics.painAnswered ? '- ✅ DOR/PROBLEMA: Lead JÁ explicou sua dor/desafio - NÃO pergunte novamente!' : ''}
+${answeredTopics.businessContext ? `- ✅ CONTEXTO: "${answeredTopics.businessContext}"` : ''}
+`;
+    }
 
     // URLs da configuração unificada
     const videoUrl = aiConfig.video_url;
@@ -481,6 +565,7 @@ ${paymentLink ? `- Link de Pagamento: ${paymentLink}` : ''}`;
       systemPromptForPhase = `${stagePrompt.system_prompt}
 
 ${businessContext}
+${antiRepetitionContext}
 
 CONTEXTO DA CONVERSA:
 - Nome do lead: ${lead_name || 'não identificado'}
@@ -494,6 +579,7 @@ ${roleInversionContext}`;
       systemPromptForPhase = `${aiConfig.system_prompt}
 
 ${businessContext}
+${antiRepetitionContext}
 
 CONTEXTO:
 - Nome do lead: ${lead_name || 'não identificado'}
