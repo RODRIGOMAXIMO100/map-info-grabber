@@ -15,7 +15,7 @@ import { AudioRecorder } from '@/components/whatsapp/AudioRecorder';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -625,6 +625,7 @@ export default function WhatsAppChat() {
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="relative flex-shrink-0">
                     <Avatar className="h-10 w-10">
+                      {conv.avatar_url && <AvatarImage src={conv.avatar_url} alt={conv.name || ''} />}
                       <AvatarFallback className="text-sm">
                         {isGroup(conv) ? (
                           <Users className="h-5 w-5" />
@@ -1044,6 +1045,7 @@ export default function WhatsAppChat() {
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="relative flex-shrink-0">
                           <Avatar className="h-10 w-10">
+                            {conv.avatar_url && <AvatarImage src={conv.avatar_url} alt={conv.name || ''} />}
                             <AvatarFallback className="text-sm">
                               {isGroup(conv) ? (
                                 <Users className="h-5 w-5" />

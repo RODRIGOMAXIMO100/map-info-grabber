@@ -369,6 +369,7 @@ serve(async (req) => {
     console.log(`[Phone] Extracted: ${senderPhone}`);
     
     const senderName = payload.chat?.wa_name || payload.chat?.name || messageData.senderName || messageData.pushName || '';
+    const senderProfilePic = payload.chat?.imagePreview || payload.chat?.image || '';
     
     const isFromMe = messageData.fromMe === true || messageData.key?.fromMe === true;
 
@@ -673,7 +674,7 @@ serve(async (req) => {
     // Simple phone matching - exact match
     const { data: existingConv } = await supabase
       .from('whatsapp_conversations')
-      .select('id, tags, unread_count, ai_paused, config_id, phone')
+      .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url')
       .eq('phone', senderPhone)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -710,6 +711,11 @@ serve(async (req) => {
       if (!isGroup && senderName) {
         updateData.name = senderName;
       }
+      
+      // Update avatar if available
+      if (senderProfilePic && !existingConv.avatar_url) {
+        updateData.avatar_url = senderProfilePic;
+      }
 
       await supabase
         .from('whatsapp_conversations')
@@ -732,6 +738,7 @@ serve(async (req) => {
         .insert({
           phone: senderPhone,
           name: isGroup ? 'Grupo' : (senderName || null),
+          avatar_url: senderProfilePic || null,
           is_group: isGroup,
           tags: conversationTags,
           is_crm_lead: shouldBeLeadValue, // Só é lead se veio do broadcast
