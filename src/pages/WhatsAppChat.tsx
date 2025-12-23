@@ -10,6 +10,8 @@ import {
   type FunnelStageId
 } from '@/components/whatsapp';
 import { MessageContent, formatMessagePreview } from '@/components/whatsapp/MessageContent';
+import { MediaUploader, MediaPreview } from '@/components/whatsapp/MediaUploader';
+import { AudioRecorder } from '@/components/whatsapp/AudioRecorder';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -20,7 +22,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import type { WhatsAppConversation, WhatsAppMessage, WhatsAppLabel } from '@/types/whatsapp';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-// Removed ResizablePanelGroup - using fixed layout now
 
 type FilterType = 'all' | 'no_reply' | 'unread' | 'ai_paused' | 'waiting' | 'ai_active' | 'handoff';
 type ConversationType = 'all' | 'contacts' | 'groups';
@@ -58,6 +59,13 @@ export default function WhatsAppChat() {
   const [conversationType, setConversationType] = useState<ConversationType>('all');
   const [originType, setOriginType] = useState<OriginType>('all');
   const [funnelStageFilter, setFunnelStageFilter] = useState<FunnelStageId | 'all'>('all');
+  
+  // Media state
+  const [pendingMedia, setPendingMedia] = useState<{
+    url: string;
+    type: 'image' | 'video' | 'document' | 'audio';
+    file: File;
+  } | null>(null);
 
   // Helper to detect if a conversation is a group
   const isGroup = (conv: ConversationWithInstance): boolean => {
@@ -236,20 +244,23 @@ export default function WhatsAppChat() {
   };
 
   const handleSend = async () => {
-    if (!newMessage.trim() || !selectedConversation) return;
+    if ((!newMessage.trim() && !pendingMedia) || !selectedConversation) return;
 
     setSending(true);
     try {
       const { error } = await supabase.functions.invoke('whatsapp-send-message', {
         body: {
           conversation_id: selectedConversation.id,
-          message: newMessage.trim(),
-          config_id: selectedConversation.config_id, // Use the conversation's instance
+          message: newMessage.trim() || undefined,
+          media_url: pendingMedia?.url,
+          media_type: pendingMedia?.type,
+          config_id: selectedConversation.config_id,
         },
       });
 
       if (error) throw error;
       setNewMessage('');
+      setPendingMedia(null);
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -260,6 +271,14 @@ export default function WhatsAppChat() {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleMediaReady = (url: string, type: 'image' | 'video' | 'document' | 'audio', file: File) => {
+    setPendingMedia({ url, type, file });
+  };
+
+  const handleAudioReady = (url: string, file: File) => {
+    setPendingMedia({ url, type: 'audio', file });
   };
 
   const toggleAI = async (conversation: ConversationWithInstance) => {
@@ -719,10 +738,30 @@ export default function WhatsAppChat() {
 
               {/* Input */}
               <div className="border-t p-3">
+                {/* Media Preview */}
+                {pendingMedia && (
+                  <MediaPreview
+                    file={pendingMedia.file}
+                    url={pendingMedia.url}
+                    type={pendingMedia.type}
+                    onRemove={() => setPendingMedia(null)}
+                  />
+                )}
+                
                 <form 
                   onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                  className="flex gap-2"
+                  className="flex items-center gap-1"
                 >
+                  {/* Media Buttons */}
+                  <MediaUploader 
+                    onMediaReady={handleMediaReady}
+                    disabled={sending || !!pendingMedia}
+                  />
+                  <AudioRecorder 
+                    onAudioReady={handleAudioReady}
+                    disabled={sending || !!pendingMedia}
+                  />
+                  
                   <Input
                     placeholder="Digite sua mensagem..."
                     value={newMessage}
@@ -730,7 +769,11 @@ export default function WhatsAppChat() {
                     disabled={sending}
                     className="flex-1"
                   />
-                  <Button type="submit" size="icon" disabled={sending || !newMessage.trim()}>
+                  <Button 
+                    type="submit" 
+                    size="icon" 
+                    disabled={sending || (!newMessage.trim() && !pendingMedia)}
+                  >
                     {sending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
@@ -1194,10 +1237,30 @@ export default function WhatsAppChat() {
 
                   {/* Input */}
                   <div className="border-t p-3">
+                    {/* Media Preview */}
+                    {pendingMedia && (
+                      <MediaPreview
+                        file={pendingMedia.file}
+                        url={pendingMedia.url}
+                        type={pendingMedia.type}
+                        onRemove={() => setPendingMedia(null)}
+                      />
+                    )}
+                    
                     <form 
                       onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                      className="flex gap-2"
+                      className="flex items-center gap-1"
                     >
+                      {/* Media Buttons */}
+                      <MediaUploader 
+                        onMediaReady={handleMediaReady}
+                        disabled={sending || !!pendingMedia}
+                      />
+                      <AudioRecorder 
+                        onAudioReady={handleAudioReady}
+                        disabled={sending || !!pendingMedia}
+                      />
+                      
                       <Input
                         placeholder="Digite sua mensagem..."
                         value={newMessage}
@@ -1205,7 +1268,11 @@ export default function WhatsAppChat() {
                         disabled={sending}
                         className="flex-1"
                       />
-                      <Button type="submit" size="icon" disabled={sending || !newMessage.trim()}>
+                      <Button 
+                        type="submit" 
+                        size="icon" 
+                        disabled={sending || (!newMessage.trim() && !pendingMedia)}
+                      >
                         {sending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
