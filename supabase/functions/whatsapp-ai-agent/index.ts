@@ -446,8 +446,21 @@ serve(async (req) => {
     // ========== CONSTRUIR PROMPT COM CONTEXTO DO NEGÓCIO ==========
     let systemPromptForPhase: string;
     
-    // Contexto do negócio injetado dinamicamente
-    const businessContext = `
+    // IMPORTANTE: Na STAGE_1 (cold call), NÃO revelamos contexto do negócio
+    // O SDR precisa gerar curiosidade primeiro, SEM falar da empresa/produto
+    const shouldIncludeBusinessContext = currentOrder >= 2;
+    
+    // Pegar apenas o primeiro nome da persona
+    const personaFirstName = aiConfig.persona_name?.split(' ')[0] || 'SDR';
+    
+    // Contexto mínimo para STAGE_1 (cold call)
+    const minimalContext = `
+IDENTIDADE MÍNIMA:
+- Seu primeiro nome: ${personaFirstName}
+- Área: marketing/negócios (genérico, NÃO mencione empresa)`;
+
+    // Contexto completo do negócio (STAGE_2+)
+    const fullBusinessContext = `
 IDENTIDADE:
 - Persona: ${aiConfig.persona_name || 'Assistente de Vendas'}
 - Tom de voz: ${aiConfig.tone || 'profissional'}
@@ -457,9 +470,12 @@ OFERTA:
 ${aiConfig.offer_description || 'Não especificada'}
 
 URLs DISPONÍVEIS:
-- Vídeo: ${videoUrl || 'não configurado'}
-- Site: ${siteUrl || 'não configurado'}
+${videoUrl ? `- Vídeo: ${videoUrl}` : ''}
+${siteUrl ? `- Site: ${siteUrl}` : ''}
 ${paymentLink ? `- Link de Pagamento: ${paymentLink}` : ''}`;
+
+    // Escolher contexto baseado na fase
+    const businessContext = shouldIncludeBusinessContext ? fullBusinessContext : minimalContext;
     
     if (stagePrompt) {
       systemPromptForPhase = `${stagePrompt.system_prompt}
@@ -551,8 +567,12 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
       parsedResponse = JSON.parse(aiContent);
     } catch {
       console.log('[AI] Failed to parse response, using default');
+      // Resposta de fallback adequada para cold call (STAGE_1)
+      const fallbackResponse = currentOrder === 1 
+        ? `Opa! Me chamo ${personaFirstName}, trabalho com marketing. Com quem falo? 😊`
+        : 'Olá! Me conta mais sobre seu negócio? 😊';
       parsedResponse = {
-        response: 'Olá! Como posso ajudar? 😊',
+        response: fallbackResponse,
         achieved_objective: false,
         should_advance: false,
         next_stage: currentStage,
