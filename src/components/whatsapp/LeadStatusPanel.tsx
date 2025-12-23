@@ -34,6 +34,7 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
 
   const currentStage = conversation.tags?.find(tag => Object.keys(STAGE_NAMES).includes(tag));
   const isCrmLead = conversation.is_crm_lead === true;
+  const isInHandoff = conversation.tags?.includes('21') || conversation.tags?.includes('23');
 
   // Determine AI status
   const getAIStatus = () => {
@@ -52,6 +53,16 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
         reason: 'Não é lead - IA não responderá',
         icon: Ban,
         color: 'text-muted-foreground'
+      };
+    }
+
+    // Check if in handoff stage - AI won't respond even if not paused
+    if (isInHandoff) {
+      return { 
+        status: 'handoff', 
+        reason: conversation.ai_handoff_reason || 'Lead em handoff - aguardando vendedor',
+        icon: BotOff,
+        color: 'text-amber-500'
       };
     }
 
@@ -137,6 +148,45 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
     }
   };
 
+  // Resume AI for leads in handoff - removes handoff tag and reactivates AI
+  const handleResumeFromHandoff = async () => {
+    setLoading(true);
+    try {
+      // Remove handoff (21) and lost (23) tags, set back to negotiating (20)
+      const currentTags: string[] = conversation.tags || [];
+      const filteredTags = currentTags.filter(tag => tag !== '21' && tag !== '23');
+      const newTags = [...new Set([...filteredTags, '20'])]; // Set to Negociando
+
+      const { error } = await supabase
+        .from('whatsapp_conversations')
+        .update({ 
+          tags: newTags,
+          funnel_stage: 'negotiating',
+          ai_paused: false,
+          ai_handoff_reason: null
+        })
+        .eq('id', conversation.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'IA Retomada',
+        description: 'Lead devolvido para a IA. Voltará a responder automaticamente.',
+      });
+
+      onUpdate?.();
+    } catch (error) {
+      console.error('Error resuming from handoff:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível retomar a IA.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleActivateAsLead = async () => {
     setLoading(true);
     try {
@@ -179,6 +229,7 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
           <span className="text-sm font-medium">
             {aiStatus.status === 'active' ? 'IA Ativa' : 
              aiStatus.status === 'paused' ? 'IA Pausada' : 
+             aiStatus.status === 'handoff' ? 'Handoff' :
              aiStatus.status === 'not_lead' ? 'Não é Lead' : 'IA Bloqueada'}
           </span>
         </div>
@@ -224,6 +275,21 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
                 <Bot className="h-3 w-3" />
               )}
               Ativar como Lead
+            </Button>
+          ) : isInHandoff ? (
+            <Button 
+              size="sm" 
+              variant="default"
+              onClick={handleResumeFromHandoff}
+              disabled={loading}
+              className="text-xs h-7 gap-1 bg-amber-600 hover:bg-amber-700"
+            >
+              {loading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Bot className="h-3 w-3" />
+              )}
+              Retomar IA (Devolver)
             </Button>
           ) : conversation.ai_paused ? (
             <Button 
