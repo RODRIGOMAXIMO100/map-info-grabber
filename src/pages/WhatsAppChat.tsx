@@ -1215,7 +1215,7 @@ export default function WhatsAppChat() {
                 </div>
               )}
           </div>
-        </div>
       </div>
+    </div>
   );
 }
