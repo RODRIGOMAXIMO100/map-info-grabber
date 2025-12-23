@@ -86,51 +86,14 @@ export default function Dashboard() {
 
   const loadDashboardData = async () => {
     try {
-      // Função para normalizar telefone brasileiro (lidar com variações de formato)
-      const normalizePhone = (phone: string): string => {
-        // Remove tudo que não é dígito
-        let digits = phone.replace(/\D/g, '');
-        
-        // Se começa com 55 e tem mais de 11 dígitos, remove o 55 (código do Brasil)
-        if (digits.startsWith('55') && digits.length > 11) {
-          digits = digits.substring(2);
-        }
-        
-        // Se tem mais de 11 dígitos ainda, pega os últimos 11 (DDD + 9 dígitos)
-        if (digits.length > 11) {
-          digits = digits.slice(-11);
-        }
-        
-        // Se tem 11 dígitos com 9 na frente do número (celular), mantém
-        // Se tem 10 dígitos (fixo), mantém também
-        return digits;
-      };
 
-      // Buscar telefones válidos (do broadcast)
-      const { data: queuePhones } = await supabase.from('whatsapp_queue').select('phone');
-      const { data: lists } = await supabase.from('broadcast_lists').select('lead_data, phones');
-      
-      // Criar Set de telefones NORMALIZADOS
-      const broadcastPhones = new Set<string>();
-      queuePhones?.forEach(q => broadcastPhones.add(normalizePhone(q.phone)));
-      lists?.forEach(list => {
-        const leadData = list.lead_data as Array<{ phone?: string }> | null;
-        leadData?.forEach(lead => {
-          if (lead.phone) broadcastPhones.add(normalizePhone(lead.phone));
-        });
-        list.phones?.forEach(phone => broadcastPhones.add(normalizePhone(phone)));
-      });
-
-      // Buscar conversas filtradas por broadcasts
+      // Buscar todas as conversas (sem filtro de broadcast)
       const { data: conversations } = await supabase
         .from('whatsapp_conversations')
         .select('*')
         .order('last_message_at', { ascending: false });
 
-      // Filtrar conversas comparando telefones NORMALIZADOS
-      const filteredConversations = conversations?.filter(c => 
-        broadcastPhones.has(normalizePhone(c.phone))
-      ) || [];
+      const filteredConversations = conversations || [];
 
       // Mapear cores de número para hex
       const colorMap: Record<number, string> = {
@@ -202,19 +165,19 @@ export default function Dashboard() {
           time: c.last_message_at ? new Date(c.last_message_at).toLocaleString('pt-BR') : '',
         }));
 
-      // IDs das conversas filtradas (apenas de broadcast)
-      const broadcastConversationIds = filteredConversations.map(c => c.id);
+      // IDs das conversas
+      const conversationIds = filteredConversations.map(c => c.id);
 
-      // Mensagens de hoje - apenas de conversas de broadcast
+      // Mensagens de hoje
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
       let todayMessagesCount = 0;
-      if (broadcastConversationIds.length > 0) {
+      if (conversationIds.length > 0) {
         const { count } = await supabase
           .from('whatsapp_messages')
           .select('*', { count: 'exact', head: true })
-          .in('conversation_id', broadcastConversationIds)
+          .in('conversation_id', conversationIds)
           .gte('created_at', today.toISOString());
         todayMessagesCount = count || 0;
       }
@@ -225,13 +188,13 @@ export default function Dashboard() {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'sent');
 
-      // Respostas da IA - apenas de conversas de broadcast
+      // Respostas da IA
       let aiResponsesCount = 0;
-      if (broadcastConversationIds.length > 0) {
+      if (conversationIds.length > 0) {
         const { count } = await supabase
           .from('whatsapp_ai_logs')
           .select('*', { count: 'exact', head: true })
-          .in('conversation_id', broadcastConversationIds);
+          .in('conversation_id', conversationIds);
         aiResponsesCount = count || 0;
       }
 
