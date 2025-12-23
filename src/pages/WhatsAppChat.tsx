@@ -1053,6 +1053,7 @@ export default function WhatsAppChat() {
                         ai_paused: selectedConversation.ai_paused,
                         ai_handoff_reason: selectedConversation.ai_handoff_reason,
                         is_group: selectedConversation.is_group,
+                        is_crm_lead: selectedConversation.is_crm_lead,
                         tags: selectedConversation.tags,
                       }}
                       onUpdate={() => {
