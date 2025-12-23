@@ -42,6 +42,8 @@ export interface WhatsAppConversation {
   notes?: string;
   next_action?: string;
   converted_at?: string;
+  funnel_stage?: string;
+  origin?: string;
 }
 
 export interface WhatsAppMessage {
@@ -147,13 +149,13 @@ export interface CRMStage {
   is_ai_controlled: boolean;
 }
 
-// SDR Funnel - 7 estágios completos
+// SDR Funnel - 7 estágios sincronizados com funnel_stage
 export const CRM_STAGES: CRMStage[] = [
-  { id: '1', label_id: '16', name: 'Lead Novo', color: 1, order: 1, is_ai_controlled: true },
-  { id: '2', label_id: '13', name: 'MQL - Respondeu', color: 2, order: 2, is_ai_controlled: true },
-  { id: '3', label_id: '14', name: 'Engajado', color: 3, order: 3, is_ai_controlled: true },
-  { id: '4', label_id: '20', name: 'SQL - Qualificado', color: 4, order: 4, is_ai_controlled: true },
-  { id: '5', label_id: '21', name: 'Handoff - Vendedor', color: 5, order: 5, is_ai_controlled: false },
-  { id: '6', label_id: '22', name: 'Em Negociação', color: 6, order: 6, is_ai_controlled: false },
-  { id: '7', label_id: '23', name: 'Fechado/Perdido', color: 7, order: 7, is_ai_controlled: false },
+  { id: 'new', label_id: 'new', name: 'Lead Novo', color: 1, order: 1, is_ai_controlled: true },
+  { id: 'presentation', label_id: 'presentation', name: 'Apresentação Feita', color: 2, order: 2, is_ai_controlled: true },
+  { id: 'interest', label_id: 'interest', name: 'Interesse Confirmado', color: 3, order: 3, is_ai_controlled: true },
+  { id: 'negotiating', label_id: 'negotiating', name: 'Negociando', color: 4, order: 4, is_ai_controlled: true },
+  { id: 'handoff', label_id: 'handoff', name: 'Handoff - Vendedor', color: 5, order: 5, is_ai_controlled: false },
+  { id: 'converted', label_id: 'converted', name: 'Convertido', color: 6, order: 6, is_ai_controlled: false },
+  { id: 'lost', label_id: 'lost', name: 'Perdido', color: 7, order: 7, is_ai_controlled: false },
 ];

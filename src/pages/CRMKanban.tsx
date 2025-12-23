@@ -201,14 +201,14 @@ export default function CRMKanban() {
 
   const getConversationsForStage = (stage: CRMStage) => {
     return filteredConversations.filter(conv => 
-      conv.tags?.includes(stage.label_id)
+      conv.funnel_stage === stage.id
     );
   };
 
   const getUnclassifiedConversations = () => {
-    const allStageLabels = CRM_STAGES.map(s => s.label_id);
+    const allStageIds = CRM_STAGES.map(s => s.id);
     return filteredConversations.filter(conv => 
-      !conv.tags?.some(tag => allStageLabels.includes(tag))
+      !conv.funnel_stage || !allStageIds.includes(conv.funnel_stage)
     );
   };
 
@@ -224,13 +224,12 @@ export default function CRMKanban() {
     if (!draggedItem) return;
 
     try {
-      const funnelLabelIds = CRM_STAGES.map(s => s.label_id);
-      const nonFunnelTags = (draggedItem.tags || []).filter(tag => !funnelLabelIds.includes(tag));
-      const newTags = [...nonFunnelTags, targetStage.label_id];
-
       await supabase
         .from('whatsapp_conversations')
-        .update({ tags: newTags, updated_at: new Date().toISOString() })
+        .update({ 
+          funnel_stage: targetStage.id, 
+          updated_at: new Date().toISOString() 
+        })
         .eq('id', draggedItem.id);
 
       toast({
