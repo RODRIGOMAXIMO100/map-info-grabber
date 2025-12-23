@@ -65,6 +65,59 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_stage_prompts: {
+        Row: {
+          created_at: string | null
+          dna_id: string | null
+          failure_criteria: string | null
+          id: string
+          is_active: boolean | null
+          max_messages_in_stage: number | null
+          objective: string
+          stage_id: string
+          stage_name: string
+          success_criteria: string | null
+          system_prompt: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          dna_id?: string | null
+          failure_criteria?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_messages_in_stage?: number | null
+          objective: string
+          stage_id: string
+          stage_name: string
+          success_criteria?: string | null
+          system_prompt: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          dna_id?: string | null
+          failure_criteria?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_messages_in_stage?: number | null
+          objective?: string
+          stage_id?: string
+          stage_name?: string
+          success_criteria?: string | null
+          system_prompt?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_stage_prompts_dna_id_fkey"
+            columns: ["dna_id"]
+            isOneToOne: false
+            referencedRelation: "ai_dnas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       broadcast_lists: {
         Row: {
           created_at: string | null
@@ -366,6 +419,7 @@ export type Database = {
           last_lead_message_at: string | null
           last_message_at: string | null
           last_message_preview: string | null
+          messages_in_current_stage: number | null
           muted_until: string | null
           name: string | null
           next_action: string | null
@@ -402,6 +456,7 @@ export type Database = {
           last_lead_message_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
+          messages_in_current_stage?: number | null
           muted_until?: string | null
           name?: string | null
           next_action?: string | null
@@ -438,6 +493,7 @@ export type Database = {
           last_lead_message_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
+          messages_in_current_stage?: number | null
           muted_until?: string | null
           name?: string | null
           next_action?: string | null
