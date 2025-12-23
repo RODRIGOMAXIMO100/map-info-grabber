@@ -62,11 +62,11 @@ serve(async (req) => {
         const lastIncoming = historyMessages?.find(m => m.direction === 'incoming');
         if (!lastIncoming?.content) continue;
 
-        // Get current funnel stage
-        const FUNNEL_LABELS = ['16', '13', '14'];
+        // Get current funnel stage - MUST include ALL stage label IDs
+        const FUNNEL_LABELS = ['16', '13', '14', '20', '21', '22', '23'];
         const currentFunnelLabelId = (conv.tags || []).find((t: string) => FUNNEL_LABELS.includes(t)) || null;
 
-        console.log('[Process AI] Calling AI agent for conversation:', conv.id);
+        console.log('[Process AI] Conversation:', conv.id, '| Tags:', conv.tags, '| Detected stage:', currentFunnelLabelId);
 
         // Call AI agent
         const aiResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-ai-agent`, {
