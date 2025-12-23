@@ -263,19 +263,30 @@ export default function WhatsAppChat() {
 
   const toggleAI = async (conversation: ConversationWithInstance) => {
     try {
+      const newPausedState = !conversation.ai_paused;
+      
+      // Ao ativar IA: limpar ai_handoff_reason para remover do filtro de handoff
+      // Ao pausar IA: definir ai_handoff_reason para aparecer no filtro de handoff
       await supabase
         .from('whatsapp_conversations')
-        .update({ ai_paused: !conversation.ai_paused })
+        .update({ 
+          ai_paused: newPausedState,
+          ai_handoff_reason: newPausedState ? 'Pausado manualmente' : null
+        })
         .eq('id', conversation.id);
 
-      setSelectedConversation(prev => prev ? { ...prev, ai_paused: !prev.ai_paused } : null);
+      setSelectedConversation(prev => prev ? { 
+        ...prev, 
+        ai_paused: newPausedState,
+        ai_handoff_reason: newPausedState ? 'Pausado manualmente' : null
+      } : null);
       loadConversations();
 
       toast({
-        title: conversation.ai_paused ? 'IA Ativada' : 'IA Pausada',
-        description: conversation.ai_paused 
-          ? 'A IA voltará a responder automaticamente.' 
-          : 'Você assumiu o controle da conversa.',
+        title: newPausedState ? 'IA Pausada' : 'IA Ativada',
+        description: newPausedState 
+          ? 'Você assumiu o controle da conversa.' 
+          : 'A IA voltará a responder automaticamente.',
       });
     } catch (error) {
       console.error('Error toggling AI:', error);
