@@ -1,4 +1,5 @@
 import { Bot, BotOff, Loader2, Radio, Megaphone } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
@@ -22,6 +23,7 @@ interface LeadControlPanelProps {
     is_crm_lead?: boolean;
     origin?: string | null;
     funnel_stage?: string | null;
+    tags?: string[];
   };
   onUpdate?: () => void;
 }
@@ -35,7 +37,8 @@ export function LeadControlPanel({ conversation, onUpdate }: LeadControlPanelPro
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
-  const isAiActive = conversation.is_crm_lead && !conversation.ai_paused && !conversation.is_group;
+  const isInHandoff = conversation.tags?.includes('21') || conversation.tags?.includes('23');
+  const isAiActive = conversation.is_crm_lead && !conversation.ai_paused && !conversation.is_group && !isInHandoff;
   const currentOrigin = conversation.origin || 'random';
   const currentStage = conversation.funnel_stage || 'new';
   const isCrmLead = conversation.is_crm_lead === true;
@@ -161,6 +164,42 @@ export function LeadControlPanel({ conversation, onUpdate }: LeadControlPanelPro
     }
   };
 
+  const handleResumeFromHandoff = async () => {
+    setLoading(true);
+    try {
+      const currentTags: string[] = conversation.tags || [];
+      const filteredTags = currentTags.filter(tag => tag !== '21' && tag !== '23');
+      const newTags = [...new Set([...filteredTags, '20'])];
+
+      const { error } = await supabase
+        .from('whatsapp_conversations')
+        .update({ 
+          tags: newTags,
+          funnel_stage: 'negotiating',
+          ai_paused: false,
+          ai_handoff_reason: null
+        })
+        .eq('id', conversation.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'IA Retomada',
+        description: 'Lead devolvido para a IA.',
+      });
+      onUpdate?.();
+    } catch (error) {
+      console.error('Error resuming from handoff:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível retomar a IA.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Don't show controls for groups
   if (conversation.is_group) {
     return (
@@ -175,44 +214,66 @@ export function LeadControlPanel({ conversation, onUpdate }: LeadControlPanelPro
 
   return (
     <div className="bg-muted/50 rounded-lg p-3 space-y-3">
-      {/* Row 1: Lead toggle + AI toggle */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <Switch
-            id="is-lead"
-            checked={isCrmLead}
-            onCheckedChange={handleToggleLead}
+      {/* Handoff Resume Button */}
+      {isInHandoff && (
+        <div className="flex items-center justify-between gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-md">
+          <div className="flex items-center gap-2 text-amber-600">
+            <BotOff className="h-4 w-4" />
+            <span className="text-sm font-medium">Handoff - Aguardando Vendedor</span>
+          </div>
+          <Button
+            size="sm"
+            variant="default"
+            onClick={handleResumeFromHandoff}
             disabled={loading}
-          />
-          <Label htmlFor="is-lead" className="text-sm cursor-pointer">
-            É Lead
-          </Label>
+            className="text-xs h-7 gap-1 bg-amber-600 hover:bg-amber-700"
+          >
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
+            Retomar IA
+          </Button>
         </div>
+      )}
 
-        {isCrmLead && (
+      {/* Row 1: Lead toggle + AI toggle */}
+      {!isInHandoff && (
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Switch
-              id="ai-active"
-              checked={isAiActive}
-              onCheckedChange={handleToggleAI}
+              id="is-lead"
+              checked={isCrmLead}
+              onCheckedChange={handleToggleLead}
               disabled={loading}
             />
-            <Label htmlFor="ai-active" className="text-sm cursor-pointer flex items-center gap-1">
-              {isAiActive ? (
-                <>
-                  <Bot className="h-3 w-3 text-green-500" />
-                  IA Ativa
-                </>
-              ) : (
-                <>
-                  <BotOff className="h-3 w-3 text-orange-500" />
-                  IA Pausada
-                </>
-              )}
+            <Label htmlFor="is-lead" className="text-sm cursor-pointer">
+              É Lead
             </Label>
           </div>
-        )}
-      </div>
+
+          {isCrmLead && (
+            <div className="flex items-center gap-2">
+              <Switch
+                id="ai-active"
+                checked={isAiActive}
+                onCheckedChange={handleToggleAI}
+                disabled={loading}
+              />
+              <Label htmlFor="ai-active" className="text-sm cursor-pointer flex items-center gap-1">
+                {isAiActive ? (
+                  <>
+                    <Bot className="h-3 w-3 text-green-500" />
+                    IA Ativa
+                  </>
+                ) : (
+                  <>
+                    <BotOff className="h-3 w-3 text-orange-500" />
+                    IA Pausada
+                  </>
+                )}
+              </Label>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Row 2: Origin + Funnel Stage (only if lead) */}
       {isCrmLead && (
