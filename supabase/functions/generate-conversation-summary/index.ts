@@ -61,13 +61,13 @@ serve(async (req) => {
       );
     }
 
-    // Fetch last 20 messages
+    // Fetch last 50 messages for more context
     const { data: messages, error: msgError } = await supabase
       .from('whatsapp_messages')
       .select('direction, content, message_type, created_at')
       .eq('conversation_id', conversation_id)
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(50);
 
     if (msgError) {
       console.error('[Summary] Error fetching messages:', msgError);
@@ -100,18 +100,22 @@ serve(async (req) => {
     const latestIntent = aiLogs?.find(l => l.detected_intent)?.detected_intent || 'desconhecido';
     const stageName = STAGE_NAMES[conversation.funnel_stage] || conversation.funnel_stage;
 
-    const systemPrompt = `Você é um assistente que cria resumos ultra-concisos de conversas de vendas para vendedores.
+    const systemPrompt = `Você é um assistente que cria resumos completos de conversas de vendas para vendedores.
 
-Seu resumo DEVE ter no máximo 2-3 frases curtas e incluir:
-1. O interesse/necessidade principal do lead
-2. Última objeção ou dúvida (se houver)
-3. Próximo passo recomendado
+Seu resumo DEVE ter 5-7 frases estruturadas cobrindo:
+
+1. **Perfil do Lead**: Quem é, o que faz, contexto do negócio
+2. **Histórico**: Como chegou até aqui, pontos principais discutidos
+3. **Interesse/Necessidade**: O que o lead precisa ou quer resolver
+4. **Objeções/Dúvidas**: Pontos de resistência ou perguntas levantadas
+5. **Próximo Passo**: Recomendação clara e acionável para o vendedor
 
 REGRAS:
-- Seja DIRETO, sem introduções
-- Use linguagem de vendas
-- Foque no que o vendedor precisa saber AGORA
-- Não repita informações óbvias do estágio`;
+- Seja informativo mas objetivo
+- Use linguagem profissional de vendas
+- Inclua detalhes relevantes mencionados na conversa (empresa, setor, dores)
+- Destaque sinais de compra ou alertas importantes
+- Termine sempre com uma ação concreta para o vendedor`;
 
     const userPrompt = `CONTEXTO:
 - Lead: ${conversation.name || conversation.phone}
@@ -121,10 +125,10 @@ REGRAS:
 ${conversation.estimated_value ? `- Valor estimado: R$ ${conversation.estimated_value}` : ''}
 ${conversation.ai_handoff_reason ? `- Motivo handoff: ${conversation.ai_handoff_reason}` : ''}
 
-ÚLTIMAS MENSAGENS:
+HISTÓRICO DA CONVERSA (${messages?.length || 0} mensagens):
 ${formattedMessages || 'Nenhuma mensagem encontrada'}
 
-Gere um resumo de 2-3 frases para o vendedor:`;
+Gere um resumo completo de 5-7 frases para o vendedor:`;
 
     console.log('[Summary] Calling Lovable AI for conversation:', conversation_id);
 
