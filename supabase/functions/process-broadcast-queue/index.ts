@@ -418,6 +418,17 @@ serve(async (req) => {
     const blacklistedPhones = new Set(blacklist?.map(b => b.phone.replace(/\D/g, '')) || []);
     console.log(`[Broadcast] Loaded ${blacklistedPhones.size} blacklisted phones`);
 
+    // ============= LOAD PAUSED BROADCASTS =============
+    // Cache all paused/draft broadcasts to check before sending each message
+    const { data: pausedBroadcasts } = await supabase
+      .from('broadcast_lists')
+      .select('id')
+      .in('status', ['paused', 'draft']);
+    
+    const pausedBroadcastIds = new Set((pausedBroadcasts || []).map(b => b.id));
+    console.log(`[Broadcast] Found ${pausedBroadcastIds.size} paused/draft broadcasts`);
+    // ============= END LOAD PAUSED BROADCASTS =============
+
     // Get pending messages atomically using FOR UPDATE SKIP LOCKED to prevent race conditions
     // This function atomically selects AND updates status to 'processing' in a single transaction
     const { data: pendingMessages, error: fetchError } = await supabase
@@ -434,9 +445,22 @@ serve(async (req) => {
     let failedCount = 0;
     let skippedBlacklist = 0;
     let skippedInvalidNumber = 0;
+    let skippedPaused = 0;
     let configIndex = 0;
 
     for (const queueItem of pendingMessages || []) {
+      // ============= CHECK IF BROADCAST IS PAUSED =============
+      if (queueItem.broadcast_list_id && pausedBroadcastIds.has(queueItem.broadcast_list_id)) {
+        console.log(`[Broadcast] ⏸️ Broadcast ${queueItem.broadcast_list_id} is paused, reverting message ${queueItem.id} to pending`);
+        await supabase
+          .from('whatsapp_queue')
+          .update({ status: 'pending', updated_at: new Date().toISOString() })
+          .eq('id', queueItem.id);
+        skippedPaused++;
+        continue;
+      }
+      // ============= END CHECK IF BROADCAST IS PAUSED =============
+
       // Check blacklist
       const normalizedPhone = queueItem.phone.replace(/\D/g, '');
       if (blacklistedPhones.has(normalizedPhone)) {
@@ -823,7 +847,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[Broadcast] Summary: ${sentCount} sent, ${failedCount} failed, ${skippedBlacklist} blacklisted, ${skippedInvalidNumber} invalid numbers`);
+    console.log(`[Broadcast] Summary: ${sentCount} sent, ${failedCount} failed, ${skippedBlacklist} blacklisted, ${skippedInvalidNumber} invalid numbers, ${skippedPaused} paused`);
 
     return new Response(
       JSON.stringify({ 
@@ -832,6 +856,7 @@ serve(async (req) => {
         failed: failedCount,
         skipped_blacklist: skippedBlacklist,
         skipped_invalid_number: skippedInvalidNumber,
+        skipped_paused: skippedPaused,
         instances_used: availableConfigs.length
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

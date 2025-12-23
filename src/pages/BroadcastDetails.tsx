@@ -374,15 +374,31 @@ export default function BroadcastDetails() {
     if (!list) return;
     
     try {
+      // Update broadcast list status to paused
       await supabase
         .from('broadcast_lists')
         .update({ status: 'paused', updated_at: new Date().toISOString() })
         .eq('id', list.id);
 
-      toast({ title: 'Disparo pausado' });
+      // Also revert any 'processing' messages back to 'pending' so they don't continue sending
+      const { data: revertedMessages } = await supabase
+        .from('whatsapp_queue')
+        .update({ status: 'pending', updated_at: new Date().toISOString() })
+        .eq('broadcast_list_id', list.id)
+        .eq('status', 'processing')
+        .select('id');
+
+      const revertedCount = revertedMessages?.length || 0;
+      
+      toast({ 
+        title: 'Disparo pausado', 
+        description: revertedCount > 0 ? `${revertedCount} mensagens em processamento foram revertidas.` : undefined
+      });
       loadList();
+      loadQueue();
     } catch (error) {
       console.error('Error pausing broadcast:', error);
+      toast({ title: 'Erro ao pausar', variant: 'destructive' });
     }
   };
 
