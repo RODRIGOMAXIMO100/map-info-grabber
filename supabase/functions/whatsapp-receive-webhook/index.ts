@@ -579,23 +579,42 @@ serve(async (req) => {
       console.log(`[Conversation] Created: ${conversationId}, is_crm_lead=${shouldBeLeadValue}, origin=${fromBroadcast ? 'broadcast' : 'random'}, tags=${conversationTags}`);
     }
 
-    // === AUTO BLACKLIST: Detect opt-out keywords ===
-    // Only check for opt-out keywords if messageContent is a string (not media)
+    // === AUTO BLACKLIST: Detect opt-out phrases ===
+    // Only check for opt-out if messageContent is a string (not media)
+    // Using SPECIFIC PHRASES to avoid false positives like "não quero video"
     if (!isFromMe && messageContent && typeof messageContent === 'string') {
-      const optOutKeywords = [
-        'sair', 'parar', 'cancelar', 'remover', 'não quero',
-        'nao quero', 'stop', 'unsubscribe', 'saia', 'me tire',
-        'não me mande', 'nao me mande', 'spam', 'pare'
+      const optOutPhrases = [
+        // Frases específicas de opt-out (completas)
+        'não quero mais mensagens',
+        'nao quero mais mensagens',
+        'não quero receber',
+        'nao quero receber',
+        'me tire da lista',
+        'me remova da lista',
+        'sair da lista',
+        'parar de receber',
+        'pare de me mandar',
+        'não me mande mais',
+        'nao me mande mais',
+        'cancela meu cadastro',
+        'remove meu número',
+        'remove meu numero',
+        // Keywords curtas que são claramente opt-out quando usadas sozinhas
+        'stop',
+        'unsubscribe',
+        'spam'
       ];
       
       const lowerContent = messageContent.toLowerCase().trim();
-      const matchedKeyword = optOutKeywords.find(keyword => 
-        lowerContent === keyword || 
-        lowerContent.startsWith(keyword + ' ') ||
-        lowerContent.endsWith(' ' + keyword)
+      
+      // Verifica se a mensagem CONTÉM uma frase de opt-out completa
+      // OU se a mensagem É EXATAMENTE uma das keywords curtas (stop, unsubscribe, spam)
+      const matchedPhrase = optOutPhrases.find(phrase => 
+        lowerContent === phrase ||           // mensagem é exatamente a frase
+        lowerContent.includes(phrase)        // mensagem contém a frase completa
       );
       
-      if (matchedKeyword) {
+      if (matchedPhrase) {
         const { data: protectionSettings } = await supabase
           .from('whatsapp_protection_settings')
           .select('auto_blacklist_enabled')
@@ -603,14 +622,14 @@ serve(async (req) => {
           .maybeSingle();
         
         if (protectionSettings?.auto_blacklist_enabled !== false) {
-          console.log(`[Blacklist] User ${senderPhone} requested opt-out with keyword: "${matchedKeyword}"`);
+          console.log(`[Blacklist] User ${senderPhone} requested opt-out with phrase: "${matchedPhrase}"`);
           
           await supabase
             .from('whatsapp_blacklist')
             .upsert({
               phone: senderPhone,
               reason: 'opt_out',
-              keyword_matched: matchedKeyword,
+              keyword_matched: matchedPhrase,
               added_at: new Date().toISOString()
             }, { onConflict: 'phone' });
           
@@ -618,7 +637,7 @@ serve(async (req) => {
             .from('whatsapp_conversations')
             .update({ 
               ai_paused: true,
-              ai_handoff_reason: `Usuário solicitou opt-out: "${matchedKeyword}"`
+              ai_handoff_reason: `Usuário solicitou opt-out: "${matchedPhrase}"`
             })
             .eq('id', conversationId);
           
