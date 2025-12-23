@@ -6,6 +6,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Mapeamento de label_id para funnel_stage do frontend
+const LABEL_TO_FUNNEL_STAGE: Record<string, string> = {
+  '16': 'new',           // Lead Novo
+  '13': 'presentation',  // MQL - Respondeu → Apresentação Feita
+  '14': 'interest',      // Engajado → Interesse Confirmado
+  '20': 'negotiating',   // SQL - Qualificado → Negociando
+  '21': 'handoff',       // Handoff - Vendedor
+  '22': 'negotiating',   // Em Negociação
+  '23': 'lost',          // Fechado/Perdido
+};
+
 const DEBOUNCE_DELAY_SECONDS = 10;
 
 serve(async (req) => {
@@ -157,17 +168,25 @@ serve(async (req) => {
             .eq('id', conv.id);
         }
 
-        // Update labels
+        // Update labels and funnel_stage
         if (aiData.label_id) {
-          const funnelLabelIds = ['13', '14', '15', '16'];
+          const funnelLabelIds = ['13', '14', '15', '16', '20', '21', '22', '23'];
           const currentTags: string[] = conv.tags || [];
           const nonFunnelTags = currentTags.filter((tag: string) => !funnelLabelIds.includes(tag));
           const newTags = [...new Set([...nonFunnelTags, aiData.label_id])];
           
+          // Mapear para funnel_stage do frontend
+          const newFunnelStage = LABEL_TO_FUNNEL_STAGE[aiData.label_id] || 'new';
+          
           await supabase
             .from('whatsapp_conversations')
-            .update({ tags: newTags })
+            .update({ 
+              tags: newTags,
+              funnel_stage: newFunnelStage
+            })
             .eq('id', conv.id);
+            
+          console.log('[Process AI] Updated tags and funnel_stage:', conv.id, '→', newFunnelStage);
         }
 
       } catch (convError) {
