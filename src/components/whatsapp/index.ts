@@ -1,4 +1,5 @@
 export { LeadStatusPanel } from './LeadStatusPanel';
+export { LeadControlPanel } from './LeadControlPanel';
 export { ChatMetricsBar } from './ChatMetricsBar';
 export { 
   AIStatusIcon, 

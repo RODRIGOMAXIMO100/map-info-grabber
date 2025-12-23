@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users, Megaphone, Shuffle } from 'lucide-react';
 import { 
-  LeadStatusPanel, 
+  LeadControlPanel, 
   AIStatusIcon, 
   FunnelStageBadge, 
   WaitingTimeBadge,
@@ -1085,37 +1085,17 @@ export default function WhatsAppChat() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant={selectedConversation.ai_paused ? 'outline' : 'default'}
-                          size="sm"
-                          onClick={() => toggleAI(selectedConversation)}
-                          className="gap-1 text-xs h-8"
-                        >
-                          {selectedConversation.ai_paused ? (
-                            <>
-                              <BotOff className="h-3.5 w-3.5" />
-                              <span className="hidden lg:inline">IA Pausada</span>
-                            </>
-                          ) : (
-                            <>
-                              <Bot className="h-3.5 w-3.5" />
-                              <span className="hidden lg:inline">IA Ativa</span>
-                            </>
-                          )}
-                        </Button>
-                      </div>
                     </div>
-                    
-                    {/* Lead Status Panel - shows AI status and manual correction options */}
-                    <LeadStatusPanel 
+                    {/* Lead Control Panel - unified controls */}
+                    <LeadControlPanel 
                       conversation={{
                         id: selectedConversation.id,
                         ai_paused: selectedConversation.ai_paused,
                         ai_handoff_reason: selectedConversation.ai_handoff_reason,
                         is_group: selectedConversation.is_group,
                         is_crm_lead: selectedConversation.is_crm_lead,
-                        tags: selectedConversation.tags,
+                        origin: (selectedConversation as any).origin,
+                        funnel_stage: (selectedConversation as any).funnel_stage,
                       }}
                       onUpdate={() => {
                         loadConversations();
