@@ -336,13 +336,14 @@ export default function WhatsAppChat() {
     };
   }, [conversations, searchTerm, selectedInstance]);
 
-  // Funnel stage counts
+  // Funnel stage counts - use funnel_stage directly from database
   const funnelStageCounts = useMemo(() => {
     const leads = conversations.filter(c => c.is_crm_lead === true);
     const counts: Record<FunnelStageId | 'all', number> = {
       all: leads.length,
       new: 0,
-      contacted: 0,
+      presentation: 0,
+      interest: 0,
       negotiating: 0,
       handoff: 0,
       converted: 0,
@@ -350,8 +351,12 @@ export default function WhatsAppChat() {
     };
     
     leads.forEach(conv => {
-      const stage = detectFunnelStage(conv);
-      counts[stage]++;
+      const stage = (conv.funnel_stage || 'new') as FunnelStageId;
+      if (counts[stage] !== undefined) {
+        counts[stage]++;
+      } else {
+        counts.new++;
+      }
     });
     
     return counts;
@@ -398,9 +403,9 @@ export default function WhatsAppChat() {
         (originType === 'broadcast' && conv.is_crm_lead === true) ||
         (originType === 'random' && conv.is_crm_lead !== true);
 
-      // Funnel stage filter
-      const matchesFunnelStage = funnelStageFilter === 'all' || 
-        detectFunnelStage(conv) === funnelStageFilter;
+      // Funnel stage filter - use funnel_stage directly from database
+      const convStage = conv.funnel_stage || 'new';
+      const matchesFunnelStage = funnelStageFilter === 'all' || convStage === funnelStageFilter;
       
       if (!matchesSearch || !matchesInstance || !matchesType || !matchesOrigin || !matchesFunnelStage) return false;
 
@@ -893,7 +898,8 @@ export default function WhatsAppChat() {
                         <div className="flex items-center gap-1.5">
                           {funnelStageFilter === 'all' && <span>Funil</span>}
                           {funnelStageFilter === 'new' && <span>🆕 Novo</span>}
-                          {funnelStageFilter === 'contacted' && <span>📞 Contatado</span>}
+                          {funnelStageFilter === 'presentation' && <span>📞 Apresentação</span>}
+                          {funnelStageFilter === 'interest' && <span>⭐ Interesse</span>}
                           {funnelStageFilter === 'negotiating' && <span>💬 Negociando</span>}
                           {funnelStageFilter === 'handoff' && <span>🤝 Handoff</span>}
                           {funnelStageFilter === 'converted' && <span>✅ Convertido</span>}
@@ -913,10 +919,16 @@ export default function WhatsAppChat() {
                             <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.new}</Badge>
                           </div>
                         </SelectItem>
-                        <SelectItem value="contacted">
+                        <SelectItem value="presentation">
                           <div className="flex items-center justify-between gap-3">
-                            <span>📞 Contatado</span>
-                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.contacted}</Badge>
+                            <span>📞 Apresentação</span>
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.presentation}</Badge>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="interest">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>⭐ Interesse</span>
+                            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{funnelStageCounts.interest}</Badge>
                           </div>
                         </SelectItem>
                         <SelectItem value="negotiating">
