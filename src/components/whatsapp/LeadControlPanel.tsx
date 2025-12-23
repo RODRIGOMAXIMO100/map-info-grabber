@@ -1,5 +1,4 @@
 import { Bot, BotOff, Loader2, Radio, Megaphone } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
@@ -9,10 +8,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
+import { CRM_STAGES } from '@/types/whatsapp';
 
 interface LeadControlPanelProps {
   conversation: {
@@ -26,16 +25,6 @@ interface LeadControlPanelProps {
   };
   onUpdate?: () => void;
 }
-
-const FUNNEL_STAGES = [
-  { id: 'new', label: 'Lead Novo' },
-  { id: 'presentation', label: 'Apresentação Feita' },
-  { id: 'interest', label: 'Interesse Confirmado' },
-  { id: 'negotiating', label: 'Negociando' },
-  { id: 'handoff', label: 'Handoff' },
-  { id: 'converted', label: 'Convertido' },
-  { id: 'lost', label: 'Perdido' }
-];
 
 const ORIGINS = [
   { id: 'random', label: 'Aleatório', icon: Radio },
@@ -249,9 +238,9 @@ export function LeadControlPanel({ conversation, onUpdate }: LeadControlPanelPro
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover">
-              {FUNNEL_STAGES.map((stage) => (
+              {CRM_STAGES.map((stage) => (
                 <SelectItem key={stage.id} value={stage.id} className="text-xs">
-                  {stage.label}
+                  {stage.name}
                 </SelectItem>
               ))}
             </SelectContent>
