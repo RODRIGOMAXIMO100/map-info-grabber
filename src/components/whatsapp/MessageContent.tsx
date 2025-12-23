@@ -55,10 +55,27 @@ function formatFileSize(bytes: number): string {
 export function MessageContent({ content, messageType, mediaUrl, direction }: MessageContentProps) {
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [fullImageUrl, setFullImageUrl] = useState<string>('');
-  
+
   const isOutgoing = direction === 'outgoing';
   const mediaData = parseMediaContent(content);
-  
+
+  // Infer media type when backend stored message_type as "text" but content is JSON metadata
+  const inferredType = (() => {
+    if (!mediaData) return null;
+    const mime = (mediaData.Mimetype || '').toLowerCase();
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('audio/')) return 'audio';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('application/') || mime.includes('pdf')) return 'document';
+    // Some payloads don't include mimetype but include thumbnails/duration
+    if (mediaData.JPEGThumbnail) return 'image';
+    if (typeof mediaData.Seconds === 'number') return 'audio';
+    if (mediaData.FileName || mediaData.FileLength || mediaData.FileSize) return 'document';
+    return null;
+  })();
+
+  const effectiveType = (messageType === 'text' || !messageType) && inferredType ? inferredType : messageType;
+
   // Get the best available image URL
   const getImageSource = (): string | null => {
     if (mediaUrl) return mediaUrl;
@@ -67,12 +84,12 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
     if (mediaData?.URL) return mediaData.URL;
     return null;
   };
-  
+
   // Handle image type
-  if (messageType === 'image') {
+  if (effectiveType === 'image') {
     const imageSrc = getImageSource();
     const caption = mediaData?.Caption;
-    
+
     if (imageSrc) {
       return (
         <>
@@ -121,7 +138,7 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
   }
   
   // Handle audio type
-  if (messageType === 'audio' || messageType === 'ptt') {
+  if (effectiveType === 'audio' || effectiveType === 'ptt') {
     const audioUrl = mediaUrl || mediaData?.media_url || mediaData?.URL;
     const duration = mediaData?.Seconds;
     
@@ -161,7 +178,7 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
   }
   
   // Handle video type
-  if (messageType === 'video') {
+  if (effectiveType === 'video') {
     const videoUrl = mediaUrl || mediaData?.media_url || mediaData?.URL;
     const thumbnail = mediaData?.JPEGThumbnail;
     const caption = mediaData?.Caption;
@@ -223,7 +240,7 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
   }
   
   // Handle document type
-  if (messageType === 'document') {
+  if (effectiveType === 'document') {
     const docUrl = mediaUrl || mediaData?.media_url || mediaData?.URL;
     const fileName = mediaData?.FileName || 'Documento';
     const fileSize = mediaData?.FileLength || mediaData?.FileSize;
@@ -263,7 +280,7 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
   }
   
   // Handle sticker type
-  if (messageType === 'sticker') {
+  if (effectiveType === 'sticker') {
     const stickerUrl = mediaUrl || mediaData?.media_url || mediaData?.URL;
     
     if (stickerUrl) {
@@ -311,9 +328,28 @@ export function MessageContent({ content, messageType, mediaUrl, direction }: Me
 // Helper for preview in conversation list
 export function formatMessagePreview(content: string | null, messageType: string): string {
   if (!content) return '';
-  
+
+  const trimmed = content.trim();
+  const mediaData = trimmed.startsWith('{') ? (() => {
+    try { return JSON.parse(trimmed) as any; } catch { return null; }
+  })() : null;
+
+  const inferredType = (() => {
+    if (!mediaData) return null;
+    const mime = (mediaData.mimetype || mediaData.Mimetype || '').toLowerCase();
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('audio/')) return 'audio';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.includes('pdf') || mime.startsWith('application/')) return 'document';
+    if (mediaData.JPEGThumbnail) return 'image';
+    if (typeof mediaData.Seconds === 'number') return 'audio';
+    return null;
+  })();
+
+  const effectiveType = (messageType === 'text' || !messageType) && inferredType ? inferredType : messageType;
+
   // If it's a media type, return appropriate label
-  switch (messageType) {
+  switch (effectiveType) {
     case 'image': return '📷 Imagem';
     case 'video': return '🎥 Vídeo';
     case 'audio':
@@ -322,19 +358,11 @@ export function formatMessagePreview(content: string | null, messageType: string
     case 'sticker': return '🏷️ Figurinha';
   }
   
-  // Check if content is JSON (media metadata)
-  const trimmed = content.trim();
-  if (trimmed.startsWith('{')) {
-    try {
-      const data = JSON.parse(trimmed);
-      if (data.Caption) return data.Caption;
-      if (data.JPEGThumbnail) return '📷 Imagem';
-      if (data.Seconds) return '🎵 Áudio';
-      return '📎 Mídia';
-    } catch {
-      // Not valid JSON, show as text
-    }
+  // If JSON, prefer caption when available
+  if (mediaData) {
+    if (mediaData.Caption) return mediaData.Caption;
+    if (mediaData.caption) return mediaData.caption;
+    return inferredType ? '📎 Mídia' : '📎 Anexo';
   }
-  
   return content;
 }
