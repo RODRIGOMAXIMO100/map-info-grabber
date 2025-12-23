@@ -754,41 +754,6 @@ export default function BroadcastDetails() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* DNA Selector */}
-                {dnas.length > 0 && (
-                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-2">
-                    <Label className="text-sm font-medium flex items-center gap-2">
-                      <Dna className="h-4 w-4 text-primary" />
-                      DNA do Agente IA
-                    </Label>
-                    <Select
-                      value={selectedDnaId || 'none'}
-                      onValueChange={(val) => setSelectedDnaId(val === 'none' ? '' : val)}
-                      disabled={list.status === 'sending'}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um DNA (opcional)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Nenhum (usar config padrão)</SelectItem>
-                        {dnas.map((dna) => (
-                          <SelectItem key={dna.id} value={dna.id}>
-                            {dna.name}
-                            {dna.description && (
-                              <span className="text-muted-foreground text-xs ml-2">
-                                - {dna.description}
-                              </span>
-                            )}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      O DNA define a persona e comportamento da IA nas respostas automáticas.
-                    </p>
-                  </div>
-                )}
-
                 {/* Available Variables */}
                 <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                   <Label className="text-sm font-medium">Variáveis Disponíveis</Label>
