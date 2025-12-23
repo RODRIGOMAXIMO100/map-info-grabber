@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Image, Video, Mic, FileText, Play, Download, RefreshCw } from 'lucide-react';
+import { Image, Video, Mic, FileText, Play, Download, Loader2, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -122,6 +123,8 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [fullImageUrl, setFullImageUrl] = useState<string>('');
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading' | 'processing' | 'success' | 'error'>('idle');
   const [downloadedUrl, setDownloadedUrl] = useState<string | null>(null);
 
   const isOutgoing = direction === 'outgoing';
@@ -144,7 +147,23 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
     }
 
     setIsDownloading(true);
+    setDownloadStatus('downloading');
+    setDownloadProgress(0);
+
+    // Simulate progress animation
+    const progressInterval = setInterval(() => {
+      setDownloadProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
+        }
+        return prev + Math.random() * 15;
+      });
+    }, 200);
+
     try {
+      setDownloadStatus('downloading');
+      
       const { data, error } = await supabase.functions.invoke('whatsapp-download-media', {
         body: {
           message_id: messageId,
@@ -155,20 +174,36 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
         }
       });
 
+      clearInterval(progressInterval);
+
       if (error) {
         console.error('Download error:', error);
+        setDownloadStatus('error');
+        setDownloadProgress(0);
         toast.error('Erro ao baixar mídia');
         return;
       }
 
       if (data?.media_url) {
+        setDownloadProgress(100);
+        setDownloadStatus('success');
         setDownloadedUrl(data.media_url);
         toast.success('Mídia baixada!');
+        
+        // Reset status after animation
+        setTimeout(() => {
+          setDownloadStatus('idle');
+        }, 1500);
       } else {
+        setDownloadStatus('error');
+        setDownloadProgress(0);
         toast.error('Falha ao baixar mídia');
       }
     } catch (err) {
       console.error('Download exception:', err);
+      clearInterval(progressInterval);
+      setDownloadStatus('error');
+      setDownloadProgress(0);
       toast.error('Erro ao baixar mídia');
     } finally {
       setIsDownloading(false);
@@ -185,26 +220,61 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
     return null;
   };
 
-  // Download button component
-  const DownloadButton = () => (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleDownloadMedia}
-      disabled={isDownloading}
-      className={cn(
-        "gap-2",
-        isOutgoing ? "border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20" : ""
-      )}
-    >
-      {isDownloading ? (
-        <RefreshCw className="h-4 w-4 animate-spin" />
-      ) : (
+  // Download button component with visual progress
+  const DownloadButton = () => {
+    if (downloadStatus === 'success') {
+      return (
+        <div className={cn(
+          "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium",
+          isOutgoing ? "bg-primary-foreground/20 text-primary-foreground" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+        )}>
+          <CheckCircle2 className="h-4 w-4" />
+          <span>Pronto!</span>
+        </div>
+      );
+    }
+
+    if (isDownloading) {
+      return (
+        <div className={cn(
+          "flex flex-col gap-2 min-w-[140px]",
+          isOutgoing ? "text-primary-foreground" : ""
+        )}>
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm font-medium">
+              {downloadStatus === 'processing' ? 'Processando...' : 'Baixando...'}
+            </span>
+          </div>
+          <Progress 
+            value={downloadProgress} 
+            className={cn(
+              "h-1.5",
+              isOutgoing ? "[&>div]:bg-primary-foreground/80" : ""
+            )}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleDownloadMedia}
+        disabled={isDownloading}
+        className={cn(
+          "gap-2 transition-all",
+          isOutgoing 
+            ? "border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20" 
+            : "hover:bg-primary/10"
+        )}
+      >
         <Download className="h-4 w-4" />
-      )}
-      {isDownloading ? 'Baixando...' : 'Baixar mídia'}
-    </Button>
-  );
+        Baixar mídia
+      </Button>
+    );
+  };
 
   // Handle image type
   if (effectiveType === 'image') {
