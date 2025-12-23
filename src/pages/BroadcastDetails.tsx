@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Dna } from 'lucide-react';
+
 import {
   Dialog,
   DialogContent,
@@ -48,11 +48,6 @@ interface QueueItem {
   image_url: string | null;
 }
 
-interface DNA {
-  id: string;
-  name: string;
-  description: string | null;
-}
 
 interface ValidationResult {
   phone: string;
@@ -125,8 +120,6 @@ export default function BroadcastDetails() {
   
   const [list, setList] = useState<BroadcastList | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [dnas, setDnas] = useState<DNA[]>([]);
-  const [selectedDnaId, setSelectedDnaId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editedMessage, setEditedMessage] = useState('');
@@ -162,18 +155,8 @@ export default function BroadcastDetails() {
 
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([loadList(), loadQueue(), loadDnas()]);
+    await Promise.all([loadList(), loadQueue()]);
     setLoading(false);
-  };
-
-  const loadDnas = async () => {
-    const { data } = await supabase
-      .from('ai_dnas')
-      .select('id, name, description')
-      .eq('is_active', true)
-      .order('name');
-    
-    setDnas(data || []);
   };
 
   const loadList = async () => {
@@ -201,7 +184,6 @@ export default function BroadcastDetails() {
     setList(typedData);
     setEditedMessage(data.message_template || DEFAULT_MESSAGE);
     setEditedImageUrl(data.image_url || '');
-    setSelectedDnaId((data as { dna_id?: string }).dna_id || '');
   };
 
   const loadQueue = async () => {
@@ -231,8 +213,7 @@ export default function BroadcastDetails() {
         .update({ 
           message_template: editedMessage,
           image_url: editedImageUrl || null,
-          dna_id: selectedDnaId || null,
-          updated_at: new Date().toISOString() 
+          updated_at: new Date().toISOString()
         })
         .eq('id', list.id);
 
@@ -336,7 +317,7 @@ export default function BroadcastDetails() {
             message: list.message_template!,
             image_url: list.image_url || null,
             status: 'pending' as const,
-            lead_data: leadInfo ? { ...leadInfo, dna_id: selectedDnaId || null } : { dna_id: selectedDnaId || null },
+            lead_data: leadInfo || null,
           };
         });
 

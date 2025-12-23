@@ -11,7 +11,6 @@ import {
   ScrollText,
   Bell,
   Shield,
-  Dna,
   Layers,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -41,7 +40,6 @@ const menuItems = [
 ];
 
 const configItems = [
-  { title: "DNAs", url: "/dnas", icon: Dna },
   { title: "Fases do Funil", url: "/funnel-stages", icon: Layers },
   { title: "Agente IA", url: "/ai-config", icon: Bot },
   { title: "Logs IA", url: "/ai-logs", icon: ScrollText },
