@@ -541,7 +541,13 @@ ${answeredTopics.businessContext ? `- ✅ CONTEXTO: "${answeredTopics.businessCo
     const minimalContext = `
 IDENTIDADE MÍNIMA:
 - Seu primeiro nome: ${personaFirstName}
-- Área: marketing/negócios (genérico, NÃO mencione empresa)`;
+- Área: marketing/negócios (genérico, NÃO mencione empresa)
+- Tom: profissional e respeitoso
+
+REGRAS DE SAUDAÇÃO (OBRIGATÓRIO):
+✅ Use APENAS: "Olá!", "Bom dia!", "Boa tarde!", "Boa noite!", "Prazer!"
+❌ NUNCA use gírias ou informalidades: "E aí", "Opa", "Eae", "Fala", "Beleza", "Tudo certo?"
+- Mantenha tom cordial e profissional desde a primeira mensagem`;
 
     // Contexto completo do negócio (STAGE_2+)
     const fullBusinessContext = `
