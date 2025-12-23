@@ -381,43 +381,53 @@ serve(async (req) => {
     const uazapiMessageType = messageData.messageType || '';
     console.log('[Media Debug] messageData.messageType:', uazapiMessageType);
     console.log('[Media Debug] typeof messageData.content:', typeof messageData.content);
-    
+
+    const detectUazapiMediaType = (mt: string): string => {
+      const t = (mt || '').toLowerCase();
+      if (t.includes('image')) return 'image';
+      if (t.includes('audio') || t.includes('ptt') || t.includes('voice')) return 'audio';
+      if (t.includes('video')) return 'video';
+      if (t.includes('document') || t.includes('file')) return 'document';
+      if (t.includes('sticker')) return 'sticker';
+      return 'text';
+    };
+
     // Check if content is a media object (UAZAPI structure)
     if (typeof messageData.content === 'object' && messageData.content !== null) {
       console.log('[Media Debug] messageData.content is object:', JSON.stringify(messageData.content).substring(0, 500));
       rawMediaData = messageData.content;
-      
-      // Determine message type from UAZAPI messageType field
-      if (uazapiMessageType === 'ImageMessage' || uazapiMessageType.toLowerCase().includes('image')) {
-        messageType = 'image';
-      } else if (uazapiMessageType === 'AudioMessage' || uazapiMessageType === 'PttMessage' || uazapiMessageType.toLowerCase().includes('audio') || uazapiMessageType.toLowerCase().includes('ptt')) {
-        messageType = 'audio';
-      } else if (uazapiMessageType === 'VideoMessage' || uazapiMessageType.toLowerCase().includes('video')) {
-        messageType = 'video';
-      } else if (uazapiMessageType === 'DocumentMessage' || uazapiMessageType.toLowerCase().includes('document')) {
-        messageType = 'document';
-      } else if (uazapiMessageType === 'StickerMessage' || uazapiMessageType.toLowerCase().includes('sticker')) {
-        messageType = 'sticker';
-      }
-      
+      messageType = detectUazapiMediaType(uazapiMessageType);
+
       // Store the complete media data as JSON
       messageContent = JSON.stringify(rawMediaData);
-      
+
       // Extract caption if available
       const caption = (rawMediaData as any)?.Caption || (rawMediaData as any)?.caption || '';
       if (caption) {
         console.log('[Media Debug] Found caption:', caption);
       }
-    } else if (messageData.text) {
-      messageContent = messageData.text;
-    } else if (typeof messageData.content === 'string') {
-      messageContent = messageData.content;
-    } else if (messageData.message?.conversation) {
-      messageContent = messageData.message.conversation;
-    } else if (messageData.message?.extendedTextMessage?.text) {
-      messageContent = messageData.message.extendedTextMessage.text;
+    } else {
+      // Text-first extraction
+      if (messageData.text) {
+        messageContent = messageData.text;
+      } else if (typeof messageData.content === 'string') {
+        messageContent = messageData.content;
+      } else if (messageData.message?.conversation) {
+        messageContent = messageData.message.conversation;
+      } else if (messageData.message?.extendedTextMessage?.text) {
+        messageContent = messageData.message.extendedTextMessage.text;
+      }
+
+      // Important: some UAZAPI media events send caption as string in content
+      // while media URL lives on the root messageData.
+      const inferredType = detectUazapiMediaType(uazapiMessageType);
+      if (inferredType !== 'text') {
+        messageType = inferredType;
+        rawMediaData = messageData as Record<string, unknown>;
+        messageContent = JSON.stringify({ ...messageData, caption: messageContent });
+        console.log('[Media Debug] Media inferred from messageType; using root messageData as rawMediaData');
+      }
     }
-    
     // Fallback: check for media in messageData.message structure (alternative webhook format)
     if (messageType === 'text' && messageData.message) {
       if (messageData.message.imageMessage) {
