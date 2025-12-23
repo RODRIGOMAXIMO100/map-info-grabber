@@ -520,7 +520,8 @@ serve(async (req) => {
     }
 
     // === AUTO BLACKLIST: Detect opt-out keywords ===
-    if (!isFromMe && messageContent) {
+    // Only check for opt-out keywords if messageContent is a string (not media)
+    if (!isFromMe && messageContent && typeof messageContent === 'string') {
       const optOutKeywords = [
         'sair', 'parar', 'cancelar', 'remover', 'não quero',
         'nao quero', 'stop', 'unsubscribe', 'saia', 'me tire',
