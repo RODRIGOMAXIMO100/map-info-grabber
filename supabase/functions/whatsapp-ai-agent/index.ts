@@ -42,8 +42,8 @@ const BOT_PATTERNS = [
   /atendimento encerrado/i,
   /deixe.*mensagem/i,
   /retornaremos.*contato/i,
-  /^[1-9]$/,  // Só número de menu
-  /^\*[1-9]\*/,  // Número entre asteriscos
+  /^[1-9]$/,
+  /^\*[1-9]\*/,
   /menu principal/i,
   /voltar.*menu/i,
   /bem-vindo.*atendimento/i,
@@ -70,6 +70,30 @@ const ROLE_INVERSION_PATTERNS = [
   /diga/i,
 ];
 
+// ========== DETECÇÃO DE REJEIÇÃO (NOVO!) ==========
+const REJECTION_PATTERNS = [
+  /não (tenho |quero|preciso|interess)/i,
+  /sem interesse/i,
+  /não é pra mim/i,
+  /não me interessa/i,
+  /pare de me (mandar|enviar)/i,
+  /não me (mande|envie) mais/i,
+  /me (tire|remova|exclua) da lista/i,
+  /cancelar/i,
+  /sair da lista/i,
+  /desinscrever/i,
+  /não quero (mais )?receber/i,
+  /obrigad[ao],? (mas )?não/i,
+  /agora não/i,
+  /não é o momento/i,
+  /talvez depois/i,
+  /quem sabe (depois|outro dia)/i,
+  /deixa pra lá/i,
+  /tchau/i,
+  /até mais/i,
+  /adeus/i,
+];
+
 function detectBotMessage(message: string): { isBot: boolean; reason: string | null } {
   const normalizedMsg = message.toLowerCase().trim();
   
@@ -80,7 +104,6 @@ function detectBotMessage(message: string): { isBot: boolean; reason: string | n
     }
   }
   
-  // Mensagens muito curtas com só números (menu)
   if (/^[0-9\s\*#]+$/.test(normalizedMsg) && normalizedMsg.length < 5) {
     return { isBot: true, reason: 'Resposta de menu numérico' };
   }
@@ -101,24 +124,96 @@ function detectRoleInversion(message: string): boolean {
   return false;
 }
 
+// NOVO: Detectar rejeição do lead
+function detectRejection(message: string): { isRejection: boolean; type: 'hard' | 'soft' | null } {
+  const normalizedMsg = message.toLowerCase().trim();
+  
+  // Hard rejection - não insistir de jeito nenhum
+  const hardRejectionPatterns = [
+    /pare de me (mandar|enviar)/i,
+    /não me (mande|envie) mais/i,
+    /me (tire|remova|exclua) da lista/i,
+    /desinscrever/i,
+    /cancelar/i,
+    /sair da lista/i,
+  ];
+  
+  for (const pattern of hardRejectionPatterns) {
+    if (pattern.test(normalizedMsg)) {
+      console.log('[AI] Hard rejection detected:', pattern.toString());
+      return { isRejection: true, type: 'hard' };
+    }
+  }
+  
+  // Soft rejection - pode tentar nurturing depois
+  for (const pattern of REJECTION_PATTERNS) {
+    if (pattern.test(normalizedMsg)) {
+      console.log('[AI] Soft rejection detected:', pattern.toString());
+      return { isRejection: true, type: 'soft' };
+    }
+  }
+  
+  return { isRejection: false, type: null };
+}
+
+// Limpar mensagens do WhatsApp (ex: buttonsMessage JSON)
+function cleanIncomingMessage(raw: string): string {
+  if (!raw) return '';
+  
+  // Se é JSON do WhatsApp (buttonsMessage, etc), extrair texto
+  if (raw.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.buttonsMessage?.contentText) {
+        return parsed.buttonsMessage.contentText;
+      }
+      if (parsed.listMessage?.description) {
+        return parsed.listMessage.description;
+      }
+      if (parsed.message) {
+        return parsed.message;
+      }
+      if (parsed.text) {
+        return parsed.text;
+      }
+    } catch {
+      // Não é JSON válido, retorna original
+    }
+  }
+  return raw;
+}
+
+// Contar mensagens consecutivas da IA na fase atual
+function countMessagesInCurrentStage(
+  history: Array<{ direction: string; content: string }>,
+  currentStageOrder: number
+): number {
+  // Simplificação: contar mensagens outgoing recentes
+  let count = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].direction === 'outgoing') {
+      count++;
+    } else {
+      break; // Para quando encontrar incoming
+    }
+  }
+  return count;
+}
+
 // Conta respostas consecutivas da IA sem resposta humana real
 function countConsecutiveAIResponses(history: Array<{ direction: string; content: string }>): number {
   let count = 0;
   
-  // Percorre do mais recente para o mais antigo
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
     
     if (msg.direction === 'outgoing') {
       count++;
     } else {
-      // Verifica se a resposta incoming é de bot
       const botCheck = detectBotMessage(msg.content || '');
       if (botCheck.isBot) {
-        // É bot, continua contando
         continue;
       } else {
-        // Resposta humana real, para de contar
         break;
       }
     }
@@ -126,92 +221,6 @@ function countConsecutiveAIResponses(history: Array<{ direction: string; content
   
   return count;
 }
-
-// Prompt padrão com FUNIL DE AQUECIMENTO + DETECÇÃO DE BOTS
-const DEFAULT_SDR_PROMPT = `Você é um consultor da empresa, especialista em criar conexão e despertar interesse.
-
-## ⚠️ DETECÇÃO DE ROBÔS/MENSAGENS AUTOMÁTICAS (CRÍTICO!)
-ANTES de responder, verifique se a mensagem do lead parece AUTOMÁTICA:
-- Mensagens de menu: "Digite 1 para...", "Escolha uma opção"
-- Mensagens de espera: "Aguarde, transferindo...", "Em breve um atendente"
-- Mensagens de horário: "Fora do horário de atendimento", "Férias coletivas"
-- Respostas de URA: números soltos (1, 2, 3), "Opção inválida"
-
-SE DETECTAR MENSAGEM AUTOMÁTICA:
-- Responda APENAS: "Entendido! Fico no aguardo de um atendente 😊"
-- Marque "is_bot_message": true no JSON
-- NÃO tente vender, qualificar ou fazer perguntas
-
-## 🔄 INVERSÃO DE PAPÉIS (CRÍTICO!)
-Se o lead perguntar "Em que posso ajudar?" ou similar, ELE É PROVAVELMENTE UM ATENDENTE:
-- NÃO pergunte o nome ou faça qualificação
-- APRESENTE-SE: "Olá! Sou [consultor] da [empresa]. Entramos em contato pois..."
-- EXPLIQUE o motivo do contato de forma breve
-- Marque "role_inverted": true no JSON
-
-## SUA ABORDAGEM: FUNIL DE AQUECIMENTO
-Você segue uma jornada CONSULTIVA, não vendedora. Cada estágio tem um objetivo específico:
-
-### STAGE_1 - CURIOSIDADE (Quebrar o gelo)
-Objetivo: Criar conexão, mostrar interesse genuíno pela pessoa/empresa
-- Agradeça o retorno com entusiasmo
-- Pergunte o nome de forma natural: "Opa! Que bom falar com você! Com quem eu tenho o prazer de conversar?"
-- Mostre curiosidade sobre o negócio: "Me conta um pouco sobre o que vocês fazem?"
-- NÃO faça perguntas de qualificação ainda
-- NÃO fale de produto/serviço
-
-### STAGE_2 - INTERESSE (Explorar dores)
-Objetivo: Entender desafios e gerar identificação
-- Use o nome do lead sempre que souber
-- Faça perguntas consultivas: "Qual o maior desafio que você enfrenta hoje em [área]?"
-- Demonstre que entende o mercado do lead
-- Valide as dores: "Entendo, muitos dos nossos clientes passaram pelo mesmo..."
-- NÃO mencione orçamento ou preços
-- NÃO ofereça soluções ainda
-
-### STAGE_3 - ENGAJAMENTO (Aprofundar necessidades)
-Objetivo: Entender urgência e apresentar possibilidades
-- Explore mais as necessidades: "Se pudesse resolver isso agora, o que mudaria?"
-- Compartilhe cases ou resultados (sem preços): "Temos clientes que conseguiram..."
-- Sugira enviar vídeo/site se houver: "Posso te mandar um material que explica melhor?"
-- Comece a entender timing: "Isso é algo urgente pra vocês?"
-
-### STAGE_4 - CTA (Qualificação para handoff)
-Objetivo: Confirmar interesse e passar para consultor
-- Resuma o que entendeu: "Então você precisa de X para resolver Y, certo?"
-- Ofereça próximo passo: "Faz sentido a gente marcar uma conversa rápida com nosso especialista?"
-- Se aceitar reunião: "Perfeito! Vou passar pro nosso consultor já entrar em contato"
-- AGORA pode fazer perguntas BANT se necessário
-
-### STAGE_5 - HANDOFF (Consultor assume)
-- Você para de responder
-- Consultor humano assume a conversa
-
-## REGRAS DE OURO (CRÍTICO!)
-1. NUNCA pergunte sobre orçamento/budget antes do STAGE_4
-2. NUNCA revele preços - diga que depende do diagnóstico
-3. NUNCA seja direto demais - construa a relação primeiro
-4. Se perguntarem preço: "Varia conforme o projeto, posso conectar você com nosso consultor?"
-5. Avance APENAS 1 estágio por mensagem
-6. Se detectar BOT/robô, não insista - aguarde humano
-
-## COLETA DE NOME
-- Em STAGE_1, pergunte o nome naturalmente
-- Use o nome do lead nas próximas mensagens
-- SEMPRE inclua "lead_name" no JSON quando souber
-
-## QUANDO FAZER HANDOFF (should_handoff = true)
-- Lead pede preço/valores → Handoff imediato
-- Lead quer reunião/call → Handoff
-- Lead demonstra urgência forte → Handoff
-- Lead passou por STAGE_3 e quer avançar → Handoff
-
-## TOM E ESTILO
-- Próximo e amigável (não formal demais)
-- Use emojis com moderação (1-2 por mensagem)
-- Respostas curtas e naturais (max 300 caracteres)
-- Pareça uma pessoa real, não um robô
-- Evite jargões corporativos`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -226,7 +235,7 @@ serve(async (req) => {
     if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { conversation_id, incoming_message, conversation_history, current_stage_id, dna_id } = await req.json();
+    const { conversation_id, incoming_message, conversation_history, current_stage_id, dna_id, lead_name } = await req.json();
 
     if (!conversation_id || !incoming_message) {
       return new Response(
@@ -234,6 +243,10 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Limpar mensagem de entrada (ex: JSONs do WhatsApp)
+    const cleanedMessage = cleanIncomingMessage(incoming_message);
+    console.log('[AI] Incoming message cleaned:', cleanedMessage.substring(0, 100));
 
     // Get AI config (default fallback)
     const { data: aiConfig } = await supabase
@@ -267,8 +280,8 @@ serve(async (req) => {
       }
     }
 
-    const currentStage = current_stage_id ? getStageFromLabelId(current_stage_id) : null;
-    const currentOrder = currentStage ? CRM_STAGES[currentStage].order : 0;
+    const currentStage = current_stage_id ? getStageFromLabelId(current_stage_id) : 'STAGE_1';
+    const currentOrder = currentStage ? CRM_STAGES[currentStage as CRMStage]?.order || 1 : 1;
 
     // Se já está em STAGE_5+, não responder (vendedor assumiu)
     if (currentOrder >= 5) {
@@ -284,9 +297,81 @@ serve(async (req) => {
       );
     }
 
+    // ========== DETECÇÃO DE REJEIÇÃO (NOVO!) ==========
+    const rejectionCheck = detectRejection(cleanedMessage);
+    if (rejectionCheck.isRejection) {
+      console.log('[AI] Rejection detected! Type:', rejectionCheck.type);
+      
+      let rejectionResponse: string;
+      let newStage: string;
+      
+      if (rejectionCheck.type === 'hard') {
+        // Rejeição dura - blacklist e encerrar
+        rejectionResponse = 'Entendido! Você não receberá mais mensagens. Se mudar de ideia, é só chamar. 👋';
+        newStage = 'STAGE_7'; // Fechado/Perdido
+        
+        // Adicionar à blacklist
+        const { data: conversation } = await supabase
+          .from('whatsapp_conversations')
+          .select('phone')
+          .eq('id', conversation_id)
+          .single();
+        
+        if (conversation?.phone) {
+          await supabase
+            .from('whatsapp_blacklist')
+            .upsert({
+              phone: conversation.phone.replace(/\D/g, ''),
+              reason: 'opt_out',
+              keyword_matched: 'Rejeição explícita do lead'
+            }, { onConflict: 'phone' });
+        }
+      } else {
+        // Rejeição suave - nurturing
+        rejectionResponse = 'Sem problemas! Fico à disposição se precisar de algo no futuro. 😊';
+        newStage = 'STAGE_7'; // Marcar como perdido por agora
+      }
+      
+      // Pausar IA para este lead
+      await supabase
+        .from('whatsapp_conversations')
+        .update({ 
+          ai_paused: true,
+          ai_handoff_reason: `Lead recusou: ${rejectionCheck.type}`,
+          funnel_stage: newStage === 'STAGE_7' ? 'lost' : 'nurturing'
+        })
+        .eq('id', conversation_id);
+      
+      // Log
+      await supabase
+        .from('whatsapp_ai_logs')
+        .insert({
+          conversation_id,
+          incoming_message: cleanedMessage,
+          ai_response: rejectionResponse,
+          detected_intent: `REJECTION_${rejectionCheck.type?.toUpperCase()}`,
+          confidence_score: 0.95,
+          needs_human: false
+        });
+      
+      return new Response(
+        JSON.stringify({
+          response: rejectionResponse,
+          stage: newStage,
+          label_id: CRM_STAGES[newStage as CRMStage]?.id || '23',
+          is_rejection: true,
+          rejection_type: rejectionCheck.type,
+          should_handoff: false,
+          ai_paused: true,
+          delay_seconds: aiConfig.auto_reply_delay_seconds || 3
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // ========== DETECÇÃO DE BOT ==========
-    const botCheck = detectBotMessage(incoming_message);
-    const isRoleInverted = detectRoleInversion(incoming_message);
+    const botCheck = detectBotMessage(cleanedMessage);
+    const isRoleInverted = detectRoleInversion(cleanedMessage);
     const consecutiveAIResponses = countConsecutiveAIResponses(conversation_history || []);
     
     console.log('[AI] Bot check:', botCheck.isBot, '| Role inverted:', isRoleInverted, '| Consecutive AI:', consecutiveAIResponses);
@@ -295,7 +380,6 @@ serve(async (req) => {
     if (consecutiveAIResponses >= 3) {
       console.log('[AI] Too many consecutive AI responses, possible bot loop. Pausing.');
       
-      // Atualizar conversa para pausar IA
       await supabase
         .from('whatsapp_conversations')
         .update({ 
@@ -316,18 +400,17 @@ serve(async (req) => {
       );
     }
 
-    // Se é mensagem de bot, responder de forma simples e não insistir
+    // Se é mensagem de bot, responder de forma simples
     if (botCheck.isBot) {
       console.log('[AI] Bot message detected, responding with simple acknowledgment');
       
       const botResponse = 'Entendido! Fico no aguardo de um atendente 😊';
       
-      // Log the bot detection
       await supabase
         .from('whatsapp_ai_logs')
         .insert({
           conversation_id,
-          incoming_message,
+          incoming_message: cleanedMessage,
           ai_response: botResponse,
           detected_intent: `BOT_DETECTED: ${botCheck.reason}`,
           confidence_score: 0.95,
@@ -350,68 +433,139 @@ serve(async (req) => {
       );
     }
 
-    // Build conversation history
-    const historyMessages = (conversation_history || []).map((msg: { direction: string; content: string }) => ({
-      role: msg.direction === 'incoming' ? 'user' : 'assistant',
-      content: msg.content || ''
-    }));
-    historyMessages.push({ role: 'user', content: incoming_message });
+    // ========== BUSCAR PROMPT ESPECÍFICO DA FASE (NOVO!) ==========
+    // Primeiro tenta encontrar prompt para DNA + stage, depois genérico para stage
+    let stagePrompt = null;
+    
+    if (dnaIdToUse) {
+      const { data: dnaStagePrompt } = await supabase
+        .from('ai_stage_prompts')
+        .select('*')
+        .eq('stage_id', currentStage)
+        .eq('dna_id', dnaIdToUse)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (dnaStagePrompt) {
+        stagePrompt = dnaStagePrompt;
+        console.log('[AI] Using DNA-specific stage prompt for', currentStage);
+      }
+    }
+    
+    // Fallback para prompt genérico da fase
+    if (!stagePrompt) {
+      const { data: genericStagePrompt } = await supabase
+        .from('ai_stage_prompts')
+        .select('*')
+        .eq('stage_id', currentStage)
+        .is('dna_id', null)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (genericStagePrompt) {
+        stagePrompt = genericStagePrompt;
+        console.log('[AI] Using generic stage prompt for', currentStage);
+      }
+    }
 
-    // Determine which prompt and URLs to use
-    const systemPrompt = dnaConfig?.system_prompt || aiConfig.system_prompt || DEFAULT_SDR_PROMPT;
+    // Contar mensagens nesta fase
+    const messagesInStage = countMessagesInCurrentStage(conversation_history || [], currentOrder);
+    const maxMessagesInStage = stagePrompt?.max_messages_in_stage || 5;
+    
+    console.log('[AI] Messages in stage:', messagesInStage, '/', maxMessagesInStage);
+
+    // Se excedeu limite de mensagens na fase, forçar avanço
+    const forceAdvance = messagesInStage >= maxMessagesInStage;
+    if (forceAdvance) {
+      console.log('[AI] Max messages in stage reached, will force advance');
+    }
+
+    // Build conversation history (últimas 10 mensagens apenas)
+    const recentHistory = (conversation_history || []).slice(-10);
+    const historyMessages = recentHistory.map((msg: { direction: string; content: string }) => ({
+      role: msg.direction === 'incoming' ? 'user' : 'assistant',
+      content: cleanIncomingMessage(msg.content || '')
+    }));
+    historyMessages.push({ role: 'user', content: cleanedMessage });
+
+    // Determine URLs from DNA or config
     const videoUrl = dnaConfig?.video_url || aiConfig.video_url;
     const siteUrl = dnaConfig?.site_url || aiConfig.site_url;
     const paymentLink = dnaConfig?.payment_link || aiConfig.payment_link;
     
-    // Adicionar contexto de inversão de papéis se detectado
+    // Contexto de inversão de papéis
     const roleInversionContext = isRoleInverted 
-      ? `\n\n⚠️ ATENÇÃO: O lead perguntou "em que posso ajudar" ou similar - ELE É PROVAVELMENTE UM ATENDENTE. 
-         APRESENTE-SE explicando quem você é e por que está entrando em contato. NÃO pergunte o nome nem faça qualificação.`
+      ? `\n\n⚠️ ATENÇÃO: O lead perguntou "em que posso ajudar" - ELE É UM ATENDENTE. 
+         APRESENTE-SE explicando quem você é e por que está entrando em contato. NÃO pergunte o nome.`
       : '';
     
-    const fullPrompt = `
-${systemPrompt}
+    // ========== CONSTRUIR PROMPT FOCADO NA FASE (NOVO!) ==========
+    let systemPromptForPhase: string;
+    
+    if (stagePrompt) {
+      // Usar prompt específico da fase
+      systemPromptForPhase = `${stagePrompt.system_prompt}
 
-RESPONDA EM JSON COM ESTE FORMATO EXATO:
-{
-  "response": "sua resposta aqui (max 400 chars)",
-  "stage": "STAGE_1" ou "STAGE_2" ou "STAGE_3" ou "STAGE_4" ou "STAGE_5",
-  "lead_name": "nome do lead se identificado, ou null",
-  "is_bot_message": false,
-  "role_inverted": ${isRoleInverted},
-  "should_send_video": true/false,
-  "should_send_site": true/false,
-  "should_handoff": true/false,
-  "handoff_reason": "motivo curto do handoff se should_handoff=true",
-  "conversation_summary": "OBRIGATÓRIO se should_handoff=true - resumo completo da conversa para o vendedor",
-  "bant_score": {
-    "budget": true/false/null,
-    "authority": true/false/null,
-    "need": true/false/null,
-    "timing": true/false/null
-  }
-}
+CONTEXTO ADICIONAL:
+- Nome do lead: ${lead_name || 'não identificado'}
+- Você está na fase: ${stagePrompt.stage_name} (${currentStage})
+- Objetivo: ${stagePrompt.objective}
+- Critério de sucesso: ${stagePrompt.success_criteria || 'N/A'}
+- Mensagens nesta fase: ${messagesInStage}/${maxMessagesInStage}
+${forceAdvance ? '- ⚠️ LIMITE ATINGIDO: Tente avançar ou fazer handoff nesta mensagem!' : ''}
 
-Estágio atual do lead: ${currentStage || 'STAGE_1'} (${CRM_STAGES[currentStage as CRMStage]?.name || 'Lead Novo'})
 URLs disponíveis:
 - Vídeo: ${videoUrl || 'não configurado'}
 - Site: ${siteUrl || 'não configurado'}
 ${paymentLink ? `- Link de Pagamento: ${paymentLink}` : ''}
+${roleInversionContext}`;
+    } else {
+      // Fallback para prompt legado do DNA ou config
+      const legacyPrompt = dnaConfig?.system_prompt || aiConfig.system_prompt;
+      systemPromptForPhase = `${legacyPrompt}
+
+CONTEXTO:
+- Nome do lead: ${lead_name || 'não identificado'}
+- Fase atual: ${CRM_STAGES[currentStage as CRMStage]?.name || 'Lead Novo'} (${currentStage})
+- Mensagens nesta fase: ${messagesInStage}
 ${roleInversionContext}
 
-Histórico da conversa:
-${historyMessages.slice(0, -1).map((m: { role: string; content: string }) => `${m.role === 'user' ? 'Lead' : 'SDR'}: ${m.content}`).join('\n')}
+URLs disponíveis:
+- Vídeo: ${videoUrl || 'não configurado'}
+- Site: ${siteUrl || 'não configurado'}
+${paymentLink ? `- Link de Pagamento: ${paymentLink}` : ''}`;
+    }
+    
+    const fullPrompt = `
+${systemPromptForPhase}
 
-Última mensagem do lead: "${incoming_message}"
+RESPONDA EM JSON COM ESTE FORMATO EXATO:
+{
+  "response": "sua resposta aqui (MÁXIMO 250 caracteres)",
+  "achieved_objective": true/false,
+  "should_advance": true/false,
+  "next_stage": "STAGE_1" ou "STAGE_2" ou "STAGE_3" ou "STAGE_4" ou "STAGE_5",
+  "lead_name": "nome do lead se identificado, ou null",
+  "should_send_video": true/false,
+  "should_send_site": true/false,
+  "should_handoff": true/false,
+  "handoff_reason": "motivo curto se should_handoff=true"
+}
 
-IMPORTANTE: 
-- Se o lead disser o nome dele, extraia e coloque em "lead_name"
-- Se detectar mídia (PDF, áudio, vídeo), agradeça e continue
-- Não avance mais que 1 estágio por mensagem
-- Se should_handoff=true, defina stage=STAGE_5 e OBRIGATORIAMENTE preencha conversation_summary com o resumo completo
+REGRAS CRÍTICAS:
+1. Resposta CURTA (máximo 250 caracteres)
+2. Avance APENAS 1 estágio por vez
+3. Se should_handoff=true, next_stage deve ser STAGE_5
+4. should_advance só é true se o objetivo da fase foi alcançado
+5. Use o nome do lead sempre que souber
+
+Histórico recente:
+${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.role === 'user' ? 'Lead' : 'SDR'}: ${m.content}`).join('\n')}
+
+Última mensagem: "${cleanedMessage}"
 `;
 
-    console.log('[AI] Calling OpenAI - Stage atual:', currentStage, 'Order:', currentOrder, 'DNA:', dnaConfig?.name || 'default', 'RoleInverted:', isRoleInverted);
+    console.log('[AI] Calling OpenAI - Stage:', currentStage, 'Order:', currentOrder, 'DNA:', dnaConfig?.name || 'default', 'StagePrompt:', !!stagePrompt);
 
     // Call OpenAI
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -424,11 +578,11 @@ IMPORTANTE:
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: fullPrompt },
-          ...historyMessages
+          ...historyMessages.slice(-6)
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.5,
-        max_tokens: 500
+        temperature: 0.4,
+        max_tokens: 400
       }),
     });
 
@@ -450,70 +604,107 @@ IMPORTANTE:
       console.log('[AI] Failed to parse response, using default');
       parsedResponse = {
         response: 'Olá! Como posso ajudar? 😊',
-        stage: currentStage || 'STAGE_1',
+        achieved_objective: false,
+        should_advance: false,
+        next_stage: currentStage,
         should_send_video: false,
         should_send_site: false,
         should_handoff: false
       };
     }
 
-    // Prevent stage regression (nunca voltar estágios)
-    const detectedOrder = CRM_STAGES[parsedResponse.stage as CRMStage]?.order || 1;
-    if (currentOrder > detectedOrder && currentStage) {
-      parsedResponse.stage = currentStage;
+    // Determinar próximo estágio
+    let finalStage = parsedResponse.next_stage || currentStage;
+    
+    // Se forçar avanço e não está avançando, forçar
+    if (forceAdvance && !parsedResponse.should_advance && currentOrder < 5) {
+      const nextOrder = Math.min(currentOrder + 1, 5);
+      const nextStageEntry = Object.entries(CRM_STAGES).find(([, info]) => info.order === nextOrder);
+      if (nextStageEntry) {
+        finalStage = nextStageEntry[0] as CRMStage;
+        console.log('[AI] Force advancing to:', finalStage);
+      }
+    }
+    
+    // Prevent stage regression
+    const finalOrder = CRM_STAGES[finalStage as CRMStage]?.order || 1;
+    if (currentOrder > finalOrder) {
+      finalStage = currentStage;
     }
 
     // Não avançar mais que 1 estágio por mensagem (exceto handoff)
-    if (!parsedResponse.should_handoff && detectedOrder > currentOrder + 1) {
+    if (!parsedResponse.should_handoff && finalOrder > currentOrder + 1) {
       const nextStage = Object.entries(CRM_STAGES).find(([, info]) => info.order === currentOrder + 1);
       if (nextStage) {
-        parsedResponse.stage = nextStage[0] as CRMStage;
+        finalStage = nextStage[0] as CRMStage;
       }
     }
 
     // Se should_handoff, forçar STAGE_5
     if (parsedResponse.should_handoff) {
-      parsedResponse.stage = 'STAGE_5';
+      finalStage = 'STAGE_5';
     }
 
-    const finalStage = parsedResponse.stage as CRMStage;
-    const labelId = CRM_STAGES[finalStage]?.id || '16';
+    const labelId = CRM_STAGES[finalStage as CRMStage]?.id || '16';
     const shouldSendVideo = parsedResponse.should_send_video && !!videoUrl;
     const shouldSendSite = parsedResponse.should_send_site && !!siteUrl;
     const needsHuman = parsedResponse.should_handoff || finalStage === 'STAGE_5';
+
+    // Atualizar contador de mensagens na fase
+    if (finalStage === currentStage) {
+      await supabase
+        .from('whatsapp_conversations')
+        .update({ 
+          messages_in_current_stage: messagesInStage + 1,
+          name: parsedResponse.lead_name || lead_name || undefined
+        })
+        .eq('id', conversation_id);
+    } else {
+      // Mudou de fase, resetar contador
+      await supabase
+        .from('whatsapp_conversations')
+        .update({ 
+          messages_in_current_stage: 0,
+          name: parsedResponse.lead_name || lead_name || undefined
+        })
+        .eq('id', conversation_id);
+    }
 
     // Log AI decision
     await supabase
       .from('whatsapp_ai_logs')
       .insert({
         conversation_id,
-        incoming_message,
+        incoming_message: cleanedMessage,
         ai_response: parsedResponse.response,
-        detected_intent: `${finalStage} - DNA: ${dnaConfig?.name || 'default'} - BANT: ${JSON.stringify(parsedResponse.bant_score || {})}`,
+        detected_intent: `${finalStage} | Obj: ${parsedResponse.achieved_objective} | Adv: ${parsedResponse.should_advance} | StagePrompt: ${stagePrompt?.stage_name || 'legacy'}`,
         applied_label_id: labelId,
         confidence_score: 0.9,
         needs_human: needsHuman
       });
 
-    console.log('[AI] Response ready - Stage:', finalStage, 'Handoff:', needsHuman, 'Label:', labelId);
+    console.log('[AI] Response ready - Stage:', finalStage, 'Handoff:', needsHuman, 'Label:', labelId, 'Objective achieved:', parsedResponse.achieved_objective);
 
     return new Response(
       JSON.stringify({
         response: parsedResponse.response,
         stage: finalStage,
         label_id: labelId,
-        lead_name: parsedResponse.lead_name || null,
+        lead_name: parsedResponse.lead_name || lead_name || null,
+        achieved_objective: parsedResponse.achieved_objective,
+        should_advance: parsedResponse.should_advance,
         should_send_video: shouldSendVideo,
         should_send_site: shouldSendSite,
         should_handoff: needsHuman,
         handoff_reason: parsedResponse.handoff_reason || null,
-        conversation_summary: parsedResponse.conversation_summary || null,
         needs_human: needsHuman,
         video_url: shouldSendVideo ? videoUrl : null,
         site_url: shouldSendSite ? siteUrl : null,
         payment_link: paymentLink || null,
         delay_seconds: aiConfig.auto_reply_delay_seconds || 5,
-        bant_score: parsedResponse.bant_score || null,
+        stage_prompt_used: stagePrompt?.stage_name || null,
+        messages_in_stage: messagesInStage + 1,
+        max_messages_in_stage: maxMessagesInStage,
         dna_used: dnaConfig?.name || null
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
