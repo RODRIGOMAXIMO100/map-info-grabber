@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users, Megaphone, Shuffle } from 'lucide-react';
 import { LeadStatusPanel } from '@/components/whatsapp/LeadStatusPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/componen
 
 type FilterType = 'all' | 'no_reply' | 'unread' | 'ai_paused' | 'waiting';
 type ConversationType = 'all' | 'contacts' | 'groups';
+type OriginType = 'all' | 'broadcast' | 'random';
 
 interface WhatsAppInstance {
   id: string;
@@ -47,6 +48,7 @@ export default function WhatsAppChat() {
   const [sending, setSending] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [conversationType, setConversationType] = useState<ConversationType>('all');
+  const [originType, setOriginType] = useState<OriginType>('all');
 
   // Helper to detect if a conversation is a group
   const isGroup = (conv: ConversationWithInstance): boolean => {
@@ -295,10 +297,16 @@ export default function WhatsAppChat() {
     const contacts = baseFiltered.filter(c => !isGroup(c));
     const groups = baseFiltered.filter(c => isGroup(c));
 
+    // Origin counts (broadcast vs random)
+    const broadcast = baseFiltered.filter(c => c.is_crm_lead === true);
+    const random = baseFiltered.filter(c => c.is_crm_lead !== true);
+
     return {
       all: baseFiltered.length,
       contacts: contacts.length,
       groups: groups.length,
+      broadcast: broadcast.length,
+      random: random.length,
       no_reply: baseFiltered.filter(c => !c.last_lead_message_at).length,
       unread: baseFiltered.filter(c => (c.unread_count ?? 0) > 0).length,
       ai_paused: baseFiltered.filter(c => c.ai_paused).length,
@@ -324,7 +332,12 @@ export default function WhatsAppChat() {
         (conversationType === 'contacts' && !isGroup(conv)) ||
         (conversationType === 'groups' && isGroup(conv));
       
-      if (!matchesSearch || !matchesInstance || !matchesType) return false;
+      // Origin filter (broadcast vs random)
+      const matchesOrigin = originType === 'all' ||
+        (originType === 'broadcast' && conv.is_crm_lead === true) ||
+        (originType === 'random' && conv.is_crm_lead !== true);
+      
+      if (!matchesSearch || !matchesInstance || !matchesType || !matchesOrigin) return false;
 
       switch (activeFilter) {
         case 'no_reply':
@@ -342,7 +355,7 @@ export default function WhatsAppChat() {
           return true;
       }
     });
-  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType]);
+  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType, originType]);
 
   const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -465,6 +478,40 @@ export default function WhatsAppChat() {
                 <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.groups}</Badge>
               </button>
             </div>
+            {/* Origin tabs (Broadcast/Random) - Mobile */}
+            <div className="flex gap-1 p-1 bg-muted rounded-lg">
+              <button
+                onClick={() => setOriginType('all')}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  originType === 'all' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                )}
+              >
+                Todos
+              </button>
+              <button
+                onClick={() => setOriginType('broadcast')}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  originType === 'broadcast' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                )}
+              >
+                <Megaphone className="h-3.5 w-3.5" />
+                <span>Broadcast</span>
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.broadcast}</Badge>
+              </button>
+              <button
+                onClick={() => setOriginType('random')}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  originType === 'random' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                )}
+              >
+                <Shuffle className="h-3.5 w-3.5" />
+                <span>Aleatório</span>
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.random}</Badge>
+              </button>
+            </div>
             <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
               <SelectTrigger className="w-full">
                 <div className="flex items-center gap-2">
@@ -561,9 +608,14 @@ export default function WhatsAppChat() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
                         {isGroup(conv) && <Users className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
-                        <span className="font-medium truncate text-sm max-w-[160px]">
+                        <span className="font-medium truncate text-sm max-w-[140px]">
                           {conv.name || conv.group_name || conv.phone}
                         </span>
+                        {conv.is_crm_lead && (
+                          <Badge variant="outline" className="h-4 px-1 text-[10px] bg-green-500/10 text-green-600 border-green-500/30 flex-shrink-0">
+                            Lead
+                          </Badge>
+                        )}
                       </div>
                       <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
                         {formatTime(conv.last_message_at)}
@@ -754,6 +806,40 @@ export default function WhatsAppChat() {
                     <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.groups}</Badge>
                   </button>
                 </div>
+                {/* Origin tabs (Broadcast/Random) - Desktop */}
+                <div className="flex gap-1 p-1 bg-muted rounded-lg">
+                  <button
+                    onClick={() => setOriginType('all')}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      originType === 'all' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                    )}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setOriginType('broadcast')}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      originType === 'broadcast' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                    )}
+                  >
+                    <Megaphone className="h-3.5 w-3.5" />
+                    <span>Broadcast</span>
+                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.broadcast}</Badge>
+                  </button>
+                  <button
+                    onClick={() => setOriginType('random')}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      originType === 'random' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                    )}
+                  >
+                    <Shuffle className="h-3.5 w-3.5" />
+                    <span>Aleatório</span>
+                    <Badge variant="secondary" className="h-5 px-1.5 text-xs">{filterCounts.random}</Badge>
+                  </button>
+                </div>
                 <Select value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterType)}>
                   <SelectTrigger className="w-full">
                     <div className="flex items-center gap-2">
@@ -850,9 +936,14 @@ export default function WhatsAppChat() {
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1.5 min-w-0">
                             {isGroup(conv) && <Users className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
-                            <span className="font-medium truncate text-sm max-w-[120px]">
+                            <span className="font-medium truncate text-sm max-w-[100px]">
                               {conv.name || conv.group_name || conv.phone}
                             </span>
+                            {conv.is_crm_lead && (
+                              <Badge variant="outline" className="h-4 px-1 text-[10px] bg-green-500/10 text-green-600 border-green-500/30 flex-shrink-0">
+                                Lead
+                              </Badge>
+                            )}
                           </div>
                           <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
                             {formatTime(conv.last_message_at)}
