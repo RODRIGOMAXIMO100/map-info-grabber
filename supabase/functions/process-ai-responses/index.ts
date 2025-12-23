@@ -17,7 +17,7 @@ const LABEL_TO_FUNNEL_STAGE: Record<string, string> = {
   '23': 'lost',          // Fechado/Perdido
 };
 
-const DEBOUNCE_DELAY_SECONDS = 10;
+const DEBOUNCE_DELAY_SECONDS = 4;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -105,8 +105,10 @@ serve(async (req) => {
 
         console.log('[Process AI] AI response:', aiData);
 
-        // Wait for delay
-        await new Promise(resolve => setTimeout(resolve, (aiData.delay_seconds || 5) * 1000));
+        // Wait for dynamic delay based on response length (more natural)
+        const responseLength = aiData.response?.length || 0;
+        const dynamicDelay = responseLength < 50 ? 1 : responseLength < 150 ? 2 : 3;
+        await new Promise(resolve => setTimeout(resolve, dynamicDelay * 1000));
 
         // Send response
         const sendResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
