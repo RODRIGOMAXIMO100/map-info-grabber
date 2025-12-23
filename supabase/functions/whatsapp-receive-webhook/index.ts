@@ -11,9 +11,23 @@ const FUNNEL_LABELS = ['16', '13', '14', '20'];
 const HANDOFF_LABEL = '21';
 const INITIAL_STAGE = '16'; // Lead Novo
 
+// Normalize phone for robust comparison - extracts core 8 digits
+function normalizePhoneForComparison(phone: string): string {
+  // Remove all non-digit characters
+  let digits = phone.replace(/\D/g, '');
+  
+  // Remove Brazil country code (55) if present
+  if (digits.startsWith('55') && digits.length > 11) {
+    digits = digits.substring(2);
+  }
+  
+  // Extract last 8 digits (unique part of the number, ignoring DDD and mobile 9)
+  return digits.slice(-8);
+}
+
 // Check if phone is from a broadcast (replied to a sent message)
 async function isFromBroadcast(supabase: any, phone: string): Promise<boolean> {
-  const normalizedPhone = phone.replace(/\D/g, '');
+  const phoneCore = normalizePhoneForComparison(phone);
   
   // Check whatsapp_queue for sent messages to this phone
   const { data: queueItems, error } = await supabase
@@ -27,15 +41,13 @@ async function isFromBroadcast(supabase: any, phone: string): Promise<boolean> {
     return false;
   }
 
-  // Check if any queue item matches this phone (normalized comparison)
+  // Check if any queue item matches this phone (compare core 8 digits)
   const isMatch = (queueItems || []).some((item: any) => {
-    const queuePhone = (item.phone || '').replace(/\D/g, '');
-    return queuePhone === normalizedPhone || 
-           queuePhone.endsWith(normalizedPhone) || 
-           normalizedPhone.endsWith(queuePhone);
+    const queuePhoneCore = normalizePhoneForComparison(item.phone || '');
+    return queuePhoneCore === phoneCore;
   });
 
-  console.log(`[Broadcast Check] Phone ${normalizedPhone}: ${isMatch ? 'FOUND in broadcast' : 'NOT from broadcast'}`);
+  console.log(`[Broadcast Check] Phone ${phone} core=${phoneCore}: ${isMatch ? 'FOUND in broadcast' : 'NOT from broadcast'}`);
   return isMatch;
 }
 
@@ -753,7 +765,8 @@ serve(async (req) => {
           unread_count: isFromMe ? 0 : 1,
           status: 'active',
           followup_count: 0,
-          config_id: configId
+          config_id: configId,
+          origin: fromBroadcast ? 'broadcast' : 'random'  // Define origin based on broadcast check
         })
         .select()
         .single();
@@ -762,7 +775,7 @@ serve(async (req) => {
       conversationId = newConv.id;
       existingConfigId = configId;
       
-      console.log(`[Conversation] Created: ${conversationId}, is_crm_lead=${shouldBeLeadValue}, tags=${conversationTags}`);
+      console.log(`[Conversation] Created: ${conversationId}, is_crm_lead=${shouldBeLeadValue}, origin=${fromBroadcast ? 'broadcast' : 'random'}, tags=${conversationTags}`);
     }
 
     // === AUTO BLACKLIST: Detect opt-out keywords ===
