@@ -14,7 +14,7 @@ import {
   Bot,
   Clock,
   Calendar,
-  ChevronDown,
+  
   DollarSign
 } from "lucide-react";
 import InstanceMonitor from "@/components/InstanceMonitor";
@@ -206,28 +206,13 @@ export default function Dashboard() {
     }
   };
 
-  // Calcular taxa de conversão entre etapas
-  const conversionRates = useMemo(() => {
-    const rates: { from: string; to: string; rate: number }[] = [];
-    for (let i = 0; i < stageCounts.length - 1; i++) {
-      const fromCount = stageCounts[i].count;
-      const toCount = stageCounts[i + 1].count;
-      if (fromCount > 0) {
-        rates.push({
-          from: stageCounts[i].id,
-          to: stageCounts[i + 1].id,
-          rate: Math.round((toCount / fromCount) * 100),
-        });
-      } else {
-        rates.push({
-          from: stageCounts[i].id,
-          to: stageCounts[i + 1].id,
-          rate: 0,
-        });
-      }
-    }
-    return rates;
-  }, [stageCounts]);
+  // Taxa de avanço: leads que saíram de "Novo"
+  const advancementRate = useMemo(() => {
+    const newLeads = stageCounts.find(s => s.id === 'new')?.count || 0;
+    const total = metrics.totalLeads;
+    if (total === 0) return 0;
+    return Math.round(((total - newLeads) / total) * 100);
+  }, [stageCounts, metrics.totalLeads]);
 
   // Taxa de conversão geral (Lead Novo → Convertido)
   const overallConversionRate = useMemo(() => {
@@ -274,7 +259,7 @@ export default function Dashboard() {
       </div>
 
       {/* Cards de Métricas Resumo */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total CRM</CardTitle>
@@ -288,8 +273,19 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Conversão Geral</CardTitle>
+            <CardTitle className="text-sm font-medium">Taxa de Avanço</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{advancementRate}%</div>
+            <p className="text-xs text-muted-foreground">Saíram de "Novo"</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Conversão Geral</CardTitle>
+            <UserCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{overallConversionRate}%</div>
@@ -342,59 +338,43 @@ export default function Dashboard() {
           <CardContent>
             <TooltipProvider>
               <div className="space-y-1">
-                {stageCounts.map((stage, index) => {
+                {stageCounts.map((stage) => {
                   const widthPercentage = maxCount > 0 ? Math.max((stage.count / maxCount) * 100, 10) : 10;
-                  const conversionRate = conversionRates[index];
                   const isAI = stage.is_ai_controlled;
                   
                   return (
-                    <div key={stage.id}>
-                      {/* Barra do estágio */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div 
-                            className="relative h-12 rounded-md flex items-center justify-between px-4 cursor-pointer transition-all hover:opacity-90 hover:scale-[1.01]"
-                            style={{ 
-                              backgroundColor: stage.hexColor,
-                              width: `${widthPercentage}%`,
-                              marginLeft: `${(100 - widthPercentage) / 2}%`,
-                            }}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-white font-medium text-sm truncate">
-                                {stage.name}
-                              </span>
-                              {isAI ? (
-                                <Bot className="h-3.5 w-3.5 text-white/80" />
-                              ) : (
-                                <UserCheck className="h-3.5 w-3.5 text-white/80" />
-                              )}
-                            </div>
-                            <span className="text-white font-bold text-lg">
-                              {stage.count}
+                    <Tooltip key={stage.id}>
+                      <TooltipTrigger asChild>
+                        <div 
+                          className="relative h-12 rounded-md flex items-center justify-between px-4 cursor-pointer transition-all hover:opacity-90 hover:scale-[1.01]"
+                          style={{ 
+                            backgroundColor: stage.hexColor,
+                            width: `${widthPercentage}%`,
+                            marginLeft: `${(100 - widthPercentage) / 2}%`,
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-white font-medium text-sm truncate">
+                              {stage.name}
                             </span>
+                            {isAI ? (
+                              <Bot className="h-3.5 w-3.5 text-white/80" />
+                            ) : (
+                              <UserCheck className="h-3.5 w-3.5 text-white/80" />
+                            )}
                           </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="font-medium">{stage.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {stage.count} lead{stage.count !== 1 ? 's' : ''} • {isAI ? '🤖 IA' : '👤 Manual'}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                      
-                      {/* Taxa de conversão entre etapas */}
-                      {conversionRate && index < stageCounts.length - 1 && (
-                        <div className="flex items-center justify-center py-1">
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <ChevronDown className="h-3 w-3" />
-                            <span className={conversionRate.rate > 50 ? 'text-green-600' : conversionRate.rate > 25 ? 'text-yellow-600' : 'text-red-500'}>
-                              {conversionRate.rate}%
-                            </span>
-                          </div>
+                          <span className="text-white font-bold text-lg">
+                            {stage.count}
+                          </span>
                         </div>
-                      )}
-                    </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="font-medium">{stage.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {stage.count} lead{stage.count !== 1 ? 's' : ''} • {isAI ? '🤖 IA' : '👤 Manual'}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
                   );
                 })}
               </div>
