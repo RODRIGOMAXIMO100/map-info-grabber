@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin, Award, Filter } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin, Award, Filter, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,8 +17,12 @@ import { useInstagramSearch, InstagramResult } from '@/hooks/useInstagramSearch'
 import { exportToCSV } from '@/lib/exportCsv';
 import { applyScoring } from '@/lib/leadScoring';
 import { Location, Business } from '@/types/business';
+import { supabase } from '@/integrations/supabase/client';
 
 type SearchSource = 'maps' | 'instagram' | 'both';
+
+const STORAGE_KEY = 'prospecting_results';
+const STORAGE_KEY_KEYWORD = 'prospecting_keyword';
 
 export default function Index() {
   const [keyword, setKeyword] = useState('');
@@ -31,6 +35,7 @@ export default function Index() {
   const [filterSocialOnly, setFilterSocialOnly] = useState(false);
   const [filterHighQualityOnly, setFilterHighQualityOnly] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [persistedResults, setPersistedResults] = useState<Business[]>([]);
 
   // Estimate total leads
   const estimatedLeads = useMemo(() => {
@@ -44,6 +49,88 @@ export default function Index() {
   const { toast } = useToast();
 
   const isLoading = mapsLoading || instagramLoading;
+
+  // Load persisted results on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      const savedKeyword = localStorage.getItem(STORAGE_KEY_KEYWORD);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPersistedResults(parsed);
+          console.log(`Loaded ${parsed.length} persisted results`);
+        }
+      }
+      if (savedKeyword) {
+        setKeyword(savedKeyword);
+      }
+    } catch (e) {
+      console.error('Failed to load persisted results:', e);
+    }
+  }, []);
+
+  // Persist results when they change
+  useEffect(() => {
+    if (mapsResults.length > 0 || instagramResults.length > 0) {
+      const mapsWithSource = mapsResults.map(r => ({ ...r, source: 'google_maps' as const }));
+      const convertedIg: Business[] = instagramResults.map(ig => ({
+        name: ig.name,
+        address: `${ig.city}, ${ig.state}`,
+        phone: ig.phone || '',
+        website: ig.profileUrl,
+        rating: null,
+        reviews: null,
+        city: ig.city,
+        state: ig.state,
+        place_id: `ig_${ig.username}`,
+        whatsapp: ig.whatsapp,
+        instagram: ig.instagram,
+        source: 'instagram' as const,
+        score: ig.score,
+      }));
+      
+      const all = [...mapsWithSource, ...convertedIg];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+      localStorage.setItem(STORAGE_KEY_KEYWORD, keyword);
+      setPersistedResults(all);
+    }
+  }, [mapsResults, instagramResults, keyword]);
+
+  // Clear persisted results
+  const clearPersistedResults = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY_KEYWORD);
+    setPersistedResults([]);
+    toast({
+      title: 'Resultados limpos',
+      description: 'Os resultados salvos foram removidos.',
+    });
+  }, [toast]);
+
+  // Clear database cache
+  const clearDatabaseCache = useCallback(async () => {
+    try {
+      const { error } = await supabase
+        .from('search_cache')
+        .delete()
+        .lt('expires_at', new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()); // Delete all
+      
+      if (error) throw error;
+      
+      toast({
+        title: 'Cache limpo',
+        description: 'O cache do banco foi limpo. Novas buscas trarão dados frescos.',
+      });
+    } catch (e) {
+      console.error('Failed to clear cache:', e);
+      toast({
+        title: 'Erro',
+        description: 'Falha ao limpar o cache.',
+        variant: 'destructive',
+      });
+    }
+  }, [toast]);
 
   // Convert Instagram results to Business format for unified display
   const convertedInstagramResults: Business[] = useMemo(() => {
@@ -64,10 +151,15 @@ export default function Index() {
     }));
   }, [instagramResults]);
 
-  // Combine and deduplicate results with scoring
+  // Combine and deduplicate results with scoring (use persisted if current is empty)
   const combinedResults = useMemo(() => {
     const mapsWithSource = mapsResults.map(r => ({ ...r, source: 'google_maps' as const }));
-    const all = [...mapsWithSource, ...convertedInstagramResults];
+    let all = [...mapsWithSource, ...convertedInstagramResults];
+    
+    // Use persisted results if no current results
+    if (all.length === 0 && persistedResults.length > 0) {
+      all = persistedResults;
+    }
     
     // Deduplicate by phone or name similarity
     const unique = all.filter((item, index, self) => {
@@ -80,7 +172,7 @@ export default function Index() {
     
     // Apply scoring and sort by score
     return applyScoring(unique).sort((a, b) => (b.score || 0) - (a.score || 0));
-  }, [mapsResults, convertedInstagramResults]);
+  }, [mapsResults, convertedInstagramResults, persistedResults]);
 
   // Extract unique categories
   const categories = useMemo(() => {
@@ -348,22 +440,25 @@ export default function Index() {
                   </div>
                 </div>
                 
-                {categories.length > 0 && (
-                  <div className="flex items-center gap-3">
-                    <Filter className="h-4 w-4 text-muted-foreground" />
-                    <Select value={filterCategory} onValueChange={setFilterCategory}>
-                      <SelectTrigger className="w-[220px]">
-                        <SelectValue placeholder="Filtrar por categoria" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todas as categorias</SelectItem>
-                        {categories.map(cat => (
+                {/* Always show category filter, even when empty */}
+                <div className="flex items-center gap-3">
+                  <Filter className="h-4 w-4 text-muted-foreground" />
+                  <Select value={filterCategory} onValueChange={setFilterCategory}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="Filtrar por categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as categorias</SelectItem>
+                      {categories.length > 0 ? (
+                        categories.map(cat => (
                           <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                        ))
+                      ) : (
+                        <SelectItem value="none" disabled>Sem categorias disponíveis</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Estimation */}
@@ -379,7 +474,7 @@ export default function Index() {
                 </div>
               )}
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex flex-wrap gap-2 pt-2">
                 <Button type="submit" disabled={isLoading} className="flex-1">
                   {isLoading ? (
                     <>
@@ -402,7 +497,33 @@ export default function Index() {
                   <Download className="h-4 w-4 mr-2" />
                   Exportar CSV
                 </Button>
+                {(combinedResults.length > 0 || persistedResults.length > 0) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={clearPersistedResults}
+                    title="Limpar resultados salvos"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
+              
+              {/* Clear cache option */}
+              {combinedResults.length > 0 && (
+                <div className="flex justify-end pt-1">
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    onClick={clearDatabaseCache}
+                    className="text-xs text-muted-foreground"
+                  >
+                    Limpar cache do banco
+                  </Button>
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>
