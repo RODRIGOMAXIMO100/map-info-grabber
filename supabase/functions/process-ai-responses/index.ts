@@ -6,8 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Mapeamento de label_id para funnel_stage do frontend
-const LABEL_TO_FUNNEL_STAGE: Record<string, string> = {
+// Mapeamento de label_id NUMÉRICO para stage_id STRING (esperado pelo agente)
+// O agente usa: new, qualification, presentation, interest, handoff, negotiating, converted, lost
+const NUMERIC_LABEL_TO_STAGE: Record<string, string> = {
   '16': 'new',           // Lead Novo
   '13': 'presentation',  // MQL - Respondeu → Apresentação Feita
   '14': 'interest',      // Engajado → Interesse Confirmado
@@ -17,7 +18,31 @@ const LABEL_TO_FUNNEL_STAGE: Record<string, string> = {
   '23': 'lost',          // Fechado/Perdido
 };
 
+// Mapeamento de label_id para funnel_stage do frontend (igual ao anterior)
+const LABEL_TO_FUNNEL_STAGE = NUMERIC_LABEL_TO_STAGE;
+
+// Estágios válidos que o agente aceita diretamente
+const VALID_STAGE_IDS = ['new', 'qualification', 'presentation', 'interest', 'handoff', 'negotiating', 'converted', 'lost'];
+
 const DEBOUNCE_DELAY_SECONDS = 4;
+
+// Normaliza tag para stage_id que o agente espera
+function normalizeToStageId(tag: string | null): string {
+  if (!tag) return 'new';
+  
+  // Se já é um stage_id válido, retorna direto
+  if (VALID_STAGE_IDS.includes(tag)) {
+    return tag;
+  }
+  
+  // Se é numérico, converte para stage_id
+  if (NUMERIC_LABEL_TO_STAGE[tag]) {
+    return NUMERIC_LABEL_TO_STAGE[tag];
+  }
+  
+  // Fallback
+  return 'new';
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -62,13 +87,18 @@ serve(async (req) => {
         const lastIncoming = historyMessages?.find(m => m.direction === 'incoming');
         if (!lastIncoming?.content) continue;
 
-        // Get current funnel stage - MUST include ALL stage label IDs
+        // Get current funnel stage - MUST include ALL stage label IDs + stage strings
         const FUNNEL_LABELS = ['16', '13', '14', '20', '21', '22', '23'];
-        const currentFunnelLabelId = (conv.tags || []).find((t: string) => FUNNEL_LABELS.includes(t)) || null;
+        const rawTag = (conv.tags || []).find((t: string) => 
+          FUNNEL_LABELS.includes(t) || VALID_STAGE_IDS.includes(t)
+        ) || null;
+        
+        // 🔧 NORMALIZAÇÃO: Converte tag numérica para stage_id string
+        const normalizedStageId = normalizeToStageId(rawTag);
 
-        console.log('[Process AI] Conversation:', conv.id, '| Tags:', conv.tags, '| Detected stage:', currentFunnelLabelId);
+        console.log('[Process AI] Conversation:', conv.id, '| Tags:', conv.tags, '| Raw tag:', rawTag, '| Normalized stage:', normalizedStageId);
 
-        // Call AI agent
+        // Call AI agent com stage_id NORMALIZADO (string)
         const aiResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-ai-agent`, {
           method: 'POST',
           headers: {
@@ -79,7 +109,7 @@ serve(async (req) => {
             conversation_id: conv.id,
             incoming_message: lastIncoming.content,
             conversation_history: (historyMessages || []).reverse(),
-            current_stage_id: currentFunnelLabelId
+            current_stage_id: normalizedStageId  // ✅ Agora é string: 'new', 'qualification', etc.
           })
         });
 

@@ -506,9 +506,10 @@ serve(async (req) => {
     }));
     historyMessages.push({ role: 'user', content: cleanedMessage });
 
-    // ========== EXTRAIR TÓPICOS JÁ RESPONDIDOS (ANTI-REPETIÇÃO) ==========
+    // ========== EXTRAIR TÓPICOS JÁ RESPONDIDOS (ANTI-REPETIÇÃO + ANTI-ALUCINAÇÃO) ==========
     const answeredTopics = extractAnsweredTopics(conversation_history || []);
-    console.log('[AI] Answered topics:', JSON.stringify(answeredTopics));
+    const businessContextKnown = !!answeredTopics.businessContext;
+    console.log('[AI] Answered topics:', JSON.stringify(answeredTopics), '| Business context known:', businessContextKnown);
     
     // Construir contexto anti-repetição para a IA
     let antiRepetitionContext = '';
@@ -517,9 +518,19 @@ serve(async (req) => {
 ⚠️ INFORMAÇÕES JÁ COLETADAS (NÃO PERGUNTE DE NOVO):
 ${answeredTopics.urgencyAnswered ? '- ✅ URGÊNCIA: Lead JÁ disse que é urgente - NÃO pergunte novamente!' : ''}
 ${answeredTopics.painAnswered ? '- ✅ DOR/PROBLEMA: Lead JÁ explicou sua dor/desafio - NÃO pergunte novamente!' : ''}
-${answeredTopics.businessContext ? `- ✅ CONTEXTO: "${answeredTopics.businessContext}"` : ''}
+${answeredTopics.businessContext ? `- ✅ CONTEXTO DO NEGÓCIO: "${answeredTopics.businessContext}"` : ''}
 `;
     }
+    
+    // 🚨 ANTI-ALUCINAÇÃO: Se não sabemos o contexto do negócio, adicionar regra estrita
+    const antiHallucinationRule = !businessContextKnown ? `
+🚨 REGRA ANTI-ALUCINAÇÃO (OBRIGATÓRIA):
+- Você NÃO sabe qual é o negócio/segmento do lead
+- NÃO INVENTE exemplos específicos (ex: "caixas personalizadas", "loja de roupas", etc.)
+- Use apenas termos GENÉRICOS como: "seu negócio", "sua empresa", "seu serviço", "seu produto"
+- Se precisar citar exemplos, diga: "independente do segmento que você atua" ou "seja qual for seu mercado"
+- PERGUNTE sobre o negócio ao invés de presumir
+` : '';
 
     // URLs da configuração unificada
     const videoUrl = aiConfig.video_url;
@@ -576,6 +587,7 @@ ${paymentLink ? `- Link de Pagamento: ${paymentLink}` : ''}`;
 
 ${businessContext}
 ${antiRepetitionContext}
+${antiHallucinationRule}
 
 CONTEXTO DA CONVERSA:
 - Nome do lead: ${lead_name || 'não identificado'}
@@ -583,6 +595,7 @@ CONTEXTO DA CONVERSA:
 - Objetivo: ${stagePrompt.objective}
 - Critério de sucesso: ${stagePrompt.success_criteria || 'N/A'}
 - Mensagens nesta fase: ${messagesInStage}/${maxMessagesInStage}
+- Contexto do negócio conhecido: ${businessContextKnown ? 'SIM' : 'NÃO - use termos genéricos!'}
 ${forceAdvance ? '- ⚠️ LIMITE ATINGIDO: Tente avançar ou fazer handoff nesta mensagem!' : ''}
 ${roleInversionContext}`;
     } else {
@@ -590,11 +603,13 @@ ${roleInversionContext}`;
 
 ${businessContext}
 ${antiRepetitionContext}
+${antiHallucinationRule}
 
 CONTEXTO:
 - Nome do lead: ${lead_name || 'não identificado'}
 - Fase atual: ${CRM_STAGES[currentStage as CRMStage]?.name || 'Lead Novo'} (${currentStage})
 - Mensagens nesta fase: ${messagesInStage}
+- Contexto do negócio conhecido: ${businessContextKnown ? 'SIM' : 'NÃO - use termos genéricos!'}
 ${roleInversionContext}`;
     }
     
