@@ -751,20 +751,28 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
     const shouldSendSite = parsedResponse.should_send_site && !!siteUrl;
     const needsHuman = parsedResponse.should_handoff || finalStage === 'STAGE_5';
 
+    // 🚨 CRÍTICO: Sempre atualizar funnel_stage + pausar IA no handoff
     if (finalStage === currentStage) {
       await supabase
         .from('whatsapp_conversations')
         .update({ 
+          funnel_stage: labelId,  // Garante consistência
           messages_in_current_stage: messagesInStage + 1,
-          name: parsedResponse.lead_name || lead_name || undefined
+          name: parsedResponse.lead_name || lead_name || undefined,
+          ai_paused: needsHuman,
+          ai_handoff_reason: needsHuman ? (parsedResponse.handoff_reason || 'Interesse confirmado - aguardando consultor') : undefined
         })
         .eq('id', conversation_id);
     } else {
+      console.log('[AI] Stage transition:', currentStage, '->', finalStage, 'labelId:', labelId);
       await supabase
         .from('whatsapp_conversations')
         .update({ 
+          funnel_stage: labelId,  // ATUALIZA A FASE!
           messages_in_current_stage: 0,
-          name: parsedResponse.lead_name || lead_name || undefined
+          name: parsedResponse.lead_name || lead_name || undefined,
+          ai_paused: needsHuman,
+          ai_handoff_reason: needsHuman ? (parsedResponse.handoff_reason || 'Interesse confirmado - aguardando consultor') : undefined
         })
         .eq('id', conversation_id);
     }
