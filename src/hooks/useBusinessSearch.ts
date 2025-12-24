@@ -150,8 +150,14 @@ export function useBusinessSearch() {
             return [];
           }
 
-          if (data?.success && data.data) {
-            // Save to cache (don't await)
+          // Check for API credit errors
+          if (data?.error?.includes('402') || data?.error?.includes('créditos') || data?.error?.includes('credits')) {
+            console.error(`[Outscraper] Sem créditos na API:`, data.error);
+            throw new Error('Outscraper API sem créditos. Verifique sua conta.');
+          }
+
+          if (data?.success && data.data && data.data.length > 0) {
+            // Only cache if we have valid results (not empty)
             supabase.from('search_cache').insert({
               cache_key: cacheKey,
               search_type: 'google_maps',
@@ -161,11 +167,12 @@ export function useBusinessSearch() {
               results: data.data as any,
               result_count: data.data.length,
               expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            }).then(() => console.log(`Cached ${location.city}`));
+            }).then(() => console.log(`Cached ${location.city} (${data.data.length} results)`));
 
             return data.data;
           }
           
+          console.log(`No results for ${location.city}, skipping cache`);
           return [];
         });
 
