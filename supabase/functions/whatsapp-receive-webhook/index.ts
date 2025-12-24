@@ -6,10 +6,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// SDR Funnel Stages
-const FUNNEL_LABELS = ['16', '13', '14', '20'];
-const HANDOFF_LABEL = '21';
-const INITIAL_STAGE = '16'; // Lead Novo
+// SDR Funnel Stages - Aceita tanto tags numéricas (legado) quanto strings
+const FUNNEL_LABELS_NUMERIC = ['16', '13', '14', '20'];
+const FUNNEL_LABELS_STRING = ['new', 'qualification', 'presentation', 'interest', 'negotiating', 'converted', 'lost'];
+const ALL_FUNNEL_LABELS = [...FUNNEL_LABELS_NUMERIC, ...FUNNEL_LABELS_STRING];
+const HANDOFF_LABEL_NUMERIC = '21';
+const HANDOFF_LABEL_STRING = 'handoff';
+const ALL_HANDOFF_LABELS = [HANDOFF_LABEL_NUMERIC, HANDOFF_LABEL_STRING];
+const INITIAL_STAGE = 'new'; // Lead Novo - usando string como padrão
 
 // Normalize phone for robust comparison - extracts core 8 digits
 function normalizePhoneForComparison(phone: string): string {
@@ -546,9 +550,9 @@ serve(async (req) => {
       
       // Só marca como lead se veio do broadcast
       const shouldBeLeadValue = fromBroadcast;
-      conversationTags = fromBroadcast ? [INITIAL_STAGE] : [];
+      conversationTags = fromBroadcast ? [INITIAL_STAGE] : []; // Usa 'new' (string) como padrão
       
-      console.log(`[Conversation] From broadcast: ${fromBroadcast}, will be lead: ${shouldBeLeadValue}`);
+      console.log(`[Conversation] From broadcast: ${fromBroadcast}, will be lead: ${shouldBeLeadValue}, initial_stage: ${INITIAL_STAGE}`);
       
       const { data: newConv, error: createError } = await supabase
         .from('whatsapp_conversations')
@@ -703,12 +707,17 @@ serve(async (req) => {
 
     // DECISÃO: IA só responde se for lead (broadcast ou manual)
     if (!isFromMe && !isGroup && !aiPaused && !isBlacklisted && hasValidContent && isCrmLead) {
-      // Se não tem tag de funil, adiciona Lead Novo
-      if (!conversationTags.some(tag => FUNNEL_LABELS.includes(tag) || tag === HANDOFF_LABEL)) {
+      // Se não tem tag de funil válida, adiciona Lead Novo ('new')
+      const hasFunnelTag = conversationTags.some(tag => 
+        ALL_FUNNEL_LABELS.includes(tag) || ALL_HANDOFF_LABELS.includes(tag)
+      );
+      
+      if (!hasFunnelTag) {
+        console.log(`[AI] Conversa sem tag de funil válida. Adicionando: ${INITIAL_STAGE}`);
         conversationTags = [INITIAL_STAGE];
         await supabase
           .from('whatsapp_conversations')
-          .update({ tags: conversationTags })
+          .update({ tags: conversationTags, funnel_stage: INITIAL_STAGE })
           .eq('id', conversationId);
       }
       
