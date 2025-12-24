@@ -74,6 +74,27 @@ const ROLE_INVERSION_PATTERNS = [
   /diga/i,
 ];
 
+// Padrões de atendimento automático de empresa (lead é uma loja/empresa com bot)
+const BUSINESS_AUTO_RESPONSE_PATTERNS = [
+  /forneça as informações/i,
+  /modelo (da sua preferência|desejado)/i,
+  /qual (a )?quantidade/i,
+  /data do (seu )?evento/i,
+  /preencha (os|as) (dados|informações)/i,
+  /informe (seu nome|telefone|e-?mail)/i,
+  /segue nosso cardápio/i,
+  /nossos produtos/i,
+  /tabela de preços/i,
+  /orçamento.*informe/i,
+  /@instagram|@[\w.]+/i,
+  /www\.[a-z0-9.-]+/i,
+  /faça seu pedido/i,
+  /escolha.*opção/i,
+  /aguardamos seu pedido/i,
+  /personalização.*(?:nome|modelo|cor|tamanho)/i,
+  /(?:nome|modelo|cor|tamanho|quantidade).*(?:\?|:)/i,
+];
+
 // ========== DETECÇÃO DE REJEIÇÃO ==========
 const REJECTION_PATTERNS = [
   /não (tenho |quero|preciso|interess)/i,
@@ -126,6 +147,36 @@ function detectRoleInversion(message: string): boolean {
   }
   
   return false;
+}
+
+// Detecta se o lead é uma empresa com atendimento automático (loja, prestador de serviço)
+function detectBusinessAutoResponse(message: string): { isBusinessAuto: boolean; reason: string | null } {
+  const normalizedMsg = message.toLowerCase().trim();
+  
+  // Conta quantos padrões bateram - precisamos de pelo menos 2 para ter certeza
+  let matchCount = 0;
+  let matchedPatterns: string[] = [];
+  
+  for (const pattern of BUSINESS_AUTO_RESPONSE_PATTERNS) {
+    if (pattern.test(normalizedMsg)) {
+      matchCount++;
+      matchedPatterns.push(pattern.toString());
+    }
+  }
+  
+  // Se a mensagem tem mais de 100 chars e bate 2+ padrões, é atendimento automático
+  if (normalizedMsg.length > 100 && matchCount >= 2) {
+    console.log('[AI] Business auto-response detected! Patterns:', matchedPatterns.join(', '));
+    return { isBusinessAuto: true, reason: `${matchCount} padrões: ${matchedPatterns.slice(0, 3).join(', ')}` };
+  }
+  
+  // Se bate 3+ padrões mesmo em msg curta
+  if (matchCount >= 3) {
+    console.log('[AI] Business auto-response detected (short msg)! Patterns:', matchedPatterns.join(', '));
+    return { isBusinessAuto: true, reason: `${matchCount} padrões: ${matchedPatterns.slice(0, 3).join(', ')}` };
+  }
+  
+  return { isBusinessAuto: false, reason: null };
 }
 
 function detectRejection(message: string): { isRejection: boolean; type: 'hard' | 'soft' | null } {
@@ -411,12 +462,13 @@ serve(async (req) => {
       );
     }
 
-    // ========== DETECÇÃO DE BOT ==========
+    // ========== DETECÇÃO DE BOT E EMPRESA COM ATENDIMENTO AUTOMÁTICO ==========
     const botCheck = detectBotMessage(cleanedMessage);
     const isRoleInverted = detectRoleInversion(cleanedMessage);
+    const businessAutoCheck = detectBusinessAutoResponse(cleanedMessage);
     const consecutiveAIResponses = countConsecutiveAIResponses(conversation_history || []);
     
-    console.log('[AI] Bot check:', botCheck.isBot, '| Role inverted:', isRoleInverted, '| Consecutive AI:', consecutiveAIResponses);
+    console.log('[AI] Bot check:', botCheck.isBot, '| Role inverted:', isRoleInverted, '| Business auto:', businessAutoCheck.isBusinessAuto, '| Consecutive AI:', consecutiveAIResponses);
 
     if (consecutiveAIResponses >= 3) {
       console.log('[AI] Too many consecutive AI responses, possible bot loop. Pausing.');
@@ -537,10 +589,34 @@ ${answeredTopics.businessContext ? `- ✅ CONTEXTO DO NEGÓCIO: "${answeredTopic
     const siteUrl = aiConfig.site_url;
     const paymentLink = aiConfig.payment_link;
     
+    // Pegar apenas o primeiro nome da persona (movido para cima para usar no antiMimicryRule)
+    const personaFirstName = aiConfig.persona_name?.split(' ')[0] || 'SDR';
+    
     const roleInversionContext = isRoleInverted 
       ? `\n\n⚠️ ATENÇÃO: O lead perguntou "em que posso ajudar" - ELE É UM ATENDENTE. 
          APRESENTE-SE explicando quem você é e por que está entrando em contato. NÃO pergunte o nome.`
       : '';
+    
+    // 🚨 ANTI-MIMETIZAÇÃO: Quando lead é empresa com atendimento automático
+    const antiMimicryRule = businessAutoCheck.isBusinessAuto ? `
+🚨 REGRA ANTI-MIMETIZAÇÃO (CRÍTICA - LEIA COM ATENÇÃO):
+O lead que respondeu é uma EMPRESA/LOJA com atendimento automatizado.
+Ele enviou perguntas como "nome", "modelo", "quantidade" porque ACHA que você é um CLIENTE.
+
+❌ VOCÊ NÃO É CLIENTE DELE!
+❌ NÃO responda perguntas sobre pedidos, modelos, cores, quantidades
+❌ NÃO imite/repita as perguntas dele
+❌ NÃO pergunte "qual seu nome?" ou "qual modelo?" - isso é o roteiro DELE, não o seu!
+
+✅ VOCÊ É O SDR DA VIJAY PROSPECTANDO ESSA EMPRESA
+✅ Apresente-se: "Olá! Me chamo ${personaFirstName}, trabalho com marketing digital."
+✅ Explique o motivo do contato: "Entrei em contato porque ajudamos empresas como a sua a gerar mais vendas/clientes."
+✅ Pergunte sobre os DESAFIOS de vendas DELES: "Como estão as vendas? Estão conseguindo atrair clientes novos?"
+✅ Ignore completamente o "roteiro de atendimento" que eles enviaram.
+
+RESPOSTA MODELO:
+"Olá! Me chamo ${personaFirstName}, sou da área de marketing. Vi seu trabalho e quis entrar em contato porque ajudamos empresas a aumentar as vendas. Com quem falo?"
+` : '';
     
     // ========== CONSTRUIR PROMPT COM CONTEXTO DO NEGÓCIO ==========
     let systemPromptForPhase: string;
@@ -548,9 +624,6 @@ ${answeredTopics.businessContext ? `- ✅ CONTEXTO DO NEGÓCIO: "${answeredTopic
     // IMPORTANTE: Na STAGE_1 (cold call), NÃO revelamos contexto do negócio
     // O SDR precisa gerar curiosidade primeiro, SEM falar da empresa/produto
     const shouldIncludeBusinessContext = currentOrder >= 2;
-    
-    // Pegar apenas o primeiro nome da persona
-    const personaFirstName = aiConfig.persona_name?.split(' ')[0] || 'SDR';
     
     // Contexto mínimo para STAGE_1 (cold call)
     const minimalContext = `
@@ -588,6 +661,7 @@ ${paymentLink ? `- Link de Pagamento: ${paymentLink}` : ''}`;
 ${businessContext}
 ${antiRepetitionContext}
 ${antiHallucinationRule}
+${antiMimicryRule}
 
 CONTEXTO DA CONVERSA:
 - Nome do lead: ${lead_name || 'não identificado'}
@@ -596,6 +670,7 @@ CONTEXTO DA CONVERSA:
 - Critério de sucesso: ${stagePrompt.success_criteria || 'N/A'}
 - Mensagens nesta fase: ${messagesInStage}/${maxMessagesInStage}
 - Contexto do negócio conhecido: ${businessContextKnown ? 'SIM' : 'NÃO - use termos genéricos!'}
+- Lead é empresa com atendimento automático: ${businessAutoCheck.isBusinessAuto ? 'SIM - NÃO mimetize!' : 'Não detectado'}
 ${forceAdvance ? '- ⚠️ LIMITE ATINGIDO: Tente avançar ou fazer handoff nesta mensagem!' : ''}
 ${roleInversionContext}`;
     } else {
@@ -604,12 +679,14 @@ ${roleInversionContext}`;
 ${businessContext}
 ${antiRepetitionContext}
 ${antiHallucinationRule}
+${antiMimicryRule}
 
 CONTEXTO:
 - Nome do lead: ${lead_name || 'não identificado'}
 - Fase atual: ${CRM_STAGES[currentStage as CRMStage]?.name || 'Lead Novo'} (${currentStage})
 - Mensagens nesta fase: ${messagesInStage}
 - Contexto do negócio conhecido: ${businessContextKnown ? 'SIM' : 'NÃO - use termos genéricos!'}
+- Lead é empresa com atendimento automático: ${businessAutoCheck.isBusinessAuto ? 'SIM - NÃO mimetize!' : 'Não detectado'}
 ${roleInversionContext}`;
     }
     
