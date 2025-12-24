@@ -127,6 +127,31 @@ serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`[Outscraper] API error for ${location.city}:`, response.status, errorText);
+        
+        // Handle 402 - Payment Required (no credits)
+        if (response.status === 402) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Outscraper API sem créditos (erro 402). Acesse sua conta no Outscraper para adicionar créditos.',
+              errorCode: 'NO_CREDITS'
+            }),
+            { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // Handle 429 - Rate limit
+        if (response.status === 429) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Limite de requisições da API atingido. Tente novamente em alguns minutos.',
+              errorCode: 'RATE_LIMIT'
+            }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
         continue;
       }
 
