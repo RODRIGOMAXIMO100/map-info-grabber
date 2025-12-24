@@ -2,8 +2,9 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
 import { 
   Users, 
   UserCheck, 
@@ -335,60 +336,58 @@ export default function Dashboard() {
             <CardTitle>Funil de Conversão</CardTitle>
             <CardDescription>Distribuição de leads por estágio do CRM</CardDescription>
           </CardHeader>
-          <CardContent>
-            <TooltipProvider>
-              <div className="space-y-1">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12 pl-4"></TableHead>
+                  <TableHead className="w-40">Etapa</TableHead>
+                  <TableHead>Distribuição</TableHead>
+                  <TableHead className="text-right w-20 pr-4">Leads</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {stageCounts.map((stage) => {
-                  const widthPercentage = maxCount > 0 ? Math.max((stage.count / maxCount) * 100, 10) : 10;
+                  const widthPercentage = maxCount > 0 ? (stage.count / maxCount) * 100 : 0;
                   const isAI = stage.is_ai_controlled;
                   
                   return (
-                    <Tooltip key={stage.id}>
-                      <TooltipTrigger asChild>
-                        <div 
-                          className="relative h-12 rounded-md flex items-center justify-between px-4 cursor-pointer transition-all hover:opacity-90 hover:scale-[1.01]"
-                          style={{ 
-                            backgroundColor: stage.hexColor,
-                            width: `${widthPercentage}%`,
-                            marginLeft: `${(100 - widthPercentage) / 2}%`,
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-white font-medium text-sm truncate">
-                              {stage.name}
-                            </span>
-                            {isAI ? (
-                              <Bot className="h-3.5 w-3.5 text-white/80" />
-                            ) : (
-                              <UserCheck className="h-3.5 w-3.5 text-white/80" />
-                            )}
-                          </div>
-                          <span className="text-white font-bold text-lg">
-                            {stage.count}
-                          </span>
+                    <TableRow key={stage.id} className="hover:bg-muted/50">
+                      <TableCell className="pl-4">
+                        {isAI ? (
+                          <Bot className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <UserCheck className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium">{stage.name}</TableCell>
+                      <TableCell>
+                        <div className="w-full bg-muted rounded-full h-5 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{ 
+                              width: `${Math.max(widthPercentage, stage.count > 0 ? 8 : 0)}%`,
+                              backgroundColor: stage.hexColor 
+                            }}
+                          />
                         </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="font-medium">{stage.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {stage.count} lead{stage.count !== 1 ? 's' : ''} • {isAI ? '🤖 IA' : '👤 Manual'}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
+                      </TableCell>
+                      <TableCell className="text-right font-bold pr-4">{stage.count}</TableCell>
+                    </TableRow>
                   );
                 })}
-              </div>
-            </TooltipProvider>
+              </TableBody>
+            </Table>
 
             {/* Legenda */}
-            <div className="flex items-center justify-center gap-6 mt-6 pt-4 border-t">
+            <div className="flex items-center justify-center gap-6 py-4 border-t">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Bot className="h-4 w-4" />
-                <span>Estágios IA (automático)</span>
+                <span>IA (automático)</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <UserCheck className="h-4 w-4" />
-                <span>Estágios Manual (vendedor)</span>
+                <span>Manual (vendedor)</span>
               </div>
             </div>
           </CardContent>
