@@ -379,10 +379,11 @@ export default function WhatsAppChat() {
     const counts: Record<FunnelStageId | 'all', number> = {
       all: leads.length,
       new: 0,
+      qualification: 0,
       presentation: 0,
       interest: 0,
-      negotiating: 0,
       handoff: 0,
+      negotiating: 0,
       converted: 0,
       lost: 0,
     };

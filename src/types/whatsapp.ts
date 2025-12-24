@@ -151,13 +151,18 @@ export interface CRMStage {
   is_ai_controlled: boolean;
 }
 
-// SDR Funnel - 7 estágios sincronizados com funnel_stage
+// SDR Funnel - 5 estágios de IA + 3 manuais (vendedor)
+// IA: Lead Novo → Levantamento → Apresentação → Interesse Confirmado → Handoff
+// Manual: Negociando → Convertido/Perdido
 export const CRM_STAGES: CRMStage[] = [
+  // ===== ESTÁGIOS DA IA (SDR automático) =====
   { id: 'new', label_id: 'new', name: 'Lead Novo', color: 1, order: 1, is_ai_controlled: true },
-  { id: 'presentation', label_id: 'presentation', name: 'Apresentação Feita', color: 2, order: 2, is_ai_controlled: true },
-  { id: 'interest', label_id: 'interest', name: 'Interesse Confirmado', color: 3, order: 3, is_ai_controlled: true },
-  { id: 'negotiating', label_id: 'negotiating', name: 'Negociando', color: 4, order: 4, is_ai_controlled: true },
-  { id: 'handoff', label_id: 'handoff', name: 'Handoff - Vendedor', color: 5, order: 5, is_ai_controlled: false },
-  { id: 'converted', label_id: 'converted', name: 'Convertido', color: 6, order: 6, is_ai_controlled: false },
-  { id: 'lost', label_id: 'lost', name: 'Perdido', color: 7, order: 7, is_ai_controlled: false },
+  { id: 'qualification', label_id: 'qualification', name: 'Levantamento', color: 2, order: 2, is_ai_controlled: true },
+  { id: 'presentation', label_id: 'presentation', name: 'Apresentação', color: 3, order: 3, is_ai_controlled: true },
+  { id: 'interest', label_id: 'interest', name: 'Interesse Confirmado', color: 4, order: 4, is_ai_controlled: true },
+  { id: 'handoff', label_id: 'handoff', name: 'Handoff', color: 5, order: 5, is_ai_controlled: true },
+  // ===== ESTÁGIOS MANUAIS (Vendedor) =====
+  { id: 'negotiating', label_id: 'negotiating', name: 'Negociando', color: 6, order: 6, is_ai_controlled: false },
+  { id: 'converted', label_id: 'converted', name: 'Convertido', color: 7, order: 7, is_ai_controlled: false },
+  { id: 'lost', label_id: 'lost', name: 'Perdido', color: 8, order: 8, is_ai_controlled: false },
 ];

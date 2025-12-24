@@ -7,15 +7,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// SDR Funnel Stages - 7 estágios completos
+// SDR Funnel - 5 estágios de IA + 3 manuais
+// IA controla: STAGE_1 a STAGE_5 (Lead Novo até Handoff)
+// Manual (vendedor): STAGE_6, STAGE_7, STAGE_8
 const CRM_STAGES = {
-  STAGE_1: { id: '16', name: 'Lead Novo', order: 1 },
-  STAGE_2: { id: '13', name: 'MQL - Respondeu', order: 2 },
-  STAGE_3: { id: '14', name: 'Engajado', order: 3 },
-  STAGE_4: { id: '20', name: 'SQL - Qualificado', order: 4 },
-  STAGE_5: { id: '21', name: 'Handoff - Vendedor', order: 5 },
-  STAGE_6: { id: '22', name: 'Em Negociação', order: 6 },
-  STAGE_7: { id: '23', name: 'Fechado/Perdido', order: 7 },
+  STAGE_1: { id: 'new', name: 'Lead Novo', order: 1 },
+  STAGE_2: { id: 'qualification', name: 'Levantamento', order: 2 },
+  STAGE_3: { id: 'presentation', name: 'Apresentação', order: 3 },
+  STAGE_4: { id: 'interest', name: 'Interesse Confirmado', order: 4 },
+  STAGE_5: { id: 'handoff', name: 'Handoff', order: 5 },
+  // Estágios manuais - IA NÃO responde
+  STAGE_6: { id: 'negotiating', name: 'Negociando', order: 6 },
+  STAGE_7: { id: 'converted', name: 'Convertido', order: 7 },
+  STAGE_8: { id: 'lost', name: 'Perdido', order: 8 },
 } as const;
 
 type CRMStage = keyof typeof CRM_STAGES;
@@ -326,15 +330,15 @@ serve(async (req) => {
     const currentStage = current_stage_id ? getStageFromLabelId(current_stage_id) : 'STAGE_1';
     const currentOrder = currentStage ? CRM_STAGES[currentStage as CRMStage]?.order || 1 : 1;
 
-    // Se já está em STAGE_5+, não responder (vendedor assumiu)
-    if (currentOrder >= 5) {
-      console.log('[AI] Lead já em handoff ou além, vendedor deve atender');
+    // Se já está em STAGE_6+ (negociação/fechado), não responder (vendedor assumiu)
+    if (currentOrder >= 6) {
+      console.log('[AI] Lead já em negociação ou fechado, vendedor deve atender');
       return new Response(
         JSON.stringify({ 
-          error: 'Lead in handoff stage', 
+          error: 'Lead in seller stage', 
           should_respond: false,
           handoff: true,
-          message: 'Lead já está com vendedor, IA não responde'
+          message: 'Lead já está com vendedor (negociação/fechado), IA não responde'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -610,12 +614,20 @@ RESPONDA EM JSON COM ESTE FORMATO EXATO:
   "handoff_reason": "motivo curto se should_handoff=true"
 }
 
+ESTÁGIOS DA IA (você controla estes):
+- STAGE_1: Lead Novo - Gerar curiosidade, descobrir quem é (área/cargo)
+- STAGE_2: Levantamento - Descobrir dor principal, contexto do negócio, urgência
+- STAGE_3: Apresentação - Apresentar metodologia/solução, enviar vídeo, mostrar valor
+- STAGE_4: Interesse Confirmado - Confirmar interesse genuíno, coletar dados para call
+- STAGE_5: Handoff - Agendar conversa com especialista, passar para vendedor
+
 REGRAS CRÍTICAS:
 1. Resposta CURTA (máximo 250 caracteres)
 2. Avance APENAS 1 estágio por vez
 3. Se should_handoff=true, next_stage deve ser STAGE_5
 4. should_advance só é true se o objetivo da fase foi alcançado
 5. Use o nome do lead sempre que souber
+6. NUNCA vá além de STAGE_5 - negociação é trabalho do vendedor humano
 
 Histórico recente:
 ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.role === 'user' ? 'Lead' : 'SDR'}: ${m.content}`).join('\n')}
@@ -690,6 +702,7 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
       finalStage = currentStage;
     }
 
+    // Limitar avanço a 1 estágio por vez
     if (!parsedResponse.should_handoff && finalOrder > currentOrder + 1) {
       const nextStage = Object.entries(CRM_STAGES).find(([, info]) => info.order === currentOrder + 1);
       if (nextStage) {
@@ -697,11 +710,18 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
       }
     }
 
+    // Handoff vai para STAGE_5 (último estágio da IA)
     if (parsedResponse.should_handoff) {
       finalStage = 'STAGE_5';
     }
 
-    const labelId = CRM_STAGES[finalStage as CRMStage]?.id || '16';
+    // NUNCA ultrapassar STAGE_5 - IA não negocia
+    const finalOrderCheck = CRM_STAGES[finalStage as CRMStage]?.order || 1;
+    if (finalOrderCheck > 5) {
+      finalStage = 'STAGE_5';
+    }
+
+    const labelId = CRM_STAGES[finalStage as CRMStage]?.id || 'new';
     const shouldSendVideo = parsedResponse.should_send_video && !!videoUrl;
     const shouldSendSite = parsedResponse.should_send_site && !!siteUrl;
     const needsHuman = parsedResponse.should_handoff || finalStage === 'STAGE_5';
