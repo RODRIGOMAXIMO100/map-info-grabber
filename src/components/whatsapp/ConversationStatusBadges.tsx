@@ -2,8 +2,10 @@ import { Bot, BotOff, Clock, HandshakeIcon, Sparkles, MessageCircle, CheckCircle
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
-// Unified funnel stage IDs - same as CRM_STAGES in types/whatsapp.ts
-export type FunnelStageId = 'new' | 'presentation' | 'interest' | 'negotiating' | 'handoff' | 'converted' | 'lost';
+// Unified funnel stage IDs - 5 estágios de IA + 3 manuais
+// IA controla: new, qualification, presentation, interest, handoff
+// Manual (vendedor): negotiating, converted, lost
+export type FunnelStageId = 'new' | 'qualification' | 'presentation' | 'interest' | 'handoff' | 'negotiating' | 'converted' | 'lost';
 
 export interface FunnelStage {
   id: FunnelStageId;
@@ -11,16 +13,20 @@ export interface FunnelStage {
   color: string;
   bgColor: string;
   icon: React.ComponentType<{ className?: string }>;
+  isAIControlled: boolean;
 }
 
 export const FUNNEL_STAGES: FunnelStage[] = [
-  { id: 'new', label: 'Lead Novo', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', icon: Sparkles },
-  { id: 'presentation', label: 'Apresentação', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', icon: MessageCircle },
-  { id: 'interest', label: 'Interesse', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', icon: Sparkles },
-  { id: 'negotiating', label: 'Negociando', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', icon: Clock },
-  { id: 'handoff', label: 'Handoff', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', icon: HandshakeIcon },
-  { id: 'converted', label: 'Convertido', color: 'text-emerald-600', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30', icon: CheckCircle },
-  { id: 'lost', label: 'Perdido', color: 'text-gray-600', bgColor: 'bg-gray-100 dark:bg-gray-900/30', icon: XCircle },
+  // ===== ESTÁGIOS DA IA (SDR) =====
+  { id: 'new', label: 'Lead Novo', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', icon: Sparkles, isAIControlled: true },
+  { id: 'qualification', label: 'Levantamento', color: 'text-indigo-600', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', icon: MessageCircle, isAIControlled: true },
+  { id: 'presentation', label: 'Apresentação', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', icon: Sparkles, isAIControlled: true },
+  { id: 'interest', label: 'Interesse Confirmado', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', icon: CheckCircle, isAIControlled: true },
+  { id: 'handoff', label: 'Handoff', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', icon: HandshakeIcon, isAIControlled: true },
+  // ===== ESTÁGIOS MANUAIS (VENDEDOR) =====
+  { id: 'negotiating', label: 'Negociando', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', icon: Clock, isAIControlled: false },
+  { id: 'converted', label: 'Convertido', color: 'text-emerald-600', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30', icon: CheckCircle, isAIControlled: false },
+  { id: 'lost', label: 'Perdido', color: 'text-gray-600', bgColor: 'bg-gray-100 dark:bg-gray-900/30', icon: XCircle, isAIControlled: false },
 ];
 
 interface Conversation {
@@ -38,7 +44,7 @@ interface Conversation {
   funnel_stage?: string;
 }
 
-const VALID_STAGES: FunnelStageId[] = ['new', 'presentation', 'interest', 'negotiating', 'handoff', 'converted', 'lost'];
+const VALID_STAGES: FunnelStageId[] = ['new', 'qualification', 'presentation', 'interest', 'handoff', 'negotiating', 'converted', 'lost'];
 
 export function detectFunnelStage(conv: Conversation): FunnelStageId {
   // Use funnel_stage from database directly
