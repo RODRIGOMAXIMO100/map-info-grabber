@@ -629,6 +629,13 @@ REGRAS CRÍTICAS:
 5. Use o nome do lead sempre que souber
 6. NUNCA vá além de STAGE_5 - negociação é trabalho do vendedor humano
 
+🚨 REGRA DE HANDOFF (OBRIGATÓRIA):
+Quando should_handoff=true, a "response" DEVE ser uma mensagem de despedida profissional que:
+- Avisa que está transferindo para um consultor/especialista
+- Agradece pela conversa
+- Exemplo: "Perfeito, [Nome]! Vou transferir você para nosso consultor especializado. Ele vai entrar em contato em instantes para dar sequência. Foi ótimo falar com você! 🤝"
+❌ NUNCA deixe a IA "sumir" sem avisar - o lead precisa saber que um humano vai assumir!
+
 Histórico recente:
 ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.role === 'user' ? 'Lead' : 'SDR'}: ${m.content}`).join('\n')}
 
@@ -684,6 +691,24 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
         should_send_site: false,
         should_handoff: false
       };
+    }
+
+    // 🚨 FALLBACK DE HANDOFF: Garantir mensagem de despedida quando should_handoff=true
+    if (parsedResponse.should_handoff) {
+      const response = parsedResponse.response?.toLowerCase() || '';
+      const hasHandoffMessage = response.includes('consultor') || 
+                                response.includes('especialista') || 
+                                response.includes('transferir') ||
+                                response.includes('entrar em contato') ||
+                                response.includes('atendente');
+      
+      if (!hasHandoffMessage) {
+        console.log('[AI] Handoff without proper message, adding farewell');
+        const leadNameForHandoff = parsedResponse.lead_name || lead_name;
+        parsedResponse.response = leadNameForHandoff 
+          ? `Perfeito, ${leadNameForHandoff}! Vou transferir você para nosso consultor especializado. Ele vai entrar em contato em instantes para dar sequência. Foi ótimo falar com você! 🤝`
+          : `Perfeito! Vou transferir você para nosso consultor especializado. Ele vai entrar em contato em instantes para dar sequência. Foi ótimo falar com você! 🤝`;
+      }
     }
 
     let finalStage = parsedResponse.next_stage || currentStage;
