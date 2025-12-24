@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Star, Phone, MapPin, MessageCircle, Instagram, Map, Sparkles } from 'lucide-react';
+import { ExternalLink, Star, Phone, MapPin, MessageCircle, Instagram, Map, Sparkles, Mail, Facebook, Linkedin } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -253,10 +253,16 @@ export function ResultsTable({ results }: ResultsTableProps) {
                 <span className="line-clamp-2">{business.address}</span>
               </div>
               
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary" className="text-xs">
                   {business.city}, {business.state}
                 </Badge>
+                
+                {business.category && (
+                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                    {business.category}
+                  </Badge>
+                )}
                 
                 {business.source && (
                   <Badge variant="outline" className="text-xs gap-1">
@@ -286,6 +292,20 @@ export function ResultsTable({ results }: ResultsTableProps) {
                   </Button>
                 )}
                 
+                {business.email && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                    asChild
+                  >
+                    <a href={`mailto:${business.email}`}>
+                      <Mail className="h-4 w-4" />
+                      Email
+                    </a>
+                  </Button>
+                )}
+                
                 {business.instagram && (
                   <Button
                     variant="outline"
@@ -296,6 +316,34 @@ export function ResultsTable({ results }: ResultsTableProps) {
                     <a href={business.instagram} target="_blank" rel="noopener noreferrer">
                       <Instagram className="h-4 w-4" />
                       Instagram
+                    </a>
+                  </Button>
+                )}
+                
+                {business.facebook && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                    asChild
+                  >
+                    <a href={business.facebook} target="_blank" rel="noopener noreferrer">
+                      <Facebook className="h-4 w-4" />
+                      Facebook
+                    </a>
+                  </Button>
+                )}
+                
+                {business.linkedin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-sky-600 border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                    asChild
+                  >
+                    <a href={business.linkedin} target="_blank" rel="noopener noreferrer">
+                      <Linkedin className="h-4 w-4" />
+                      LinkedIn
                     </a>
                   </Button>
                 )}

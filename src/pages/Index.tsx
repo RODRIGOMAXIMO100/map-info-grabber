@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database } from 'lucide-react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +25,8 @@ export default function Index() {
   const [totalMaxResults, setTotalMaxResults] = useState(100);
   const [searchSource, setSearchSource] = useState<SearchSource>('both');
   const [filterWhatsAppOnly, setFilterWhatsAppOnly] = useState(false);
+  const [filterEmailOnly, setFilterEmailOnly] = useState(false);
+  const [filterSocialOnly, setFilterSocialOnly] = useState(false);
 
   // Estimate total leads
   const estimatedLeads = useMemo(() => {
@@ -82,8 +84,14 @@ export default function Index() {
     if (filterWhatsAppOnly) {
       results = results.filter(r => r.whatsapp);
     }
+    if (filterEmailOnly) {
+      results = results.filter(r => r.email);
+    }
+    if (filterSocialOnly) {
+      results = results.filter(r => r.facebook || r.linkedin || r.instagram);
+    }
     return results;
-  }, [combinedResults, filterWhatsAppOnly]);
+  }, [combinedResults, filterWhatsAppOnly, filterEmailOnly, filterSocialOnly]);
 
   const handleAddLocation = (location: Location) => {
     setLocations(prev => {
@@ -167,7 +175,10 @@ export default function Index() {
   const stats = useMemo(() => ({
     total: filteredResults.length,
     whatsapp: filteredResults.filter(r => r.whatsapp).length,
+    email: filteredResults.filter(r => r.email).length,
     instagram: filteredResults.filter(r => r.instagram).length,
+    facebook: filteredResults.filter(r => r.facebook).length,
+    linkedin: filteredResults.filter(r => r.linkedin).length,
     fromMaps: filteredResults.filter(r => r.source === 'google_maps').length,
     fromInstagram: filteredResults.filter(r => r.source === 'instagram').length,
     highScore: filteredResults.filter(r => (r.score || 0) >= 4).length,
@@ -235,7 +246,7 @@ export default function Index() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Por cidade</label>
                   <div className="flex items-center gap-2">
@@ -263,16 +274,47 @@ export default function Index() {
                     />
                   </div>
                 </div>
-                
-                <div className="flex items-center space-x-2 pt-6">
-                  <Switch
-                    id="whatsapp-filter"
-                    checked={filterWhatsAppOnly}
-                    onCheckedChange={setFilterWhatsAppOnly}
-                  />
-                  <Label htmlFor="whatsapp-filter" className="text-sm">
-                    Apenas com WhatsApp
-                  </Label>
+              </div>
+
+              {/* Filters */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium block">Filtros de Contato</label>
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="whatsapp-filter"
+                      checked={filterWhatsAppOnly}
+                      onCheckedChange={setFilterWhatsAppOnly}
+                    />
+                    <Label htmlFor="whatsapp-filter" className="text-sm flex items-center gap-1.5">
+                      <MessageCircle className="h-4 w-4 text-green-600" />
+                      WhatsApp
+                    </Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="email-filter"
+                      checked={filterEmailOnly}
+                      onCheckedChange={setFilterEmailOnly}
+                    />
+                    <Label htmlFor="email-filter" className="text-sm flex items-center gap-1.5">
+                      <Mail className="h-4 w-4 text-orange-600" />
+                      Email
+                    </Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="social-filter"
+                      checked={filterSocialOnly}
+                      onCheckedChange={setFilterSocialOnly}
+                    />
+                    <Label htmlFor="social-filter" className="text-sm flex items-center gap-1.5">
+                      <Facebook className="h-4 w-4 text-blue-600" />
+                      Redes Sociais
+                    </Label>
+                  </div>
                 </div>
               </div>
 
@@ -394,16 +436,24 @@ export default function Index() {
                     {stats.whatsapp} WhatsApp
                   </Badge>
                   <Badge variant="outline" className="gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-orange-500" />
+                    {stats.email} Email
+                  </Badge>
+                  <Badge variant="outline" className="gap-1.5">
                     <Instagram className="h-3.5 w-3.5 text-pink-500" />
                     {stats.instagram} Instagram
                   </Badge>
                   <Badge variant="outline" className="gap-1.5">
-                    <Map className="h-3.5 w-3.5 text-blue-500" />
-                    {stats.fromMaps} do Maps
+                    <Facebook className="h-3.5 w-3.5 text-blue-500" />
+                    {stats.facebook} Facebook
                   </Badge>
                   <Badge variant="outline" className="gap-1.5">
-                    <Instagram className="h-3.5 w-3.5 text-purple-500" />
-                    {stats.fromInstagram} do Instagram
+                    <Linkedin className="h-3.5 w-3.5 text-sky-500" />
+                    {stats.linkedin} LinkedIn
+                  </Badge>
+                  <Badge variant="outline" className="gap-1.5">
+                    <Map className="h-3.5 w-3.5 text-blue-500" />
+                    {stats.fromMaps} do Maps
                   </Badge>
                 </div>
               )}
