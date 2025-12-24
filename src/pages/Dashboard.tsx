@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { 
   Users, 
   UserCheck, 
@@ -11,7 +12,8 @@ import {
   TrendingUp,
   Send,
   Bot,
-  Clock
+  Clock,
+  Calendar
 } from "lucide-react";
 import { 
   BarChart, 
@@ -24,6 +26,8 @@ import {
   Cell
 } from "recharts";
 import InstanceMonitor from "@/components/InstanceMonitor";
+
+type DateFilter = 'today' | '7days' | '30days' | 'all';
 
 interface DashboardStats {
   totalLeads: number;
@@ -50,7 +54,23 @@ interface RecentHandoff {
   time: string;
 }
 
+const getStartDate = (filter: DateFilter): Date | null => {
+  const now = new Date();
+  switch (filter) {
+    case 'today':
+      now.setHours(0, 0, 0, 0);
+      return now;
+    case '7days':
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case '30days':
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    default:
+      return null;
+  }
+};
+
 export default function Dashboard() {
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [stats, setStats] = useState<DashboardStats>({
     totalLeads: 0,
     qualificationCount: 0,
@@ -81,17 +101,23 @@ export default function Dashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [dateFilter]);
 
   const loadDashboardData = async () => {
     try {
+      const startDate = getStartDate(dateFilter);
 
-      // Buscar todas as conversas (sem filtro de broadcast)
-      const { data: conversations } = await supabase
+      // Buscar conversas com filtro de período
+      let conversationsQuery = supabase
         .from('whatsapp_conversations')
         .select('*')
         .order('last_message_at', { ascending: false });
+      
+      if (startDate) {
+        conversationsQuery = conversationsQuery.gte('created_at', startDate.toISOString());
+      }
 
+      const { data: conversations } = await conversationsQuery;
       const filteredConversations = conversations || [];
 
       // Mapear cores por stage_id
@@ -225,9 +251,25 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Visão geral do seu pipeline de leads</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">Visão geral do seu pipeline de leads</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <ToggleGroup 
+            type="single" 
+            value={dateFilter} 
+            onValueChange={(value) => value && setDateFilter(value as DateFilter)}
+            className="bg-muted rounded-lg p-1"
+          >
+            <ToggleGroupItem value="today" className="text-xs px-3">Hoje</ToggleGroupItem>
+            <ToggleGroupItem value="7days" className="text-xs px-3">7 dias</ToggleGroupItem>
+            <ToggleGroupItem value="30days" className="text-xs px-3">30 dias</ToggleGroupItem>
+            <ToggleGroupItem value="all" className="text-xs px-3">Tudo</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
       </div>
 
       {/* Cards de Métricas */}
@@ -319,12 +361,15 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taxa de Conversão</CardTitle>
+            <CardTitle className="text-sm font-medium">Lead → Interesse</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{conversionRate}%</div>
             <Progress value={conversionRate} className="mt-2" />
+            <p className="text-xs text-muted-foreground mt-1">
+              Leads que avançaram para interesse ou handoff
+            </p>
           </CardContent>
         </Card>
       </div>
