@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin, Award, Filter, Trash2 } from 'lucide-react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin, Award, Filter, Trash2, Globe, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,6 +36,7 @@ export default function Index() {
   const [filterHighQualityOnly, setFilterHighQualityOnly] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [persistedResults, setPersistedResults] = useState<Business[]>([]);
+  const [useEnrichment, setUseEnrichment] = useState(false);
 
   // Estimate total leads
   const estimatedLeads = useMemo(() => {
@@ -43,7 +44,7 @@ export default function Index() {
     return locations.length * maxResultsPerCity * sources;
   }, [locations.length, maxResultsPerCity, searchSource]);
   
-  const { search: searchMaps, cancel: cancelMaps, results: mapsResults, isLoading: mapsLoading, error: mapsError, progress: mapsProgress } = useBusinessSearch();
+  const { search: searchMaps, cancel: cancelMaps, results: mapsResults, isLoading: mapsLoading, error: mapsError, progress: mapsProgress, apiUsage } = useBusinessSearch();
   const { search: searchInstagram, scrapeProfiles, results: instagramResults, isLoading: instagramLoading, isScraping, error: instagramError, progress: instagramProgress } = useInstagramSearch();
   
   const { toast } = useToast();
@@ -114,7 +115,7 @@ export default function Index() {
       const { error } = await supabase
         .from('search_cache')
         .delete()
-        .lt('expires_at', new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()); // Delete all
+        .lt('expires_at', new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString());
       
       if (error) throw error;
       
@@ -151,7 +152,7 @@ export default function Index() {
     }));
   }, [instagramResults]);
 
-  // Combine and deduplicate results with scoring (use persisted if current is empty)
+  // Combine and deduplicate results with scoring
   const combinedResults = useMemo(() => {
     const mapsWithSource = mapsResults.map(r => ({ ...r, source: 'google_maps' as const }));
     let all = [...mapsWithSource, ...convertedInstagramResults];
@@ -170,7 +171,6 @@ export default function Index() {
       return index === self.findIndex(t => t.name.toLowerCase() === item.name.toLowerCase());
     });
     
-    // Apply scoring and sort by score
     return applyScoring(unique).sort((a, b) => (b.score || 0) - (a.score || 0));
   }, [mapsResults, convertedInstagramResults, persistedResults]);
 
@@ -248,7 +248,7 @@ export default function Index() {
     const promises: Promise<void>[] = [];
     
     if (searchSource === 'maps' || searchSource === 'both') {
-      promises.push(searchMaps(keyword, locations, maxResultsPerCity, totalMaxResults));
+      promises.push(searchMaps(keyword, locations, maxResultsPerCity, totalMaxResults, useEnrichment));
     }
     
     if (searchSource === 'instagram' || searchSource === 'both') {
@@ -297,6 +297,9 @@ export default function Index() {
 
   const error = mapsError || instagramError;
 
+  // Calculate API usage totals
+  const totalApiCalls = apiUsage.serpapi + apiUsage.outscraper + apiUsage.cache;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted/30 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -309,6 +312,35 @@ export default function Index() {
             Busque leads no Google Maps e Instagram com extração automática de WhatsApp
           </p>
         </div>
+
+        {/* API Usage Card */}
+        <Card className="border-green-500/30 bg-green-500/5">
+          <CardContent className="pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-green-600" />
+                <span className="font-medium text-green-700 dark:text-green-400">Sistema Multi-API Ativo</span>
+              </div>
+              <div className="flex flex-wrap gap-3 text-sm">
+                <Badge variant="outline" className="gap-1.5 border-blue-500/50 text-blue-600">
+                  <Globe className="h-3 w-3" />
+                  SerpAPI: {apiUsage.serpapi} (100/mês)
+                </Badge>
+                <Badge variant="outline" className="gap-1.5 border-orange-500/50 text-orange-600">
+                  <Map className="h-3 w-3" />
+                  Outscraper: {apiUsage.outscraper} (500/mês)
+                </Badge>
+                <Badge variant="outline" className="gap-1.5 border-purple-500/50 text-purple-600">
+                  <Database className="h-3 w-3" />
+                  Cache: {apiUsage.cache}
+                </Badge>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Ordem de prioridade: Cache → SerpAPI → Outscraper (sem enrichment). Enriquecimento opcional com Firecrawl.
+            </p>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -357,7 +389,7 @@ export default function Index() {
                 />
               </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Por cidade</label>
                   <div className="flex items-center gap-2">
@@ -384,6 +416,26 @@ export default function Index() {
                       className="w-full"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Enrichment Option */}
+              <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="enrichment" className="text-sm font-medium flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-yellow-500" />
+                      Enriquecer dados (Instagram/Email)
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Usa Firecrawl para extrair redes sociais dos sites (500 créditos/mês)
+                    </p>
+                  </div>
+                  <Switch
+                    id="enrichment"
+                    checked={useEnrichment}
+                    onCheckedChange={setUseEnrichment}
+                  />
                 </div>
               </div>
 
@@ -440,7 +492,7 @@ export default function Index() {
                   </div>
                 </div>
                 
-                {/* Always show category filter, even when empty */}
+                {/* Category filter */}
                 <div className="flex items-center gap-3">
                   <Filter className="h-4 w-4 text-muted-foreground" />
                   <Select value={filterCategory} onValueChange={setFilterCategory}>
@@ -557,12 +609,16 @@ export default function Index() {
                   {/* Progress indicators */}
                   <div className="flex items-center justify-center gap-4 mt-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
-                      <Zap className="h-3 w-3 text-yellow-500" />
-                      Buscas paralelas
+                      <Globe className="h-3 w-3 text-blue-500" />
+                      SerpAPI: {apiUsage.serpapi}
                     </div>
                     <div className="flex items-center gap-1">
-                      <Database className="h-3 w-3 text-blue-500" />
-                      Cache ativo
+                      <Map className="h-3 w-3 text-orange-500" />
+                      Outscraper: {apiUsage.outscraper}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Database className="h-3 w-3 text-purple-500" />
+                      Cache: {apiUsage.cache}
                     </div>
                   </div>
                 </div>

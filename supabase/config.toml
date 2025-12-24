@@ -3,6 +3,15 @@ project_id = "vorehtfxwvsbbivnskeq"
 [functions.search-businesses]
 verify_jwt = false
 
+[functions.search-businesses-serpapi]
+verify_jwt = false
+
+[functions.search-cnpj]
+verify_jwt = false
+
+[functions.enrich-business]
+verify_jwt = false
+
 [functions.search-instagram]
 verify_jwt = false
 
