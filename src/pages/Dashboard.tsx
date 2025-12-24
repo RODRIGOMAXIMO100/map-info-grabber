@@ -23,18 +23,17 @@ import {
   ResponsiveContainer,
   Cell
 } from "recharts";
-import { CRM_STAGES } from "@/types/whatsapp";
 import InstanceMonitor from "@/components/InstanceMonitor";
 
 interface DashboardStats {
   totalLeads: number;
-  mqlCount: number;
-  sqlCount: number;
+  qualificationCount: number;
+  presentationCount: number;
+  interestCount: number;
   handoffCount: number;
   todayMessages: number;
   broadcastsSent: number;
   aiResponses: number;
-  avgResponseTime: number;
 }
 
 interface StageData {
@@ -54,13 +53,13 @@ interface RecentHandoff {
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({
     totalLeads: 0,
-    mqlCount: 0,
-    sqlCount: 0,
+    qualificationCount: 0,
+    presentationCount: 0,
+    interestCount: 0,
     handoffCount: 0,
     todayMessages: 0,
     broadcastsSent: 0,
     aiResponses: 0,
-    avgResponseTime: 0,
   });
   const [stageData, setStageData] = useState<StageData[]>([]);
   const [recentHandoffs, setRecentHandoffs] = useState<RecentHandoff[]>([]);
@@ -95,67 +94,52 @@ export default function Dashboard() {
 
       const filteredConversations = conversations || [];
 
-      // Mapear cores de número para hex
-      const colorMap: Record<number, string> = {
-        1: '#6B7280', // cinza
-        2: '#3B82F6', // azul
-        3: '#10B981', // verde
-        4: '#F59E0B', // amarelo
-        5: '#EF4444', // vermelho
-        6: '#8B5CF6', // roxo
-        7: '#6B7280', // cinza
+      // Mapear cores por stage_id
+      const colorMap: Record<string, string> = {
+        'new': '#6B7280',           // cinza
+        'qualification': '#3B82F6', // azul
+        'presentation': '#10B981',  // verde
+        'interest': '#F59E0B',      // amarelo
+        'handoff': '#EF4444',       // vermelho
       };
 
-      // Criar mapeamento de label_id para stage_id
-      const labelToStageMap: Record<string, string> = {};
-      CRM_STAGES.forEach(stage => {
-        labelToStageMap[stage.label_id] = stage.id;
-      });
-
-      // Contagens por estágio usando tags (que contêm label_ids)
-      const stageCounts: Record<string, number> = {};
-      CRM_STAGES.forEach(stage => {
-        stageCounts[stage.id] = 0;
-      });
+      // Contagens por estágio usando funnel_stage diretamente
+      const stageCounts: Record<string, number> = {
+        'new': 0,
+        'qualification': 0,
+        'presentation': 0,
+        'interest': 0,
+        'handoff': 0,
+      };
 
       filteredConversations.forEach(conv => {
-        const tags = conv.tags || [];
-        // Encontrar o estágio mais avançado baseado nas tags
-        let matchedStageId: string | null = null;
-        let highestOrder = 0;
-        
-        tags.forEach((tag: string) => {
-          const stageId = labelToStageMap[tag];
-          if (stageId) {
-            const stage = CRM_STAGES.find(s => s.id === stageId);
-            if (stage && stage.order > highestOrder) {
-              highestOrder = stage.order;
-              matchedStageId = stageId;
-            }
-          }
-        });
-
-        // Se não encontrou nenhum estágio via tags, conta como Lead Novo
-        if (matchedStageId) {
-          stageCounts[matchedStageId]++;
+        const stage = conv.funnel_stage || 'new';
+        if (stageCounts[stage] !== undefined) {
+          stageCounts[stage]++;
         } else {
-          stageCounts['1']++; // Lead Novo
+          stageCounts['new']++;
         }
       });
 
-      // Identificar handoffs (estágio 5)
-      const handoffStage = CRM_STAGES.find(s => s.name.includes('Handoff'));
-      const handoffLabelId = handoffStage?.label_id || '21';
+      // Dados para o gráfico do funil
+      const stageLabels: Record<string, string> = {
+        'new': 'Novo Lead',
+        'qualification': 'Levantamento',
+        'presentation': 'Apresentação',
+        'interest': 'Interesse',
+        'handoff': 'Handoff',
+      };
 
-      const stageChartData = CRM_STAGES.map(stage => ({
-        name: stage.name,
-        count: stageCounts[stage.id] || 0,
-        color: colorMap[stage.color] || '#6B7280',
+      const stageOrder = ['new', 'qualification', 'presentation', 'interest', 'handoff'];
+      const stageChartData = stageOrder.map(stageId => ({
+        name: stageLabels[stageId],
+        count: stageCounts[stageId] || 0,
+        color: colorMap[stageId] || '#6B7280',
       }));
 
-      // Handoffs recentes (conversas de broadcast com tag de handoff)
+      // Handoffs recentes (usando funnel_stage)
       const handoffs = filteredConversations
-        .filter(c => (c.tags || []).includes(handoffLabelId))
+        .filter(c => c.funnel_stage === 'handoff')
         .slice(0, 5)
         .map(c => ({
           id: c.id,
@@ -207,13 +191,13 @@ export default function Dashboard() {
 
       setStats({
         totalLeads: filteredConversations.length,
-        mqlCount: stageCounts['2'] || 0, // MQL - Respondeu
-        sqlCount: stageCounts['4'] || 0, // SQL - Qualificado
-        handoffCount: stageCounts['5'] || 0, // Handoff - Vendedor
+        qualificationCount: stageCounts['qualification'] || 0,
+        presentationCount: stageCounts['presentation'] || 0,
+        interestCount: stageCounts['interest'] || 0,
+        handoffCount: stageCounts['handoff'] || 0,
         todayMessages: todayMessagesCount || 0,
         broadcastsSent: broadcastsSentCount || 0,
         aiResponses: aiResponsesCount || 0,
-        avgResponseTime: 0,
       });
 
       setStageData(stageChartData);
@@ -228,8 +212,8 @@ export default function Dashboard() {
 
   const conversionRate = useMemo(() => {
     if (stats.totalLeads === 0) return 0;
-    return Math.round((stats.sqlCount / stats.totalLeads) * 100);
-  }, [stats.totalLeads, stats.sqlCount]);
+    return Math.round(((stats.interestCount + stats.handoffCount) / stats.totalLeads) * 100);
+  }, [stats]);
 
   if (loading) {
     return (
@@ -263,26 +247,26 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">MQL</CardTitle>
+            <CardTitle className="text-sm font-medium">Em Levantamento</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.mqlCount}</div>
+            <div className="text-2xl font-bold">{stats.qualificationCount}</div>
             <p className="text-xs text-muted-foreground">
-              Leads qualificados marketing
+              Leads em qualificação
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">SQL</CardTitle>
+            <CardTitle className="text-sm font-medium">Com Interesse</CardTitle>
             <UserCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.sqlCount}</div>
+            <div className="text-2xl font-bold">{stats.interestCount}</div>
             <p className="text-xs text-muted-foreground">
-              Leads qualificados vendas
+              Leads interessados
             </p>
           </CardContent>
         </Card>
