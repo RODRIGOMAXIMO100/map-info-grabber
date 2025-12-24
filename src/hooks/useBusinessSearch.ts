@@ -145,15 +145,16 @@ export function useBusinessSearch() {
             body: { keyword, locations: [location], maxResults: maxResultsPerCity },
           });
 
+          // Check for API credit errors (can come from fnError or data)
+          const errorMessage = fnError?.message || data?.error || '';
+          if (errorMessage.includes('402') || errorMessage.includes('créditos') || errorMessage.includes('credits') || errorMessage.includes('NO_CREDITS')) {
+            console.error(`[Outscraper] Sem créditos na API:`, errorMessage);
+            throw new Error('Outscraper API sem créditos. Acesse sua conta no Outscraper para adicionar créditos.');
+          }
+
           if (fnError) {
             console.error(`Error for ${location.city}:`, fnError);
             return [];
-          }
-
-          // Check for API credit errors
-          if (data?.error?.includes('402') || data?.error?.includes('créditos') || data?.error?.includes('credits')) {
-            console.error(`[Outscraper] Sem créditos na API:`, data.error);
-            throw new Error('Outscraper API sem créditos. Verifique sua conta.');
           }
 
           if (data?.success && data.data && data.data.length > 0) {
