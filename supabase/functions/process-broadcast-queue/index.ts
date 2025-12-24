@@ -636,11 +636,22 @@ serve(async (req) => {
             });
 
           // Create/update conversation - MARCA COMO CRM LEAD
-          const { data: existingConv } = await supabase
+          // Busca flexível: usa últimos 8 dígitos para encontrar conversa
+          // (resolve problema de nono dígito: 553499595399 vs 5534999595399)
+          const phoneCore = formattedPhone.slice(-8);
+          console.log(`[BROADCAST] Buscando conversa com phoneCore: %${phoneCore} (original: ${formattedPhone})`);
+          
+          const { data: existingConvs } = await supabase
             .from('whatsapp_conversations')
-            .select('id, is_crm_lead')
-            .eq('phone', formattedPhone)
-            .maybeSingle();
+            .select('id, is_crm_lead, phone')
+            .ilike('phone', `%${phoneCore}`);
+          
+          const existingConv = existingConvs?.[0] || null;
+          if (existingConv) {
+            console.log(`[BROADCAST] Conversa encontrada: ${existingConv.phone} (ID: ${existingConv.id})`);
+          } else {
+            console.log(`[BROADCAST] Nenhuma conversa encontrada, criando nova com: ${formattedPhone}`);
+          }
 
           let conversationId: string;
           const leadData = queueItem.lead_data as Record<string, unknown> | null;
