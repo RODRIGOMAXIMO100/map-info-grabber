@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Star, Phone, MapPin, MessageCircle, Instagram, Map, Sparkles, Mail, Facebook, Linkedin } from 'lucide-react';
+import { ExternalLink, Star, Phone, MapPin, MessageCircle, Instagram, Map, Sparkles, Mail, Facebook, Linkedin, Award } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,23 +8,38 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Business } from '@/types/business';
+import { calculateLeadScore, getScoreBadgeColor } from '@/lib/leadScoring';
 import type { BroadcastList, LeadData } from '@/types/whatsapp';
 
-// Render score stars
-function ScoreStars({ score }: { score?: number }) {
-  if (!score) return null;
+// Quality badge component
+function QualityBadge({ business }: { business: Business }) {
+  const { score, level, reasons } = calculateLeadScore(business);
   
-  const fullStars = Math.min(score, 5);
+  const levelLabel = level === 'alta' ? 'Alta Qualidade' : level === 'media' ? 'Média Qualidade' : 'Baixa Qualidade';
   
   return (
-    <div className="flex items-center gap-0.5" title={`Qualidade: ${score}/5`}>
-      {[...Array(fullStars)].map((_, i) => (
-        <Sparkles key={i} className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-      ))}
-    </div>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="outline" className={`gap-1 text-xs ${getScoreBadgeColor(level)}`}>
+            <Award className="h-3 w-3" />
+            {score.toFixed(1)}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs">
+          <p className="font-medium mb-1">{levelLabel}</p>
+          <ul className="text-xs space-y-0.5">
+            {reasons.map((r, i) => (
+              <li key={i}>• {r}</li>
+            ))}
+          </ul>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -274,7 +289,7 @@ export function ResultsTable({ results }: ResultsTableProps) {
                   </Badge>
                 )}
                 
-                <ScoreStars score={business.score} />
+                <QualityBadge business={business} />
               </div>
 
               <div className="flex flex-wrap gap-2 mt-auto pt-2">

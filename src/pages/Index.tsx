@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin } from 'lucide-react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin, Award, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,12 +8,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { LocationSelector } from '@/components/LocationSelector';
 import { ResultsTable } from '@/components/ResultsTable';
 import { useBusinessSearch } from '@/hooks/useBusinessSearch';
 import { useInstagramSearch, InstagramResult } from '@/hooks/useInstagramSearch';
 import { exportToCSV } from '@/lib/exportCsv';
+import { applyScoring } from '@/lib/leadScoring';
 import { Location, Business } from '@/types/business';
 
 type SearchSource = 'maps' | 'instagram' | 'both';
@@ -27,6 +29,8 @@ export default function Index() {
   const [filterWhatsAppOnly, setFilterWhatsAppOnly] = useState(false);
   const [filterEmailOnly, setFilterEmailOnly] = useState(false);
   const [filterSocialOnly, setFilterSocialOnly] = useState(false);
+  const [filterHighQualityOnly, setFilterHighQualityOnly] = useState(false);
+  const [filterCategory, setFilterCategory] = useState<string>('all');
 
   // Estimate total leads
   const estimatedLeads = useMemo(() => {
@@ -60,7 +64,7 @@ export default function Index() {
     }));
   }, [instagramResults]);
 
-  // Combine and deduplicate results
+  // Combine and deduplicate results with scoring
   const combinedResults = useMemo(() => {
     const mapsWithSource = mapsResults.map(r => ({ ...r, source: 'google_maps' as const }));
     const all = [...mapsWithSource, ...convertedInstagramResults];
@@ -74,9 +78,18 @@ export default function Index() {
       return index === self.findIndex(t => t.name.toLowerCase() === item.name.toLowerCase());
     });
     
-    // Sort by score if available
-    return unique.sort((a, b) => (b.score || 0) - (a.score || 0));
+    // Apply scoring and sort by score
+    return applyScoring(unique).sort((a, b) => (b.score || 0) - (a.score || 0));
   }, [mapsResults, convertedInstagramResults]);
+
+  // Extract unique categories
+  const categories = useMemo(() => {
+    const cats = new Set<string>();
+    combinedResults.forEach(r => {
+      if (r.category) cats.add(r.category);
+    });
+    return Array.from(cats).sort();
+  }, [combinedResults]);
 
   // Apply filters
   const filteredResults = useMemo(() => {
@@ -90,8 +103,14 @@ export default function Index() {
     if (filterSocialOnly) {
       results = results.filter(r => r.facebook || r.linkedin || r.instagram);
     }
+    if (filterHighQualityOnly) {
+      results = results.filter(r => (r.score || 0) >= 3);
+    }
+    if (filterCategory && filterCategory !== 'all') {
+      results = results.filter(r => r.category === filterCategory);
+    }
     return results;
-  }, [combinedResults, filterWhatsAppOnly, filterEmailOnly, filterSocialOnly]);
+  }, [combinedResults, filterWhatsAppOnly, filterEmailOnly, filterSocialOnly, filterHighQualityOnly, filterCategory]);
 
   const handleAddLocation = (location: Location) => {
     setLocations(prev => {
@@ -277,8 +296,8 @@ export default function Index() {
               </div>
 
               {/* Filters */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium block">Filtros de Contato</label>
+              <div className="space-y-3">
+                <label className="text-sm font-medium block">Filtros</label>
                 <div className="flex flex-wrap gap-4">
                   <div className="flex items-center space-x-2">
                     <Switch
@@ -315,7 +334,36 @@ export default function Index() {
                       Redes Sociais
                     </Label>
                   </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="quality-filter"
+                      checked={filterHighQualityOnly}
+                      onCheckedChange={setFilterHighQualityOnly}
+                    />
+                    <Label htmlFor="quality-filter" className="text-sm flex items-center gap-1.5">
+                      <Award className="h-4 w-4 text-yellow-600" />
+                      Alta Qualidade
+                    </Label>
+                  </div>
                 </div>
+                
+                {categories.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <Filter className="h-4 w-4 text-muted-foreground" />
+                    <Select value={filterCategory} onValueChange={setFilterCategory}>
+                      <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder="Filtrar por categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as categorias</SelectItem>
+                        {categories.map(cat => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               {/* Estimation */}
