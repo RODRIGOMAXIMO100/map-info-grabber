@@ -2,8 +2,8 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Users, 
   UserCheck, 
@@ -13,37 +13,18 @@ import {
   Send,
   Bot,
   Clock,
-  Calendar
+  Calendar,
+  ChevronDown,
+  DollarSign
 } from "lucide-react";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  Cell
-} from "recharts";
 import InstanceMonitor from "@/components/InstanceMonitor";
+import { CRM_STAGES, CRMStage } from "@/types/whatsapp";
 
 type DateFilter = 'today' | '7days' | '30days' | 'all';
 
-interface DashboardStats {
-  totalLeads: number;
-  qualificationCount: number;
-  presentationCount: number;
-  interestCount: number;
-  handoffCount: number;
-  todayMessages: number;
-  broadcastsSent: number;
-  aiResponses: number;
-}
-
-interface StageData {
-  name: string;
+interface StageCount extends CRMStage {
   count: number;
-  color: string;
+  hexColor: string;
 }
 
 interface RecentHandoff {
@@ -53,6 +34,18 @@ interface RecentHandoff {
   reason: string | null;
   time: string;
 }
+
+// Mapa de cores para cada estágio (baseado no color number do CRM_STAGES)
+const STAGE_COLORS: Record<number, string> = {
+  1: '#6B7280', // Lead Novo - cinza
+  2: '#3B82F6', // Levantamento - azul
+  3: '#8B5CF6', // Apresentação - roxo
+  4: '#F59E0B', // Interesse - amarelo
+  5: '#EF4444', // Handoff - vermelho
+  6: '#10B981', // Negociando - verde
+  7: '#22C55E', // Convertido - verde claro
+  8: '#9CA3AF', // Perdido - cinza claro
+};
 
 const getStartDate = (filter: DateFilter): Date | null => {
   const now = new Date();
@@ -71,20 +64,17 @@ const getStartDate = (filter: DateFilter): Date | null => {
 
 export default function Dashboard() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
-  const [stats, setStats] = useState<DashboardStats>({
-    totalLeads: 0,
-    qualificationCount: 0,
-    presentationCount: 0,
-    interestCount: 0,
-    handoffCount: 0,
-    todayMessages: 0,
-    broadcastsSent: 0,
-    aiResponses: 0,
-  });
-  const [stageData, setStageData] = useState<StageData[]>([]);
+  const [stageCounts, setStageCounts] = useState<StageCount[]>([]);
   const [recentHandoffs, setRecentHandoffs] = useState<RecentHandoff[]>([]);
   const [aiActive, setAiActive] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState({
+    totalLeads: 0,
+    todayMessages: 0,
+    broadcastsSent: 0,
+    aiResponses: 0,
+    pipelineValue: 0,
+  });
 
   useEffect(() => {
     loadDashboardData();
@@ -107,10 +97,11 @@ export default function Dashboard() {
     try {
       const startDate = getStartDate(dateFilter);
 
-      // Buscar conversas com filtro de período
+      // Buscar conversas CRM com filtro de período
       let conversationsQuery = supabase
         .from('whatsapp_conversations')
         .select('*')
+        .eq('is_crm_lead', true)
         .order('last_message_at', { ascending: false });
       
       if (startDate) {
@@ -120,50 +111,33 @@ export default function Dashboard() {
       const { data: conversations } = await conversationsQuery;
       const filteredConversations = conversations || [];
 
-      // Mapear cores por stage_id
-      const colorMap: Record<string, string> = {
-        'new': '#6B7280',           // cinza
-        'qualification': '#3B82F6', // azul
-        'presentation': '#10B981',  // verde
-        'interest': '#F59E0B',      // amarelo
-        'handoff': '#EF4444',       // vermelho
-      };
+      // Contagens por estágio usando CRM_STAGES
+      const counts: Record<string, number> = {};
+      CRM_STAGES.forEach(stage => {
+        counts[stage.id] = 0;
+      });
 
-      // Contagens por estágio usando funnel_stage diretamente
-      const stageCounts: Record<string, number> = {
-        'new': 0,
-        'qualification': 0,
-        'presentation': 0,
-        'interest': 0,
-        'handoff': 0,
-      };
-
+      let pipelineValue = 0;
       filteredConversations.forEach(conv => {
         const stage = conv.funnel_stage || 'new';
-        if (stageCounts[stage] !== undefined) {
-          stageCounts[stage]++;
+        if (counts[stage] !== undefined) {
+          counts[stage]++;
         } else {
-          stageCounts['new']++;
+          counts['new']++;
+        }
+        if (conv.estimated_value) {
+          pipelineValue += Number(conv.estimated_value);
         }
       });
 
-      // Dados para o gráfico do funil
-      const stageLabels: Record<string, string> = {
-        'new': 'Novo Lead',
-        'qualification': 'Levantamento',
-        'presentation': 'Apresentação',
-        'interest': 'Interesse',
-        'handoff': 'Handoff',
-      };
-
-      const stageOrder = ['new', 'qualification', 'presentation', 'interest', 'handoff'];
-      const stageChartData = stageOrder.map(stageId => ({
-        name: stageLabels[stageId],
-        count: stageCounts[stageId] || 0,
-        color: colorMap[stageId] || '#6B7280',
+      // Mapear CRM_STAGES com contagens
+      const stageCountsData: StageCount[] = CRM_STAGES.map(stage => ({
+        ...stage,
+        count: counts[stage.id] || 0,
+        hexColor: STAGE_COLORS[stage.color] || '#6B7280',
       }));
 
-      // Handoffs recentes (usando funnel_stage)
+      // Handoffs recentes
       const handoffs = filteredConversations
         .filter(c => c.funnel_stage === 'handoff')
         .slice(0, 5)
@@ -213,22 +187,18 @@ export default function Dashboard() {
         .from('whatsapp_ai_config')
         .select('is_active')
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      setStats({
+      setStageCounts(stageCountsData);
+      setRecentHandoffs(handoffs);
+      setAiActive(aiConfig?.is_active || false);
+      setMetrics({
         totalLeads: filteredConversations.length,
-        qualificationCount: stageCounts['qualification'] || 0,
-        presentationCount: stageCounts['presentation'] || 0,
-        interestCount: stageCounts['interest'] || 0,
-        handoffCount: stageCounts['handoff'] || 0,
         todayMessages: todayMessagesCount || 0,
         broadcastsSent: broadcastsSentCount || 0,
         aiResponses: aiResponsesCount || 0,
+        pipelineValue,
       });
-
-      setStageData(stageChartData);
-      setRecentHandoffs(handoffs);
-      setAiActive(aiConfig?.is_active || false);
     } catch (error) {
       console.error('Error loading dashboard:', error);
     } finally {
@@ -236,10 +206,41 @@ export default function Dashboard() {
     }
   };
 
-  const conversionRate = useMemo(() => {
-    if (stats.totalLeads === 0) return 0;
-    return Math.round(((stats.interestCount + stats.handoffCount) / stats.totalLeads) * 100);
-  }, [stats]);
+  // Calcular taxa de conversão entre etapas
+  const conversionRates = useMemo(() => {
+    const rates: { from: string; to: string; rate: number }[] = [];
+    for (let i = 0; i < stageCounts.length - 1; i++) {
+      const fromCount = stageCounts[i].count;
+      const toCount = stageCounts[i + 1].count;
+      if (fromCount > 0) {
+        rates.push({
+          from: stageCounts[i].id,
+          to: stageCounts[i + 1].id,
+          rate: Math.round((toCount / fromCount) * 100),
+        });
+      } else {
+        rates.push({
+          from: stageCounts[i].id,
+          to: stageCounts[i + 1].id,
+          rate: 0,
+        });
+      }
+    }
+    return rates;
+  }, [stageCounts]);
+
+  // Taxa de conversão geral (Lead Novo → Convertido)
+  const overallConversionRate = useMemo(() => {
+    const newLeads = stageCounts.find(s => s.id === 'new')?.count || 0;
+    const converted = stageCounts.find(s => s.id === 'converted')?.count || 0;
+    if (newLeads === 0) return 0;
+    return Math.round((converted / newLeads) * 100);
+  }, [stageCounts]);
+
+  // Maior contagem para escala do funil
+  const maxCount = useMemo(() => {
+    return Math.max(...stageCounts.map(s => s.count), 1);
+  }, [stageCounts]);
 
   if (loading) {
     return (
@@ -254,7 +255,7 @@ export default function Dashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Visão geral do seu pipeline de leads</p>
+          <p className="text-muted-foreground">Pipeline de leads do CRM</p>
         </div>
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -272,138 +273,154 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Cards de Métricas */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Cards de Métricas Resumo */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Leads</CardTitle>
+            <CardTitle className="text-sm font-medium">Total CRM</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalLeads}</div>
-            <p className="text-xs text-muted-foreground">
-              Leads prospectados
-            </p>
+            <div className="text-2xl font-bold">{metrics.totalLeads}</div>
+            <p className="text-xs text-muted-foreground">Leads no funil</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Em Levantamento</CardTitle>
+            <CardTitle className="text-sm font-medium">Conversão Geral</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.qualificationCount}</div>
-            <p className="text-xs text-muted-foreground">
-              Leads em qualificação
-            </p>
+            <div className="text-2xl font-bold">{overallConversionRate}%</div>
+            <p className="text-xs text-muted-foreground">Lead → Convertido</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Com Interesse</CardTitle>
-            <UserCheck className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Valor Pipeline</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.interestCount}</div>
-            <p className="text-xs text-muted-foreground">
-              Leads interessados
-            </p>
+            <div className="text-2xl font-bold">
+              {metrics.pipelineValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </div>
+            <p className="text-xs text-muted-foreground">Valor estimado</p>
           </CardContent>
         </Card>
 
-        <Card className={stats.handoffCount > 0 ? "border-destructive" : ""}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Handoffs</CardTitle>
-            <AlertCircle className={`h-4 w-4 ${stats.handoffCount > 0 ? "text-destructive" : "text-muted-foreground"}`} />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.handoffCount}</div>
-            <p className="text-xs text-muted-foreground">
-              Aguardando atendimento
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Segunda linha de cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Mensagens Hoje</CardTitle>
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.todayMessages}</div>
+            <div className="text-2xl font-bold">{metrics.todayMessages}</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Broadcasts Enviados</CardTitle>
-            <Send className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.broadcastsSent}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Respostas da IA</CardTitle>
+            <CardTitle className="text-sm font-medium">Respostas IA</CardTitle>
             <Bot className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.aiResponses}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Lead → Interesse</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{conversionRate}%</div>
-            <Progress value={conversionRate} className="mt-2" />
-            <p className="text-xs text-muted-foreground mt-1">
-              Leads que avançaram para interesse ou handoff
-            </p>
+            <div className="text-2xl font-bold">{metrics.aiResponses}</div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Gráfico e Handoffs */}
+      {/* Funil Visual e Handoffs */}
       <div className="grid gap-4 md:grid-cols-7">
+        {/* Funil Visual */}
         <Card className="col-span-4">
           <CardHeader>
             <CardTitle>Funil de Conversão</CardTitle>
-            <CardDescription>Distribuição de leads por estágio</CardDescription>
+            <CardDescription>Distribuição de leads por estágio do CRM</CardDescription>
           </CardHeader>
-          <CardContent className="pl-2">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stageData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
-                <XAxis type="number" />
-                <YAxis dataKey="name" type="category" width={100} />
-                <Tooltip />
-                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                  {stageData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent>
+            <TooltipProvider>
+              <div className="space-y-1">
+                {stageCounts.map((stage, index) => {
+                  const widthPercentage = maxCount > 0 ? Math.max((stage.count / maxCount) * 100, 10) : 10;
+                  const conversionRate = conversionRates[index];
+                  const isAI = stage.is_ai_controlled;
+                  
+                  return (
+                    <div key={stage.id}>
+                      {/* Barra do estágio */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div 
+                            className="relative h-12 rounded-md flex items-center justify-between px-4 cursor-pointer transition-all hover:opacity-90 hover:scale-[1.01]"
+                            style={{ 
+                              backgroundColor: stage.hexColor,
+                              width: `${widthPercentage}%`,
+                              marginLeft: `${(100 - widthPercentage) / 2}%`,
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-medium text-sm truncate">
+                                {stage.name}
+                              </span>
+                              {isAI ? (
+                                <Bot className="h-3.5 w-3.5 text-white/80" />
+                              ) : (
+                                <UserCheck className="h-3.5 w-3.5 text-white/80" />
+                              )}
+                            </div>
+                            <span className="text-white font-bold text-lg">
+                              {stage.count}
+                            </span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="font-medium">{stage.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {stage.count} lead{stage.count !== 1 ? 's' : ''} • {isAI ? '🤖 IA' : '👤 Manual'}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                      
+                      {/* Taxa de conversão entre etapas */}
+                      {conversionRate && index < stageCounts.length - 1 && (
+                        <div className="flex items-center justify-center py-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <ChevronDown className="h-3 w-3" />
+                            <span className={conversionRate.rate > 50 ? 'text-green-600' : conversionRate.rate > 25 ? 'text-yellow-600' : 'text-red-500'}>
+                              {conversionRate.rate}%
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </TooltipProvider>
+
+            {/* Legenda */}
+            <div className="flex items-center justify-center gap-6 mt-6 pt-4 border-t">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Bot className="h-4 w-4" />
+                <span>Estágios IA (automático)</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <UserCheck className="h-4 w-4" />
+                <span>Estágios Manual (vendedor)</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
+        {/* Handoffs Recentes */}
         <Card className="col-span-3">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              Handoffs Recentes
-              {stats.handoffCount > 0 && (
-                <Badge variant="destructive">{stats.handoffCount}</Badge>
+              Handoffs Pendentes
+              {recentHandoffs.length > 0 && (
+                <Badge variant="destructive">{recentHandoffs.length}</Badge>
               )}
             </CardTitle>
             <CardDescription>Leads aguardando atendimento humano</CardDescription>
