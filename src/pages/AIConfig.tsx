@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, Bot, Clock, User, FileText, Link } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Bot, Clock, User, FileText, Link, FlaskConical } from 'lucide-react';
+import FunnelTester from '@/components/ai/FunnelTester';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -197,11 +198,15 @@ export default function AIConfig() {
         </Card>
 
         <Tabs defaultValue="identity" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="identity">Identidade</TabsTrigger>
             <TabsTrigger value="offer">Oferta</TabsTrigger>
             <TabsTrigger value="materials">Materiais</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
+            <TabsTrigger value="test" className="gap-1">
+              <FlaskConical className="h-3 w-3" />
+              Testar
+            </TabsTrigger>
           </TabsList>
 
           {/* Identidade */}
@@ -397,6 +402,11 @@ export default function AIConfig() {
                 </p>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Testar Funil */}
+          <TabsContent value="test" className="space-y-4">
+            <FunnelTester />
           </TabsContent>
         </Tabs>
 
