@@ -147,6 +147,9 @@ serve(async (req) => {
         const site = result.site || result.website || '';
         const whatsapp = extractWhatsApp(phone, site);
         const instagram = extractInstagram(result);
+        
+        // Better category extraction - prioritize subtypes (more specific)
+        const category = result.subtypes?.[0] || result.category || result.type || result.types?.[0] || '';
 
         allResults.push({
           name: result.name || '',
@@ -166,7 +169,7 @@ serve(async (req) => {
           facebook: result.facebook || '',
           linkedin: result.linkedin || '',
           twitter: result.twitter || '',
-          category: result.category || result.type || '',
+          category: category,
         });
       }
     }
