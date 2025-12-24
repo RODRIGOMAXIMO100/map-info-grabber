@@ -108,6 +108,8 @@ serve(async (req) => {
       const query = `${keyword} ${location.city}, ${location.state}, Brasil`;
       console.log(`[Outscraper] Searching: ${query}`);
 
+      // REMOVED enrichment: 'domains_service' - this was consuming all credits!
+      // Now using basic search only (counts as 1 credit per business)
       const params = new URLSearchParams({
         query: query,
         limit: String(maxResults),
@@ -115,7 +117,6 @@ serve(async (req) => {
         region: 'BR',
         async: 'false',
         dropDuplicates: 'true',
-        enrichment: 'domains_service', // Get Instagram, email, social media
       });
 
       const response = await fetch(`https://api.app.outscraper.com/maps/search-v3?${params}`, {
