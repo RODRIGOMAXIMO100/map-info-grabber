@@ -132,6 +132,9 @@ export function useBusinessSearch() {
 
         const fetchTasks = tasksToFetch.map(({ location, cacheKey }) => async () => {
           // Early exit check before starting request
+          if (abortController.current?.signal.aborted) return [];
+
+          // Early exit check before starting request
           if (allResults.length >= totalMax) {
             return [];
           }
@@ -145,11 +148,20 @@ export function useBusinessSearch() {
             body: { keyword, locations: [location], maxResults: maxResultsPerCity },
           });
 
-          // Check for API credit errors (can come from fnError or data)
+          // Handle Outscraper no-credits gracefully (do NOT throw to avoid blank screens)
           const errorMessage = fnError?.message || data?.error || '';
-          if (errorMessage.includes('402') || errorMessage.includes('créditos') || errorMessage.includes('credits') || errorMessage.includes('NO_CREDITS')) {
-            console.error(`[Outscraper] Sem créditos na API:`, errorMessage);
-            throw new Error('Outscraper API sem créditos. Acesse sua conta no Outscraper para adicionar créditos.');
+          const noCredits =
+            errorMessage.includes('402') ||
+            errorMessage.includes('créditos') ||
+            errorMessage.includes('credits') ||
+            errorMessage.includes('NO_CREDITS') ||
+            (data as any)?.errorCode === 'NO_CREDITS';
+
+          if (noCredits) {
+            console.error(`[Outscraper] Sem créditos na API:`, errorMessage || (data as any)?.errorCode);
+            setError('Outscraper sem créditos. Adicione créditos/ajuste cobrança e tente novamente.');
+            abortController.current?.abort();
+            return [];
           }
 
           if (fnError) {
