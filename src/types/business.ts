@@ -17,6 +17,11 @@ export interface Business {
   instagram?: string;
   source?: 'google_maps' | 'instagram';
   score?: number;
+  email?: string;
+  facebook?: string;
+  linkedin?: string;
+  twitter?: string;
+  category?: string;
 }
 
 export const BRAZILIAN_STATES = [
