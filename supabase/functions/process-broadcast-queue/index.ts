@@ -157,7 +157,10 @@ const isInnocentError = (errorMessage: string): boolean => {
     'not on whatsapp', 'not registered', 'invalid phone',
     'phone number not found', 'number not found', 'not a valid',
     'número não encontrado', 'não está no whatsapp',
-    'invalid number', 'does not exist', 'not exist'
+    'invalid number', 'does not exist', 'not exist',
+    // UAZAPI specific patterns
+    'jid not valid', 'número inválido', 'not a valid phone',
+    '401', 'unauthorized', 'true' // "true" = erro genérico boolean
   ];
   const lowerError = errorMessage.toLowerCase();
   return innocentKeywords.some(keyword => lowerError.includes(keyword));
@@ -677,7 +680,8 @@ serve(async (req) => {
                 last_message_preview: processedMessage.substring(0, 100),
                 config_id: selectedConfig.id,
                 is_crm_lead: true, // MARCA COMO CRM LEAD
-                tags: ['16'], // Coloca no funil - Lead Novo
+                tags: ['new'], // Coloca no funil - Lead Novo (string)
+                funnel_stage: 'new',
                 dna_id: dnaId || undefined,
                 updated_at: new Date().toISOString()
               })
@@ -691,7 +695,8 @@ serve(async (req) => {
                 name: leadData?.name ? String(leadData.name) : null,
                 config_id: selectedConfig.id,
                 is_crm_lead: true, // MARCA COMO CRM LEAD
-                tags: ['16'], // Coloca no funil - Lead Novo
+                tags: ['new'], // Coloca no funil - Lead Novo (string)
+                funnel_stage: 'new',
                 dna_id: dnaId,
                 last_message_at: new Date().toISOString(),
                 last_message_preview: processedMessage.substring(0, 100),
@@ -749,6 +754,8 @@ serve(async (req) => {
         
         // Check if this is an "innocent" error (problem with the number, not the instance)
         const isInnocent = isInnocentError(errorMessage);
+        
+        console.log(`[Broadcast] Error details - Message: "${errorMessage}" | Is innocent: ${isInnocent}`);
         
         if (isInnocent) {
           // Innocent error: Don't increment consecutive_errors, don't pause instance
