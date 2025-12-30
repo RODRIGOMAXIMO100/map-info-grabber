@@ -166,6 +166,59 @@ const COLD_RESPONSE_PATTERNS = [
   /^(k+|kk+|kkk+|rs+|haha+|hehe+)$/i,
 ];
 
+// ========== 🆕 DETECÇÃO DE "QUERO SABER MAIS" ==========
+const WANTS_INFO_PATTERNS = [
+  /quero saber mais/i,
+  /me conta mais/i,
+  /como funciona/i,
+  /o que vocês fazem/i,
+  /pode explicar/i,
+  /me explica/i,
+  /saber mais/i,
+  /fala mais/i,
+  /conta mais/i,
+  /explica melhor/i,
+  /entendi.*fala/i,
+  /interessante.*mais/i,
+  /quero entender/i,
+];
+
+// ========== 🆕 DETECÇÃO DE PEDIDO EXPLÍCITO DE REUNIÃO ==========
+const WANTS_MEETING_PATTERNS = [
+  /quero agendar/i,
+  /pode agendar/i,
+  /agendar uma (call|reunião|conversa)/i,
+  /marcar uma (call|reunião|conversa)/i,
+  /vamos conversar/i,
+  /podemos marcar/i,
+  /quanto custa/i,
+  /qual o (preço|valor|investimento)/i,
+  /quero contratar/i,
+  /como faço pra (contratar|começar)/i,
+];
+
+function detectWantsMoreInfo(message: string): boolean {
+  const normalizedMsg = message.toLowerCase().trim();
+  for (const pattern of WANTS_INFO_PATTERNS) {
+    if (pattern.test(normalizedMsg)) {
+      console.log('[AI] "Wants more info" detected:', pattern.toString());
+      return true;
+    }
+  }
+  return false;
+}
+
+function detectWantsMeeting(message: string): boolean {
+  const normalizedMsg = message.toLowerCase().trim();
+  for (const pattern of WANTS_MEETING_PATTERNS) {
+    if (pattern.test(normalizedMsg)) {
+      console.log('[AI] "Wants meeting" explicitly detected:', pattern.toString());
+      return true;
+    }
+  }
+  return false;
+}
+
 function detectBotMessage(message: string): { isBot: boolean; reason: string | null } {
   const normalizedMsg = message.toLowerCase().trim();
   
@@ -646,8 +699,10 @@ serve(async (req) => {
     const consecutiveAIQuestions = countConsecutiveAIQuestions(conversation_history || []);
     const consecutiveColdResponses = countConsecutiveColdResponses(conversation_history || []);
     const isColdResponse = detectColdResponse(cleanedMessage);
+    const wantsMoreInfo = detectWantsMoreInfo(cleanedMessage);
+    const wantsMeeting = detectWantsMeeting(cleanedMessage);
     
-    console.log('[AI] Bot:', botCheck.isBot, '| Role inverted:', isRoleInverted, '| Business auto:', businessAutoCheck.isBusinessAuto, '| Consecutive AI:', consecutiveAIResponses, '| AI Questions:', consecutiveAIQuestions, '| Cold responses:', consecutiveColdResponses);
+    console.log('[AI] Bot:', botCheck.isBot, '| Role inverted:', isRoleInverted, '| Business auto:', businessAutoCheck.isBusinessAuto, '| Consecutive AI:', consecutiveAIResponses, '| AI Questions:', consecutiveAIQuestions, '| Cold responses:', consecutiveColdResponses, '| Wants info:', wantsMoreInfo, '| Wants meeting:', wantsMeeting);
 
     // 🆕 FAIL FAST: Se 2+ respostas frias consecutivas → dar pitch direto
     if (consecutiveColdResponses >= 2 || (isColdResponse && consecutiveAIQuestions >= 2)) {
@@ -806,6 +861,38 @@ Exemplo: "Ajudamos empresas a conseguir mais clientes qualificados. Isso faz sen
     const videoUrl = aiConfig.video_url;
     const siteUrl = aiConfig.site_url;
     const paymentLink = aiConfig.payment_link;
+
+    // 🆕 REGRA ANTI-ALUCINAÇÃO DE MATERIAIS
+    const materialsAvailabilityRule = `
+🎬 MATERIAIS DISPONÍVEIS:
+${videoUrl ? `✅ TEM VÍDEO - pode usar should_send_video: true` : `❌ NÃO TEM VÍDEO - NÃO mencione vídeo!`}
+${siteUrl ? `✅ TEM SITE - pode usar should_send_site: true` : `❌ NÃO TEM SITE - NÃO mencione site!`}
+⚠️ NUNCA prometa enviar algo que você não tem!`;
+
+    // 🆕 REGRA "QUERO SABER MAIS" = DAR INFORMAÇÃO
+    const wantsInfoRule = wantsMoreInfo ? `
+🚨 LEAD QUER INFORMAÇÃO:
+O lead disse "${cleanedMessage}" = ELE QUER SABER MAIS!
+NESTA MENSAGEM você DEVE:
+1. EXPLICAR o que você faz em 2-3 frases (usar offer_description)
+2. Perguntar se faz sentido aprofundar
+❌ NÃO proponha reunião agora!
+❌ NÃO faça handoff!
+` : '';
+
+    // 🆕 REGRA DE HANDOFF INTELIGENTE
+    const handoffRules = `
+📋 REGRAS DE HANDOFF (should_handoff: true):
+✅ PERMITIDO apenas se:
+- Lead EXPLICITAMENTE pediu reunião/call: "quero agendar", "vamos conversar"
+- OU lead perguntou preço: "quanto custa", "qual o valor"
+- E você JÁ explicou o que faz (não é a primeira interação)
+
+❌ PROIBIDO fazer handoff se:
+- Lead apenas disse "quero saber mais" (ele quer INFO, não reunião!)
+- Lead ainda não entendeu a proposta
+- Você não explicou como pode ajudar
+${wantsMeeting ? '✅ LEAD PEDIU REUNIÃO EXPLICITAMENTE - Handoff permitido!' : '⚠️ Lead NÃO pediu reunião - Foque em explicar/qualificar'}`;
     
     const roleInversionContext = isRoleInverted 
       ? `\n\n⚠️ O lead perguntou "em que posso ajudar" - ELE É ATENDENTE. APRESENTE-SE explicando quem você é e por que está entrando em contato.`
@@ -875,6 +962,9 @@ ${antiRepetitionContext}
 ${antiHallucinationRule}
 ${antiMimicryRule}
 ${valueBeforeQuestionsRule}
+${materialsAvailabilityRule}
+${wantsInfoRule}
+${handoffRules}
 
 CONTEXTO:
 - Nome do lead: ${lead_name || 'não identificado'}
@@ -894,6 +984,9 @@ ${antiRepetitionContext}
 ${antiHallucinationRule}
 ${antiMimicryRule}
 ${valueBeforeQuestionsRule}
+${materialsAvailabilityRule}
+${wantsInfoRule}
+${handoffRules}
 
 CONTEXTO:
 - Nome: ${lead_name || 'não identificado'}
