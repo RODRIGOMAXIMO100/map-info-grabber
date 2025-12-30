@@ -262,7 +262,7 @@ export default function FunnelTester() {
       // Adicionar resposta da IA
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: response?.ai_response || 'Sem resposta',
+        content: response?.response || 'Sem resposta',
         stage: newStage,
         debug: {
           should_advance: response?.stage_changed,
