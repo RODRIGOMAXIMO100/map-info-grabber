@@ -99,9 +99,15 @@ export default function AIConfig() {
       if (error) throw error;
 
       if (data) {
-        const qualificationQuestions = Array.isArray(data.qualification_questions) 
-          ? data.qualification_questions 
-          : ['', '', ''];
+        // Garantir que qualification_questions seja um array de strings
+        let rawQuestions = data.qualification_questions;
+        let qualificationQuestions: string[] = ['', '', ''];
+        
+        if (Array.isArray(rawQuestions)) {
+          qualificationQuestions = rawQuestions.map(q => 
+            typeof q === 'string' ? q : (q && typeof q === 'object' ? String(q) : '')
+          );
+        }
         
         // Garantir que sempre tenha 3 perguntas
         while (qualificationQuestions.length < 3) {
