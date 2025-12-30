@@ -31,11 +31,13 @@ interface Message {
   content: string;
   stage?: string;
   debug?: {
+    messageType?: string;
     should_advance?: boolean;
     should_send_video?: boolean;
     should_send_site?: boolean;
     should_handoff?: boolean;
     new_stage?: string;
+    detected_patterns?: string[];
   };
 }
 
@@ -46,65 +48,64 @@ interface TestConversation {
   messages_in_current_stage: number;
 }
 
-// Mensagens de teste pré-definidas para simular um lead progredindo no funil
-const TEST_MESSAGES: { stage: string; messages: string[] }[] = [
-  {
-    stage: 'STAGE_1',
+// Cenários de teste para simular diferentes comportamentos de lead em cold outreach
+const TEST_SCENARIOS = {
+  coldOutreach: {
+    name: '🧊 Cold Outreach Realista',
+    description: 'Simula um lead que recebeu mensagem fria',
     messages: [
-      'Oi, vi sua mensagem',
-      'Quem está falando?',
-    ]
+      { text: 'opa', type: 'cold' },
+      { text: 'quem é você?', type: 'who_are_you' },
+      { text: 'hmm', type: 'cold' },
+      { text: 'trabalho com marketing digital', type: 'engaged' },
+      { text: 'sim, tenho dificuldade em captar clientes', type: 'engaged' },
+      { text: 'isso é urgente pra mim', type: 'engaged' },
+      { text: 'quero saber mais', type: 'interested' },
+      { text: 'pode agendar uma call', type: 'closing' },
+    ],
   },
-  {
-    stage: 'STAGE_1_TO_2',
+  botTest: {
+    name: '🤖 Teste "É Bot?"',
+    description: 'Simula lead perguntando se é robô',
     messages: [
-      'Sou empresário, trabalho com consultoria há 5 anos',
-      'Tenho uma empresa de serviços com 10 funcionários',
-    ]
+      { text: 'oi', type: 'cold' },
+      { text: 'você é um robô?', type: 'am_i_bot' },
+      { text: 'ah tá, e o que vocês fazem?', type: 'who_are_you' },
+      { text: 'interessante, me conta mais', type: 'engaged' },
+    ],
   },
-  {
-    stage: 'STAGE_2',
+  superCold: {
+    name: '❄️ Lead Super Frio',
+    description: 'Simula respostas monossilábicas (deve ativar Fail Fast)',
     messages: [
-      'Minha maior dificuldade é captar clientes novos',
-      'Gasto muito com tráfego pago mas não converto bem',
-    ]
+      { text: 'oi', type: 'cold' },
+      { text: 'ok', type: 'cold' },
+      { text: 'hm', type: 'cold' },
+      { text: 'não sei', type: 'cold' },
+    ],
   },
-  {
-    stage: 'STAGE_2_TO_3',
+  idealLead: {
+    name: '🌟 Lead Ideal',
+    description: 'Simula lead engajado desde o início',
     messages: [
-      'Isso é urgente, preciso resolver esse mês',
-      'Já perdi alguns clientes importantes',
-    ]
+      { text: 'Opa! Vi sua mensagem, fiquei curioso', type: 'engaged' },
+      { text: 'Sou dono de uma agência de marketing, temos 15 funcionários', type: 'engaged' },
+      { text: 'Nosso maior problema é escalar as vendas sem aumentar muito o custo', type: 'engaged' },
+      { text: 'Isso é muito urgente, estamos perdendo clientes', type: 'engaged' },
+      { text: 'Adorei a proposta! Quando podemos conversar?', type: 'closing' },
+    ],
   },
-  {
-    stage: 'STAGE_3',
+  rejection: {
+    name: '🚫 Lead com Rejeição',
+    description: 'Simula lead que rejeita o contato',
     messages: [
-      'Interessante, como funciona exatamente?',
-      'Qual é o diferencial de vocês?',
-    ]
+      { text: 'quem é?', type: 'who_are_you' },
+      { text: 'não tenho interesse', type: 'rejection' },
+    ],
   },
-  {
-    stage: 'STAGE_3_TO_4',
-    messages: [
-      'Gostei muito da proposta, quero saber mais',
-      'Me interessei pela metodologia, parece eficiente',
-    ]
-  },
-  {
-    stage: 'STAGE_4',
-    messages: [
-      'Tenho disponibilidade terça às 14h',
-      'Posso fazer uma call amanhã de manhã',
-    ]
-  },
-  {
-    stage: 'STAGE_4_TO_5',
-    messages: [
-      'Perfeito, pode agendar a reunião',
-      'Vamos fechar, estou decidido',
-    ]
-  },
-];
+};
+
+type ScenarioKey = keyof typeof TEST_SCENARIOS;
 
 export default function FunnelTester() {
   const { toast } = useToast();
@@ -114,6 +115,7 @@ export default function FunnelTester() {
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [selectedScenario, setSelectedScenario] = useState<ScenarioKey>('coldOutreach');
   
   const [testConversation, setTestConversation] = useState<TestConversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -125,11 +127,14 @@ export default function FunnelTester() {
     objective: string;
     messagesInStage: number;
     lastResponse?: any;
+    detectedPatterns?: string[];
   }>({
     stage: 'STAGE_1',
     objective: '',
     messagesInStage: 0,
   });
+
+  const currentScenarioMessages = TEST_SCENARIOS[selectedScenario].messages;
 
   useEffect(() => {
     loadStages();
@@ -214,22 +219,25 @@ export default function FunnelTester() {
     setProcessing(true);
 
     try {
-      // Encontrar a próxima mensagem baseada no estágio atual
-      const allMessages = TEST_MESSAGES.flatMap(group => group.messages);
-      
-      if (currentMessageIndex >= allMessages.length) {
+      // Encontrar a próxima mensagem do cenário selecionado
+      if (currentMessageIndex >= currentScenarioMessages.length) {
         toast({
           title: 'Teste concluído!',
-          description: 'Todas as mensagens de teste foram enviadas.',
+          description: `Cenário "${TEST_SCENARIOS[selectedScenario].name}" finalizado.`,
         });
         setProcessing(false);
         return;
       }
 
-      const userMessage = allMessages[currentMessageIndex];
+      const messageData = currentScenarioMessages[currentMessageIndex];
+      const userMessage = messageData.text;
       
-      // Adicionar mensagem do usuário
-      setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+      // Adicionar mensagem do usuário com tipo
+      setMessages(prev => [...prev, { 
+        role: 'user', 
+        content: userMessage,
+        debug: { messageType: messageData.type }
+      }]);
 
       // Chamar a edge function
       const { data: response, error } = await supabase.functions.invoke('whatsapp-ai-agent', {
@@ -355,6 +363,32 @@ export default function FunnelTester() {
 
   return (
     <div className="space-y-4">
+      {/* Seleção de Cenário */}
+      {!testing && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          {(Object.keys(TEST_SCENARIOS) as ScenarioKey[]).map((key) => {
+            const scenario = TEST_SCENARIOS[key];
+            return (
+              <Card 
+                key={key}
+                className={`cursor-pointer transition-all hover:border-primary/50 ${
+                  selectedScenario === key ? 'border-primary bg-primary/5' : ''
+                }`}
+                onClick={() => setSelectedScenario(key)}
+              >
+                <CardContent className="p-4">
+                  <p className="font-medium text-sm">{scenario.name}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{scenario.description}</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {scenario.messages.length} mensagens
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {/* Header com ações */}
       <Card>
         <CardHeader className="pb-3">
@@ -362,9 +396,13 @@ export default function FunnelTester() {
             <div className="flex items-center gap-3">
               <Sparkles className="h-5 w-5 text-primary" />
               <div>
-                <CardTitle>Simulador de Funil</CardTitle>
+                <CardTitle>
+                  {testing ? TEST_SCENARIOS[selectedScenario].name : 'Simulador de Funil'}
+                </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Teste o comportamento da IA em cada fase do funil
+                  {testing 
+                    ? TEST_SCENARIOS[selectedScenario].description 
+                    : 'Selecione um cenário e clique em Iniciar Teste'}
                 </p>
               </div>
             </div>
@@ -472,6 +510,17 @@ export default function FunnelTester() {
                           <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                           {msg.debug && (
                             <div className="mt-2 pt-2 border-t border-border/50 flex flex-wrap gap-1">
+                              {msg.debug.messageType && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {msg.debug.messageType === 'cold' && '🧊 Frio'}
+                                  {msg.debug.messageType === 'who_are_you' && '❓ Quem é você'}
+                                  {msg.debug.messageType === 'am_i_bot' && '🤖 É bot?'}
+                                  {msg.debug.messageType === 'engaged' && '💬 Engajado'}
+                                  {msg.debug.messageType === 'interested' && '✨ Interessado'}
+                                  {msg.debug.messageType === 'closing' && '🎯 Fechamento'}
+                                  {msg.debug.messageType === 'rejection' && '🚫 Rejeição'}
+                                </Badge>
+                              )}
                               {msg.debug.should_advance && (
                                 <Badge variant="outline" className="text-xs">
                                   ↗️ Avançou
@@ -538,7 +587,7 @@ export default function FunnelTester() {
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Progresso</p>
                 <p className="text-sm font-mono">
-                  {currentMessageIndex} / {TEST_MESSAGES.flatMap(g => g.messages).length} mensagens
+                  {currentMessageIndex} / {currentScenarioMessages.length} mensagens
                 </p>
               </div>
 
