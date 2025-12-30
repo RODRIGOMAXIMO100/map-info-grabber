@@ -240,10 +240,18 @@ export default function FunnelTester() {
       }]);
 
       // Chamar a edge function
+      // Construir histórico de mensagens para enviar à IA
+      const conversationHistory = messages.map(msg => ({
+        direction: msg.role === 'user' ? 'incoming' : 'outgoing',
+        content: msg.content
+      }));
+
       const { data: response, error } = await supabase.functions.invoke('whatsapp-ai-agent', {
         body: {
           conversation_id: testConversation.id,
           incoming_message: userMessage,
+          conversation_history: conversationHistory,
+          current_stage_id: currentStage,
           is_test: true,
         },
       });
