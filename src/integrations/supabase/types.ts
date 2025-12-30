@@ -17,11 +17,13 @@ export type Database = {
       ai_stage_prompts: {
         Row: {
           created_at: string | null
+          example_response: string | null
           failure_criteria: string | null
           id: string
           is_active: boolean | null
           max_messages_in_stage: number | null
           objective: string
+          required_deliverables: string[] | null
           stage_id: string
           stage_name: string
           success_criteria: string | null
@@ -30,11 +32,13 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          example_response?: string | null
           failure_criteria?: string | null
           id?: string
           is_active?: boolean | null
           max_messages_in_stage?: number | null
           objective: string
+          required_deliverables?: string[] | null
           stage_id: string
           stage_name: string
           success_criteria?: string | null
@@ -43,11 +47,13 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          example_response?: string | null
           failure_criteria?: string | null
           id?: string
           is_active?: boolean | null
           max_messages_in_stage?: number | null
           objective?: string
+          required_deliverables?: string[] | null
           stage_id?: string
           stage_name?: string
           success_criteria?: string | null
@@ -157,16 +163,22 @@ export type Database = {
           auto_reply_delay_seconds: number | null
           classification_rules: Json | null
           created_at: string | null
+          differentiator: string | null
+          elevator_pitch: string | null
           id: string
           is_active: boolean | null
+          max_chars_per_stage: Json | null
           offer_description: string | null
           payment_link: string | null
           persona_name: string | null
+          qualification_questions: Json | null
           site_url: string | null
           system_prompt: string
           target_audience: string | null
           tone: string | null
+          typical_results: string | null
           updated_at: string | null
+          value_proposition: string | null
           video_url: string | null
           working_hours_end: string | null
           working_hours_start: string | null
@@ -175,16 +187,22 @@ export type Database = {
           auto_reply_delay_seconds?: number | null
           classification_rules?: Json | null
           created_at?: string | null
+          differentiator?: string | null
+          elevator_pitch?: string | null
           id?: string
           is_active?: boolean | null
+          max_chars_per_stage?: Json | null
           offer_description?: string | null
           payment_link?: string | null
           persona_name?: string | null
+          qualification_questions?: Json | null
           site_url?: string | null
           system_prompt: string
           target_audience?: string | null
           tone?: string | null
+          typical_results?: string | null
           updated_at?: string | null
+          value_proposition?: string | null
           video_url?: string | null
           working_hours_end?: string | null
           working_hours_start?: string | null
@@ -193,16 +211,22 @@ export type Database = {
           auto_reply_delay_seconds?: number | null
           classification_rules?: Json | null
           created_at?: string | null
+          differentiator?: string | null
+          elevator_pitch?: string | null
           id?: string
           is_active?: boolean | null
+          max_chars_per_stage?: Json | null
           offer_description?: string | null
           payment_link?: string | null
           persona_name?: string | null
+          qualification_questions?: Json | null
           site_url?: string | null
           system_prompt?: string
           target_audience?: string | null
           tone?: string | null
+          typical_results?: string | null
           updated_at?: string | null
+          value_proposition?: string | null
           video_url?: string | null
           working_hours_end?: string | null
           working_hours_start?: string | null
@@ -362,6 +386,7 @@ export type Database = {
           tags: string[] | null
           unread_count: number | null
           updated_at: string | null
+          value_delivery_status: Json | null
           video_sent: boolean | null
         }
         Insert: {
@@ -400,6 +425,7 @@ export type Database = {
           tags?: string[] | null
           unread_count?: number | null
           updated_at?: string | null
+          value_delivery_status?: Json | null
           video_sent?: boolean | null
         }
         Update: {
@@ -438,6 +464,7 @@ export type Database = {
           tags?: string[] | null
           unread_count?: number | null
           updated_at?: string | null
+          value_delivery_status?: Json | null
           video_sent?: boolean | null
         }
         Relationships: [

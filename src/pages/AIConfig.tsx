@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, Bot, Clock, User, FileText, Link, FlaskConical } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Bot, Clock, User, FileText, Link, FlaskConical, Target, MessageSquare, Sparkles } from 'lucide-react';
 import FunnelTester from '@/components/ai/FunnelTester';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 
 interface AIConfig {
   id: string;
@@ -32,6 +33,13 @@ interface AIConfig {
   video_url: string;
   site_url: string;
   payment_link: string;
+  // Novos campos do roteiro SDR
+  elevator_pitch: string;
+  value_proposition: string;
+  differentiator: string;
+  typical_results: string;
+  qualification_questions: string[];
+  max_chars_per_stage: Record<string, number>;
 }
 
 const TONES = [
@@ -40,6 +48,14 @@ const TONES = [
   { value: 'entusiasta', label: 'Entusiasta', description: 'Energético e motivador' },
   { value: 'consultivo', label: 'Consultivo', description: 'Orientador e didático' },
 ];
+
+const DEFAULT_MAX_CHARS = {
+  STAGE_1: 250,
+  STAGE_2: 200,
+  STAGE_3: 400,
+  STAGE_4: 350,
+  STAGE_5: 200,
+};
 
 export default function AIConfig() {
   const navigate = useNavigate();
@@ -59,6 +75,13 @@ export default function AIConfig() {
     video_url: '',
     site_url: '',
     payment_link: '',
+    // Roteiro SDR
+    elevator_pitch: '',
+    value_proposition: '',
+    differentiator: '',
+    typical_results: '',
+    qualification_questions: ['', '', ''],
+    max_chars_per_stage: DEFAULT_MAX_CHARS,
   });
 
   useEffect(() => {
@@ -76,6 +99,15 @@ export default function AIConfig() {
       if (error) throw error;
 
       if (data) {
+        const qualificationQuestions = Array.isArray(data.qualification_questions) 
+          ? data.qualification_questions 
+          : ['', '', ''];
+        
+        // Garantir que sempre tenha 3 perguntas
+        while (qualificationQuestions.length < 3) {
+          qualificationQuestions.push('');
+        }
+
         setConfig({
           id: data.id,
           is_active: data.is_active ?? false,
@@ -88,6 +120,13 @@ export default function AIConfig() {
           video_url: data.video_url || '',
           site_url: data.site_url || '',
           payment_link: data.payment_link || '',
+          // Roteiro SDR
+          elevator_pitch: (data as any).elevator_pitch || '',
+          value_proposition: (data as any).value_proposition || '',
+          differentiator: (data as any).differentiator || '',
+          typical_results: (data as any).typical_results || '',
+          qualification_questions: qualificationQuestions as string[],
+          max_chars_per_stage: ((data as any).max_chars_per_stage || DEFAULT_MAX_CHARS) as Record<string, number>,
         });
       }
     } catch (error) {
@@ -100,6 +139,9 @@ export default function AIConfig() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Filtrar perguntas vazias
+      const filteredQuestions = config.qualification_questions.filter(q => q.trim() !== '');
+
       if (config.id) {
         const { error } = await supabase
           .from('whatsapp_ai_config')
@@ -114,6 +156,13 @@ export default function AIConfig() {
             video_url: config.video_url || null,
             site_url: config.site_url || null,
             payment_link: config.payment_link || null,
+            // Roteiro SDR
+            elevator_pitch: config.elevator_pitch || null,
+            value_proposition: config.value_proposition || null,
+            differentiator: config.differentiator || null,
+            typical_results: config.typical_results || null,
+            qualification_questions: filteredQuestions,
+            max_chars_per_stage: config.max_chars_per_stage,
             updated_at: new Date().toISOString(),
           })
           .eq('id', config.id);
@@ -133,6 +182,13 @@ export default function AIConfig() {
             video_url: config.video_url || null,
             site_url: config.site_url || null,
             payment_link: config.payment_link || null,
+            // Roteiro SDR
+            elevator_pitch: config.elevator_pitch || null,
+            value_proposition: config.value_proposition || null,
+            differentiator: config.differentiator || null,
+            typical_results: config.typical_results || null,
+            qualification_questions: filteredQuestions,
+            max_chars_per_stage: config.max_chars_per_stage,
           })
           .select()
           .single();
@@ -155,6 +211,20 @@ export default function AIConfig() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const updateQualificationQuestion = (index: number, value: string) => {
+    setConfig(prev => {
+      const newQuestions = [...prev.qualification_questions];
+      newQuestions[index] = value;
+      return { ...prev, qualification_questions: newQuestions };
+    });
+  };
+
+  const isRoteiroCompleto = () => {
+    return config.elevator_pitch.trim() !== '' && 
+           config.value_proposition.trim() !== '' &&
+           config.qualification_questions.some(q => q.trim() !== '');
   };
 
   if (loading) {
@@ -189,25 +259,217 @@ export default function AIConfig() {
                   <CardDescription>Ative ou desative respostas automáticas</CardDescription>
                 </div>
               </div>
-              <Switch
-                checked={config.is_active}
-                onCheckedChange={(checked) => setConfig(prev => ({ ...prev, is_active: checked }))}
-              />
+              <div className="flex items-center gap-3">
+                {isRoteiroCompleto() ? (
+                  <Badge variant="default" className="bg-green-500/20 text-green-400 border-green-500/30">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Roteiro Completo
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-yellow-400 border-yellow-500/30">
+                    Roteiro Incompleto
+                  </Badge>
+                )}
+                <Switch
+                  checked={config.is_active}
+                  onCheckedChange={(checked) => setConfig(prev => ({ ...prev, is_active: checked }))}
+                />
+              </div>
             </div>
           </CardHeader>
         </Card>
 
-        <Tabs defaultValue="identity" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+        <Tabs defaultValue="roteiro" className="w-full">
+          <TabsList className="grid w-full grid-cols-6">
+            <TabsTrigger value="roteiro" className="gap-1">
+              <Target className="h-3 w-3" />
+              Roteiro SDR
+            </TabsTrigger>
             <TabsTrigger value="identity">Identidade</TabsTrigger>
             <TabsTrigger value="offer">Oferta</TabsTrigger>
             <TabsTrigger value="materials">Materiais</TabsTrigger>
-            <TabsTrigger value="settings">Configurações</TabsTrigger>
+            <TabsTrigger value="settings">Config</TabsTrigger>
             <TabsTrigger value="test" className="gap-1">
               <FlaskConical className="h-3 w-3" />
               Testar
             </TabsTrigger>
           </TabsList>
+
+          {/* ROTEIRO SDR - Nova aba principal */}
+          <TabsContent value="roteiro" className="space-y-4">
+            <Card className="border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-primary" />
+                  Roteiro do SDR
+                </CardTitle>
+                <CardDescription>
+                  Defina o roteiro que o agente seguirá para qualificar leads. <strong>Campos obrigatórios</strong> garantem que o SDR entregue valor antes de propor reunião.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Elevator Pitch */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="elevator_pitch" className="flex items-center gap-2">
+                      Elevator Pitch
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Obrigatório</Badge>
+                    </Label>
+                    <span className="text-xs text-muted-foreground">
+                      {config.elevator_pitch.length}/100 caracteres
+                    </span>
+                  </div>
+                  <Input
+                    id="elevator_pitch"
+                    placeholder="Ex: Ajudo empresas a dobrar a captação de leads em 90 dias"
+                    value={config.elevator_pitch}
+                    onChange={(e) => setConfig(prev => ({ ...prev, elevator_pitch: e.target.value.slice(0, 100) }))}
+                    className={!config.elevator_pitch ? 'border-yellow-500/50' : 'border-green-500/50'}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Uma frase curta e impactante que resume seu valor. Será usada na apresentação inicial.
+                  </p>
+                </div>
+
+                {/* Value Proposition */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="value_proposition" className="flex items-center gap-2">
+                      Proposta de Valor
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Obrigatório</Badge>
+                    </Label>
+                    <span className="text-xs text-muted-foreground">
+                      {config.value_proposition.length}/300 caracteres
+                    </span>
+                  </div>
+                  <Textarea
+                    id="value_proposition"
+                    placeholder="Ex: Trabalhamos com estratégias de marketing digital e vendas estruturadas. Nossos clientes geralmente aumentam a demanda qualificada em 2-3x através de um processo comprovado de geração de leads."
+                    value={config.value_proposition}
+                    onChange={(e) => setConfig(prev => ({ ...prev, value_proposition: e.target.value.slice(0, 300) }))}
+                    rows={3}
+                    className={!config.value_proposition ? 'border-yellow-500/50' : 'border-green-500/50'}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Explicação de 2-3 frases do que você faz e como ajuda clientes.
+                  </p>
+                </div>
+
+                {/* Differentiator */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="differentiator">Diferencial</Label>
+                    <span className="text-xs text-muted-foreground">
+                      {config.differentiator.length}/200 caracteres
+                    </span>
+                  </div>
+                  <Textarea
+                    id="differentiator"
+                    placeholder="Ex: Diferente de agências tradicionais, focamos em resultado mensurável com processo comprovado e acompanhamento semanal."
+                    value={config.differentiator}
+                    onChange={(e) => setConfig(prev => ({ ...prev, differentiator: e.target.value.slice(0, 200) }))}
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    O que diferencia você da concorrência.
+                  </p>
+                </div>
+
+                {/* Typical Results */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="typical_results">Resultados Típicos</Label>
+                    <span className="text-xs text-muted-foreground">
+                      {config.typical_results.length}/200 caracteres
+                    </span>
+                  </div>
+                  <Textarea
+                    id="typical_results"
+                    placeholder="Ex: Clientes como agências de marketing geralmente dobram os leads qualificados em 3 meses."
+                    value={config.typical_results}
+                    onChange={(e) => setConfig(prev => ({ ...prev, typical_results: e.target.value.slice(0, 200) }))}
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Resultados concretos que clientes geralmente alcançam.
+                  </p>
+                </div>
+
+                {/* Qualification Questions */}
+                <div className="space-y-3">
+                  <Label className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    Perguntas de Qualificação
+                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Mín. 1</Badge>
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Perguntas que o SDR usará para descobrir as dores do lead antes de propor reunião.
+                  </p>
+                  
+                  <div className="space-y-2">
+                    <div className="flex gap-2 items-center">
+                      <span className="text-xs text-muted-foreground w-4">1.</span>
+                      <Input
+                        placeholder="Ex: Qual o maior desafio hoje pra captar clientes?"
+                        value={config.qualification_questions[0] || ''}
+                        onChange={(e) => updateQualificationQuestion(0, e.target.value)}
+                        className={!config.qualification_questions[0] ? 'border-yellow-500/50' : 'border-green-500/50'}
+                      />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <span className="text-xs text-muted-foreground w-4">2.</span>
+                      <Input
+                        placeholder="Ex: Vocês já tentaram alguma estratégia de marketing digital?"
+                        value={config.qualification_questions[1] || ''}
+                        onChange={(e) => updateQualificationQuestion(1, e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <span className="text-xs text-muted-foreground w-4">3.</span>
+                      <Input
+                        placeholder="Ex: Tem uma meta de vendas definida pro próximo trimestre?"
+                        value={config.qualification_questions[2] || ''}
+                        onChange={(e) => updateQualificationQuestion(2, e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Preview do Fluxo */}
+            <Card className="bg-muted/30">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Preview do Fluxo SDR</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="flex gap-3">
+                  <Badge variant="outline" className="shrink-0">1</Badge>
+                  <div>
+                    <strong>Apresentação:</strong> "{config.persona_name || '[Nome]'}, da [Empresa]. {config.elevator_pitch || '[Elevator Pitch]'}. Com o que você trabalha?"
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Badge variant="outline" className="shrink-0">2</Badge>
+                  <div>
+                    <strong>Qualificação:</strong> "Legal, [área]! {config.qualification_questions[0] || '[Pergunta de qualificação]'}"
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Badge variant="outline" className="shrink-0">3</Badge>
+                  <div>
+                    <strong>Valor:</strong> "Entendi, [dor] é exatamente o que a gente resolve. {config.value_proposition || '[Proposta de valor]'}. {config.differentiator || ''} Faz sentido eu explicar como funcionaria pro seu caso?"
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Badge variant="outline" className="shrink-0">4</Badge>
+                  <div>
+                    <strong>CTA:</strong> "Resumindo: você precisa [dor] e quer [objetivo]. {config.typical_results || '[Resultados típicos]'}. Que tal agendarmos uma conversa de 20min?"
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Identidade */}
           <TabsContent value="identity" className="space-y-4">
