@@ -486,7 +486,8 @@ serve(async (req) => {
     }
 
     const personaFirstName = aiConfig.persona_name?.split(' ')[0] || 'SDR';
-    console.log('[AI] Using Lovable AI (Gemini) - Persona:', personaFirstName);
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    console.log('[AI] Using OpenAI API - Persona:', personaFirstName);
 
     const currentStage = current_stage_id ? getStageFromLabelId(current_stage_id) : 'STAGE_1';
     const currentOrder = currentStage ? CRM_STAGES[currentStage as CRMStage]?.order || 1 : 1;
@@ -930,17 +931,17 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
 Última: "${cleanedMessage}"
 `;
 
-    console.log('[AI] Calling Lovable AI (Gemini) - Stage:', currentStage, '| Persona:', personaFirstName);
+    console.log('[AI] Calling OpenAI API - Stage:', currentStage, '| Persona:', personaFirstName);
 
-    // 🆕 USANDO LOVABLE AI GATEWAY (Gemini)
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // 🆕 USANDO OPENAI API
+    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: fullPrompt },
           ...historyMessages.slice(-6)
@@ -951,7 +952,7 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error('[AI] Lovable AI error:', aiResponse.status, errorText);
+      console.error('[AI] OpenAI error:', aiResponse.status, errorText);
       
       // Handle rate limits
       if (aiResponse.status === 429) {
@@ -960,20 +961,14 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'AI credits exhausted', should_respond: false }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
       
-      throw new Error(`Lovable AI error: ${aiResponse.status}`);
+      throw new Error(`OpenAI error: ${aiResponse.status}`);
     }
 
     const aiData = await aiResponse.json();
     const aiContent = aiData.choices?.[0]?.message?.content || '';
     
-    console.log('[AI] Lovable AI response:', aiContent.substring(0, 200));
+    console.log('[AI] OpenAI response:', aiContent.substring(0, 200));
 
     let parsedResponse;
     try {
