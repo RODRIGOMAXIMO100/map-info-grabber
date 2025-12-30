@@ -21,11 +21,28 @@ const CRM_STAGES = {
 
 type CRMStage = keyof typeof CRM_STAGES;
 
-function getStageFromLabelId(labelId: string): CRMStage | null {
-  for (const [stage, info] of Object.entries(CRM_STAGES)) {
-    if (info.id === labelId) return stage as CRMStage;
+// 🆕 CAMADA 1: Normalização de stage_id
+function normalizeStageId(rawStageId: string | null | undefined): CRMStage {
+  if (!rawStageId) return 'STAGE_1';
+  
+  // Se já é STAGE_X, retorna direto
+  if (rawStageId.startsWith('STAGE_')) {
+    const validStages = Object.keys(CRM_STAGES);
+    if (validStages.includes(rawStageId)) {
+      return rawStageId as CRMStage;
+    }
   }
-  return null;
+  
+  // Mapear label_id para STAGE_X
+  for (const [stage, info] of Object.entries(CRM_STAGES)) {
+    if (info.id === rawStageId) {
+      return stage as CRMStage;
+    }
+  }
+  
+  // Fallback
+  console.log('[AI] Stage normalization fallback for:', rawStageId);
+  return 'STAGE_1';
 }
 
 // ========== DETECÇÃO DE BOTS/ROBÔS ==========
@@ -114,7 +131,6 @@ const REJECTION_PATTERNS = [
   /tchau/i,
   /até mais/i,
   /adeus/i,
-  // Novos padrões para cold outreach
   /já tenho (pessoas|equipe|fornecedor)/i,
   /já trabalho com/i,
   /não preciso/i,
@@ -166,7 +182,7 @@ const COLD_RESPONSE_PATTERNS = [
   /^(k+|kk+|kkk+|rs+|haha+|hehe+)$/i,
 ];
 
-// ========== 🆕 DETECÇÃO DE "QUERO SABER MAIS" ==========
+// ========== DETECÇÃO DE "QUERO SABER MAIS" ==========
 const WANTS_INFO_PATTERNS = [
   /quero saber mais/i,
   /me conta mais/i,
@@ -183,7 +199,7 @@ const WANTS_INFO_PATTERNS = [
   /quero entender/i,
 ];
 
-// ========== 🆕 DETECÇÃO DE PEDIDO EXPLÍCITO DE REUNIÃO ==========
+// ========== DETECÇÃO DE PEDIDO EXPLÍCITO DE REUNIÃO ==========
 const WANTS_MEETING_PATTERNS = [
   /quero agendar/i,
   /pode agendar/i,
@@ -304,7 +320,6 @@ function detectRejection(message: string): { isRejection: boolean; type: 'hard' 
   return { isRejection: false, type: null };
 }
 
-// 🆕 Detecta se lead pergunta "você é bot?"
 function detectAmIBot(message: string): boolean {
   const normalizedMsg = message.toLowerCase().trim();
   for (const pattern of AM_I_BOT_PATTERNS) {
@@ -316,7 +331,6 @@ function detectAmIBot(message: string): boolean {
   return false;
 }
 
-// 🆕 Detecta se lead pergunta "quem é você?"
 function detectWhoAreYou(message: string): boolean {
   const normalizedMsg = message.toLowerCase().trim();
   for (const pattern of WHO_ARE_YOU_PATTERNS) {
@@ -328,10 +342,8 @@ function detectWhoAreYou(message: string): boolean {
   return false;
 }
 
-// 🆕 Detecta respostas frias/monossilábicas
 function detectColdResponse(message: string): boolean {
   const normalizedMsg = message.toLowerCase().trim();
-  // Resposta muito curta (< 10 chars) e não é uma palavra de contexto
   if (normalizedMsg.length < 10) {
     for (const pattern of COLD_RESPONSE_PATTERNS) {
       if (pattern.test(normalizedMsg)) {
@@ -343,27 +355,23 @@ function detectColdResponse(message: string): boolean {
   return false;
 }
 
-// 🆕 Conta perguntas consecutivas da IA (para regra "valor antes de perguntas")
 function countConsecutiveAIQuestions(history: Array<{ direction: string; content: string }>): number {
   let count = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
     if (msg.direction === 'outgoing') {
-      // Detectar se é pergunta (termina com ?)
       if (msg.content?.trim().endsWith('?')) {
         count++;
       } else {
-        break; // Encontrou mensagem que não é pergunta
+        break;
       }
     } else {
-      // Encontrou mensagem do lead
       break;
     }
   }
   return count;
 }
 
-// 🆕 Conta respostas frias consecutivas do lead
 function countConsecutiveColdResponses(history: Array<{ direction: string; content: string }>): number {
   let count = 0;
   for (let i = history.length - 1; i >= 0; i--) {
@@ -409,12 +417,14 @@ function extractAnsweredTopics(history: Array<{ direction: string; content: stri
   painAnswered: boolean;
   nameIdentified: boolean;
   businessContext: string | null;
+  valueDelivered: boolean;
 } {
   const result = {
     urgencyAnswered: false,
     painAnswered: false,
     nameIdentified: false,
-    businessContext: null as string | null
+    businessContext: null as string | null,
+    valueDelivered: false
   };
   
   const urgencyPatterns = [
@@ -427,11 +437,17 @@ function extractAnsweredTopics(history: Array<{ direction: string; content: stri
     /não consigo/i, /preciso de/i, /falta de/i, /pouco/i, /baixo/i,
     /vendas fracas/i, /demanda/i, /clientes/i, /lead/i, /tráfego/i
   ];
+
+  // 🆕 CAMADA 2: Detectar se já entregamos valor
+  const valuePatterns = [
+    /ajudo.*empresas/i, /trabalhamos com/i, /nossa metodologia/i,
+    /gerar.*clientes/i, /aumentar.*vendas/i, /escalar/i
+  ];
   
   for (const msg of history) {
-    if (msg.direction === 'incoming' && msg.content) {
-      const content = msg.content.toLowerCase();
-      
+    const content = (msg.content || '').toLowerCase();
+    
+    if (msg.direction === 'incoming') {
       for (const pattern of urgencyPatterns) {
         if (pattern.test(content)) {
           result.urgencyAnswered = true;
@@ -449,6 +465,16 @@ function extractAnsweredTopics(history: Array<{ direction: string; content: stri
       const businessMatch = content.match(/(trabalho com|minha empresa|meu negócio|faço|vendo|ofereço|área de|segmento de|setor de)\s*([^.,!?]+)/i);
       if (businessMatch) {
         result.businessContext = businessMatch[0];
+      }
+    }
+    
+    // Verificar se IA já entregou valor
+    if (msg.direction === 'outgoing') {
+      for (const pattern of valuePatterns) {
+        if (pattern.test(content)) {
+          result.valueDelivered = true;
+          break;
+        }
       }
     }
   }
@@ -492,6 +518,77 @@ function countConsecutiveAIResponses(history: Array<{ direction: string; content
   return count;
 }
 
+// ========== 🆕 CAMADA 2: DECISÕES DETERMINÍSTICAS ==========
+interface DeterministicDecision {
+  shouldHandoff: boolean;
+  handoffReason: string | null;
+  blockHandoff: boolean;
+  blockReason: string | null;
+  requireValue: boolean;
+  forcedResponse: string | null;
+}
+
+function makeDeterministicDecisions(
+  cleanedMessage: string,
+  history: Array<{ direction: string; content: string }>,
+  currentOrder: number,
+  wantsMoreInfo: boolean,
+  wantsMeeting: boolean,
+  valueDelivered: boolean,
+  personaFirstName: string,
+  offerDescription: string
+): DeterministicDecision {
+  const result: DeterministicDecision = {
+    shouldHandoff: false,
+    handoffReason: null,
+    blockHandoff: false,
+    blockReason: null,
+    requireValue: false,
+    forcedResponse: null
+  };
+
+  // 🆕 REGRA 1: "Quero saber mais" = PROIBIDO handoff, OBRIGADO dar valor
+  if (wantsMoreInfo) {
+    result.blockHandoff = true;
+    result.blockReason = 'Lead quer informação, não reunião';
+    result.requireValue = true;
+    
+    // Gerar resposta de valor direta se não entregou ainda
+    if (!valueDelivered) {
+      const offerShort = offerDescription?.substring(0, 100) || 'gerar mais clientes qualificados';
+      result.forcedResponse = `Claro! ${offerShort}. Basicamente ajudamos empresas a crescer de forma profissional. Faz sentido conversar mais sobre como isso funcionaria pra você?`;
+    }
+    
+    console.log('[DETERMINISTIC] Wants more info → Block handoff, require value');
+    return result;
+  }
+
+  // 🆕 REGRA 2: Handoff só com pedido explícito de reunião E valor entregue
+  if (wantsMeeting) {
+    if (valueDelivered || currentOrder >= 3) {
+      result.shouldHandoff = true;
+      result.handoffReason = 'Lead pediu reunião/preço explicitamente';
+      console.log('[DETERMINISTIC] Wants meeting + value delivered → Allow handoff');
+    } else {
+      // Não entregou valor ainda, explicar antes do handoff
+      result.blockHandoff = true;
+      result.blockReason = 'Precisa entregar valor antes de handoff';
+      result.requireValue = true;
+      console.log('[DETERMINISTIC] Wants meeting but no value → Block, deliver value first');
+    }
+    return result;
+  }
+
+  // 🆕 REGRA 3: Primeiro contato NUNCA faz handoff
+  if (currentOrder === 1 && history.length <= 2) {
+    result.blockHandoff = true;
+    result.blockReason = 'Primeiro contato - não fazer handoff';
+    console.log('[DETERMINISTIC] First contact → Block handoff');
+  }
+
+  return result;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -500,9 +597,9 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     
-    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY is not configured');
+    if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { conversation_id, incoming_message, conversation_history, current_stage_id, lead_name } = await req.json();
@@ -513,6 +610,12 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // 🆕 CAMADA 1: Normalizar stage_id
+    const currentStage = normalizeStageId(current_stage_id);
+    const currentOrder = CRM_STAGES[currentStage]?.order || 1;
+    
+    console.log('[AI] Stage normalized:', current_stage_id, '→', currentStage, '(order:', currentOrder, ')');
 
     const { data: conversationData } = await supabase
       .from('whatsapp_conversations')
@@ -539,11 +642,7 @@ serve(async (req) => {
     }
 
     const personaFirstName = aiConfig.persona_name?.split(' ')[0] || 'SDR';
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     console.log('[AI] Using OpenAI API - Persona:', personaFirstName);
-
-    const currentStage = current_stage_id ? getStageFromLabelId(current_stage_id) : 'STAGE_1';
-    const currentOrder = currentStage ? CRM_STAGES[currentStage as CRMStage]?.order || 1 : 1;
 
     // Se já está em STAGE_6+ (negociação/fechado), não responder
     if (currentOrder >= 6) {
@@ -559,7 +658,7 @@ serve(async (req) => {
       );
     }
 
-    // ========== 🆕 DETECÇÃO DE "SOU BOT?" - Resposta Humana ==========
+    // ========== DETECÇÃO DE "SOU BOT?" - Resposta Humana ==========
     if (detectAmIBot(cleanedMessage)) {
       console.log('[AI] Lead asked if I am a bot - responding as human');
       const humanResponse = `Sou o ${personaFirstName}, da equipe de marketing! 😊 Me conta, como estão as coisas aí?`;
@@ -578,21 +677,22 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           response: humanResponse,
-          stage: currentStage || 'STAGE_1',
-          label_id: CRM_STAGES[currentStage as CRMStage]?.id || 'new',
+          stage: currentStage,
+          stage_normalized: currentStage,
+          label_id: CRM_STAGES[currentStage]?.id || 'new',
           should_send_video: false,
           should_send_site: false,
           should_handoff: false,
-          delay_seconds: aiConfig.auto_reply_delay_seconds || 2
+          delay_seconds: aiConfig.auto_reply_delay_seconds || 2,
+          deterministic_action: 'AM_I_BOT'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // ========== 🆕 DETECÇÃO DE "QUEM É VOCÊ?" - Pitch Direto ==========
+    // ========== DETECÇÃO DE "QUEM É VOCÊ?" - Pitch Direto ==========
     if (detectWhoAreYou(cleanedMessage)) {
       console.log('[AI] Lead asked who we are - giving value pitch');
-      // Usar descrição genérica baseada no target_audience (evitar cortar markdown)
       const targetAudience = aiConfig.target_audience || '';
       const offerSummary = targetAudience.toLowerCase().includes('venda') 
         ? 'estruturar marketing e aumentar vendas'
@@ -616,12 +716,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           response: whoPitch,
-          stage: currentStage || 'STAGE_1',
-          label_id: CRM_STAGES[currentStage as CRMStage]?.id || 'new',
+          stage: currentStage,
+          stage_normalized: currentStage,
+          label_id: CRM_STAGES[currentStage]?.id || 'new',
           should_send_video: false,
           should_send_site: false,
           should_handoff: false,
-          delay_seconds: aiConfig.auto_reply_delay_seconds || 2
+          delay_seconds: aiConfig.auto_reply_delay_seconds || 2,
+          deterministic_action: 'WHO_ARE_YOU'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -680,12 +782,14 @@ serve(async (req) => {
         JSON.stringify({
           response: rejectionResponse,
           stage: 'STAGE_8',
+          stage_normalized: 'STAGE_8',
           label_id: 'lost',
           is_rejection: true,
           rejection_type: rejectionCheck.type,
           should_handoff: false,
           ai_paused: true,
-          delay_seconds: aiConfig.auto_reply_delay_seconds || 2
+          delay_seconds: aiConfig.auto_reply_delay_seconds || 2,
+          deterministic_action: 'REJECTION'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -702,9 +806,66 @@ serve(async (req) => {
     const wantsMoreInfo = detectWantsMoreInfo(cleanedMessage);
     const wantsMeeting = detectWantsMeeting(cleanedMessage);
     
-    console.log('[AI] Bot:', botCheck.isBot, '| Role inverted:', isRoleInverted, '| Business auto:', businessAutoCheck.isBusinessAuto, '| Consecutive AI:', consecutiveAIResponses, '| AI Questions:', consecutiveAIQuestions, '| Cold responses:', consecutiveColdResponses, '| Wants info:', wantsMoreInfo, '| Wants meeting:', wantsMeeting);
+    // 🆕 CAMADA 2: Extrair contexto incluindo valueDelivered
+    const answeredTopics = extractAnsweredTopics(conversation_history || []);
+    
+    console.log('[AI] Detection results:', {
+      bot: botCheck.isBot,
+      roleInverted: isRoleInverted,
+      businessAuto: businessAutoCheck.isBusinessAuto,
+      consecutiveAI: consecutiveAIResponses,
+      aiQuestions: consecutiveAIQuestions,
+      coldResponses: consecutiveColdResponses,
+      wantsInfo: wantsMoreInfo,
+      wantsMeeting: wantsMeeting,
+      valueDelivered: answeredTopics.valueDelivered
+    });
 
-    // 🆕 FAIL FAST: Se 2+ respostas frias consecutivas → dar pitch direto
+    // 🆕 CAMADA 2: Decisões determinísticas
+    const deterministicDecision = makeDeterministicDecisions(
+      cleanedMessage,
+      conversation_history || [],
+      currentOrder,
+      wantsMoreInfo,
+      wantsMeeting,
+      answeredTopics.valueDelivered,
+      personaFirstName,
+      aiConfig.offer_description || ''
+    );
+
+    // Se tem resposta forçada, usar ela diretamente
+    if (deterministicDecision.forcedResponse) {
+      console.log('[AI] Using deterministic forced response');
+      
+      await supabase
+        .from('whatsapp_ai_logs')
+        .insert({
+          conversation_id,
+          incoming_message: cleanedMessage,
+          ai_response: deterministicDecision.forcedResponse,
+          detected_intent: 'DETERMINISTIC_VALUE_RESPONSE',
+          confidence_score: 0.98,
+          needs_human: false
+        });
+      
+      return new Response(
+        JSON.stringify({
+          response: deterministicDecision.forcedResponse,
+          stage: currentStage,
+          stage_normalized: currentStage,
+          label_id: CRM_STAGES[currentStage]?.id || 'new',
+          should_send_video: false,
+          should_send_site: false,
+          should_handoff: false,
+          delay_seconds: aiConfig.auto_reply_delay_seconds || 2,
+          deterministic_action: 'FORCED_VALUE_RESPONSE',
+          value_delivered: true
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // FAIL FAST: Se 2+ respostas frias consecutivas → dar pitch direto
     if (consecutiveColdResponses >= 2 || (isColdResponse && consecutiveAIQuestions >= 2)) {
       console.log('[AI] FAIL FAST: Lead is cold, giving direct pitch');
       const offerShort = aiConfig.offer_description?.substring(0, 60) || 'gerar mais clientes';
@@ -724,12 +885,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           response: directPitch,
-          stage: currentStage || 'STAGE_1',
-          label_id: CRM_STAGES[currentStage as CRMStage]?.id || 'new',
+          stage: currentStage,
+          stage_normalized: currentStage,
+          label_id: CRM_STAGES[currentStage]?.id || 'new',
           should_send_video: false,
           should_send_site: false,
           should_handoff: false,
-          delay_seconds: aiConfig.auto_reply_delay_seconds || 2
+          delay_seconds: aiConfig.auto_reply_delay_seconds || 2,
+          deterministic_action: 'FAIL_FAST'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -753,7 +916,8 @@ serve(async (req) => {
           should_respond: false,
           is_bot_loop: true,
           message: 'IA pausada - detectado possível loop com bot/robô',
-          consecutive_ai_responses: consecutiveAIResponses
+          consecutive_ai_responses: consecutiveAIResponses,
+          deterministic_action: 'BOT_LOOP_PAUSE'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -778,14 +942,16 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           response: botResponse,
-          stage: currentStage || 'STAGE_1',
-          label_id: CRM_STAGES[currentStage as CRMStage]?.id || 'new',
+          stage: currentStage,
+          stage_normalized: currentStage,
+          label_id: CRM_STAGES[currentStage]?.id || 'new',
           is_bot_message: true,
           bot_reason: botCheck.reason,
           should_send_video: false,
           should_send_site: false,
           should_handoff: false,
-          delay_seconds: aiConfig.auto_reply_delay_seconds || 5
+          delay_seconds: aiConfig.auto_reply_delay_seconds || 5,
+          deterministic_action: 'BOT_DETECTED'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -807,7 +973,6 @@ serve(async (req) => {
     }
 
     const messagesInStage = dbMessagesInStage > 0 ? dbMessagesInStage : countMessagesInCurrentStage(conversation_history || [], currentOrder);
-    // 🆕 LIMITES REDUZIDOS: STAGE_1=2, STAGE_2=3, STAGE_3=3
     const defaultMaxMessages = currentOrder === 1 ? 2 : currentOrder <= 3 ? 3 : 4;
     const maxMessagesInStage = stagePrompt?.max_messages_in_stage || defaultMaxMessages;
     
@@ -825,7 +990,6 @@ serve(async (req) => {
     }));
     historyMessages.push({ role: 'user', content: cleanedMessage });
 
-    const answeredTopics = extractAnsweredTopics(conversation_history || []);
     const businessContextKnown = !!answeredTopics.businessContext;
     console.log('[AI] Answered topics:', JSON.stringify(answeredTopics), '| Business context known:', businessContextKnown);
     
@@ -847,7 +1011,6 @@ ${answeredTopics.businessContext ? `- ✅ CONTEXTO: "${answeredTopics.businessCo
 - PERGUNTE ao invés de presumir
 ` : '';
 
-    // 🆕 REGRA "VALOR ANTES DE PERGUNTAS"
     const valueBeforeQuestionsRule = consecutiveAIQuestions >= 2 ? `
 🚨 REGRA OBRIGATÓRIA - VALOR ANTES DE PERGUNTA:
 Você já fez ${consecutiveAIQuestions} perguntas seguidas sem dar valor.
@@ -862,26 +1025,24 @@ Exemplo: "Ajudamos empresas a conseguir mais clientes qualificados. Isso faz sen
     const siteUrl = aiConfig.site_url;
     const paymentLink = aiConfig.payment_link;
 
-    // 🆕 REGRA ANTI-ALUCINAÇÃO DE MATERIAIS
+    // 🆕 CAMADA 3: Anti-alucinação de materiais ESTRITA
     const materialsAvailabilityRule = `
 🎬 MATERIAIS DISPONÍVEIS:
-${videoUrl ? `✅ TEM VÍDEO - pode usar should_send_video: true` : `❌ NÃO TEM VÍDEO - NÃO mencione vídeo!`}
-${siteUrl ? `✅ TEM SITE - pode usar should_send_site: true` : `❌ NÃO TEM SITE - NÃO mencione site!`}
-⚠️ NUNCA prometa enviar algo que você não tem!`;
+${videoUrl ? `✅ TEM VÍDEO (${videoUrl.substring(0, 30)}...) - pode usar should_send_video: true` : `❌ NÃO TEM VÍDEO - NUNCA mencione vídeo, NUNCA use should_send_video: true`}
+${siteUrl ? `✅ TEM SITE (${siteUrl.substring(0, 30)}...) - pode usar should_send_site: true` : `❌ NÃO TEM SITE - NUNCA mencione site, NUNCA use should_send_site: true`}
+⚠️ REGRA ABSOLUTA: Só mencione materiais que existem!`;
 
-    // 🆕 REGRA "QUERO SABER MAIS" = DAR INFORMAÇÃO
-    const wantsInfoRule = wantsMoreInfo ? `
-🚨 LEAD QUER INFORMAÇÃO:
-O lead disse "${cleanedMessage}" = ELE QUER SABER MAIS!
-NESTA MENSAGEM você DEVE:
-1. EXPLICAR o que você faz em 2-3 frases (usar offer_description)
-2. Perguntar se faz sentido aprofundar
-❌ NÃO proponha reunião agora!
-❌ NÃO faça handoff!
-` : '';
-
-    // 🆕 REGRA DE HANDOFF INTELIGENTE
-    const handoffRules = `
+    // 🆕 CAMADA 2: Regras de handoff determinísticas para o LLM
+    const deterministicHandoffRule = deterministicDecision.blockHandoff ? `
+🚫 HANDOFF BLOQUEADO:
+Motivo: ${deterministicDecision.blockReason}
+VOCÊ NÃO PODE usar should_handoff: true nesta resposta!
+${deterministicDecision.requireValue ? 'Foque em ENTREGAR VALOR ao lead.' : ''}
+` : (deterministicDecision.shouldHandoff ? `
+✅ HANDOFF PERMITIDO:
+Lead pediu reunião/preço explicitamente.
+Você PODE usar should_handoff: true se fizer sentido.
+` : `
 📋 REGRAS DE HANDOFF (should_handoff: true):
 ✅ PERMITIDO apenas se:
 - Lead EXPLICITAMENTE pediu reunião/call: "quero agendar", "vamos conversar"
@@ -891,8 +1052,7 @@ NESTA MENSAGEM você DEVE:
 ❌ PROIBIDO fazer handoff se:
 - Lead apenas disse "quero saber mais" (ele quer INFO, não reunião!)
 - Lead ainda não entendeu a proposta
-- Você não explicou como pode ajudar
-${wantsMeeting ? '✅ LEAD PEDIU REUNIÃO EXPLICITAMENTE - Handoff permitido!' : '⚠️ Lead NÃO pediu reunião - Foque em explicar/qualificar'}`;
+- Você não explicou como pode ajudar`);
     
     const roleInversionContext = isRoleInverted 
       ? `\n\n⚠️ O lead perguntou "em que posso ajudar" - ELE É ATENDENTE. APRESENTE-SE explicando quem você é e por que está entrando em contato.`
@@ -907,7 +1067,6 @@ O lead é uma EMPRESA com atendimento automatizado.
 ✅ Pergunte sobre os DESAFIOS de vendas DELES
 ` : '';
 
-    // 🆕 COLD OUTREACH CONTEXT - STAGE_1 é diferente
     const coldOutreachContext = currentOrder === 1 ? `
 📞 CONTEXTO COLD OUTREACH (PRIMEIRO CONTATO):
 Você enviou uma mensagem fria. O lead respondeu. Ele NÃO sabe quem você é.
@@ -946,10 +1105,13 @@ OFERTA:
 ${aiConfig.offer_description || 'Não especificada'}
 
 URLs:
-${videoUrl ? `- Vídeo: ${videoUrl}` : ''}
-${siteUrl ? `- Site: ${siteUrl}` : ''}`;
+${videoUrl ? `- Vídeo: ${videoUrl}` : '- Vídeo: NÃO DISPONÍVEL'}
+${siteUrl ? `- Site: ${siteUrl}` : '- Site: NÃO DISPONÍVEL'}`;
 
     const businessContext = shouldIncludeBusinessContext ? fullBusinessContext : minimalContext;
+
+    // 🆕 CAMADA 4: Limite de caracteres ajustado
+    const maxResponseChars = 350;
     
     let systemPromptForPhase: string;
     
@@ -963,8 +1125,7 @@ ${antiHallucinationRule}
 ${antiMimicryRule}
 ${valueBeforeQuestionsRule}
 ${materialsAvailabilityRule}
-${wantsInfoRule}
-${handoffRules}
+${deterministicHandoffRule}
 
 CONTEXTO:
 - Nome do lead: ${lead_name || 'não identificado'}
@@ -973,6 +1134,7 @@ CONTEXTO:
 - Mensagens na fase: ${messagesInStage}/${maxMessagesInStage}
 - Perguntas consecutivas: ${consecutiveAIQuestions}
 - Respostas frias: ${consecutiveColdResponses}
+- Valor já entregue: ${answeredTopics.valueDelivered ? 'SIM' : 'NÃO'}
 ${forceAdvance ? '- ⚠️ LIMITE ATINGIDO: Avance ou encerre!' : ''}
 ${roleInversionContext}`;
     } else {
@@ -985,13 +1147,13 @@ ${antiHallucinationRule}
 ${antiMimicryRule}
 ${valueBeforeQuestionsRule}
 ${materialsAvailabilityRule}
-${wantsInfoRule}
-${handoffRules}
+${deterministicHandoffRule}
 
 CONTEXTO:
 - Nome: ${lead_name || 'não identificado'}
-- Fase: ${CRM_STAGES[currentStage as CRMStage]?.name || 'Lead Novo'}
+- Fase: ${CRM_STAGES[currentStage]?.name || 'Lead Novo'}
 - Mensagens: ${messagesInStage}
+- Valor já entregue: ${answeredTopics.valueDelivered ? 'SIM' : 'NÃO'}
 ${roleInversionContext}`;
     }
     
@@ -1000,7 +1162,7 @@ ${systemPromptForPhase}
 
 RESPONDA EM JSON:
 {
-  "response": "sua resposta (MÁXIMO 200 caracteres)",
+  "response": "sua resposta (MÁXIMO ${maxResponseChars} caracteres)",
   "achieved_objective": true/false,
   "should_advance": true/false,
   "next_stage": "STAGE_1" a "STAGE_5",
@@ -1014,16 +1176,18 @@ RESPONDA EM JSON:
 ESTÁGIOS:
 - STAGE_1: Lead Novo - Gerar curiosidade, descobrir área/cargo
 - STAGE_2: Levantamento - Descobrir dor, contexto, urgência
-- STAGE_3: Apresentação - Mostrar solução, enviar vídeo
+- STAGE_3: Apresentação - Mostrar solução, entregar valor
 - STAGE_4: Interesse Confirmado - Confirmar interesse, coletar dados
 - STAGE_5: Handoff - Passar para vendedor
 
 REGRAS CRÍTICAS:
-1. Resposta CURTA (máximo 200 caracteres)
+1. Resposta CURTA (máximo ${maxResponseChars} caracteres)
 2. UMA pergunta por mensagem no máximo
 3. Se fez 2+ perguntas, DÊ VALOR antes de perguntar de novo
 4. Avance apenas 1 estágio por vez
 5. NUNCA vá além de STAGE_5
+6. ${!videoUrl ? 'NÃO mencione vídeo (não existe!)' : ''}
+7. ${!siteUrl ? 'NÃO mencione site (não existe!)' : ''}
 
 Histórico:
 ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.role === 'user' ? 'Lead' : 'SDR'}: ${m.content}`).join('\n')}
@@ -1033,7 +1197,6 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
 
     console.log('[AI] Calling OpenAI API - Stage:', currentStage, '| Persona:', personaFirstName);
 
-    // 🆕 USANDO OPENAI API
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -1054,7 +1217,6 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
       const errorText = await aiResponse.text();
       console.error('[AI] OpenAI error:', aiResponse.status, errorText);
       
-      // Handle rate limits
       if (aiResponse.status === 429) {
         return new Response(
           JSON.stringify({ error: 'Rate limit exceeded', should_respond: false }),
@@ -1089,6 +1251,29 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
       };
     }
 
+    // 🆕 CAMADA 2: Aplicar decisões determinísticas sobre a resposta do LLM
+    if (deterministicDecision.blockHandoff && parsedResponse.should_handoff) {
+      console.log('[AI] DETERMINISTIC OVERRIDE: Blocking handoff -', deterministicDecision.blockReason);
+      parsedResponse.should_handoff = false;
+      parsedResponse.handoff_reason = null;
+    }
+
+    if (deterministicDecision.shouldHandoff && !parsedResponse.should_handoff) {
+      console.log('[AI] DETERMINISTIC OVERRIDE: Forcing handoff -', deterministicDecision.handoffReason);
+      parsedResponse.should_handoff = true;
+      parsedResponse.handoff_reason = deterministicDecision.handoffReason;
+    }
+
+    // 🆕 CAMADA 3: Bloquear materiais inexistentes
+    if (!videoUrl && parsedResponse.should_send_video) {
+      console.log('[AI] ANTI-HALLUCINATION: Blocking video flag (no video configured)');
+      parsedResponse.should_send_video = false;
+    }
+    if (!siteUrl && parsedResponse.should_send_site) {
+      console.log('[AI] ANTI-HALLUCINATION: Blocking site flag (no site configured)');
+      parsedResponse.should_send_site = false;
+    }
+
     // Garantir mensagem de handoff
     if (parsedResponse.should_handoff) {
       const response = parsedResponse.response?.toLowerCase() || '';
@@ -1107,6 +1292,9 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
     }
 
     let finalStage = parsedResponse.next_stage || currentStage;
+    
+    // Normalizar finalStage também
+    finalStage = normalizeStageId(finalStage);
     
     if (forceAdvance && !parsedResponse.should_advance && currentOrder < 5) {
       const nextOrder = Math.min(currentOrder + 1, 5);
@@ -1144,7 +1332,9 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
     const needsHuman = parsedResponse.should_handoff || finalStage === 'STAGE_5';
 
     // Atualizar conversation
-    if (finalStage === currentStage) {
+    const stageChanged = finalStage !== currentStage;
+    
+    if (!stageChanged) {
       await supabase
         .from('whatsapp_conversations')
         .update({ 
@@ -1175,7 +1365,7 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
         conversation_id,
         incoming_message: cleanedMessage,
         ai_response: parsedResponse.response,
-        detected_intent: `${finalStage} | Obj: ${parsedResponse.achieved_objective} | Adv: ${parsedResponse.should_advance}`,
+        detected_intent: `${finalStage} | Obj: ${parsedResponse.achieved_objective} | Adv: ${parsedResponse.should_advance} | ValDel: ${answeredTopics.valueDelivered}`,
         applied_label_id: labelId,
         confidence_score: 0.9,
         needs_human: needsHuman
@@ -1187,10 +1377,12 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
       JSON.stringify({
         response: parsedResponse.response,
         stage: finalStage,
+        stage_normalized: finalStage,
         label_id: labelId,
         lead_name: parsedResponse.lead_name || lead_name || null,
         achieved_objective: parsedResponse.achieved_objective,
         should_advance: parsedResponse.should_advance,
+        stage_changed: stageChanged,
         should_send_video: shouldSendVideo,
         should_send_site: shouldSendSite,
         should_handoff: needsHuman,
@@ -1199,7 +1391,15 @@ ${historyMessages.slice(-6).map((m: { role: string; content: string }) => `${m.r
         video_url: shouldSendVideo ? videoUrl : null,
         site_url: shouldSendSite ? siteUrl : null,
         payment_link: paymentLink || null,
-        delay_seconds: aiConfig.auto_reply_delay_seconds || 2
+        delay_seconds: aiConfig.auto_reply_delay_seconds || 2,
+        // 🆕 Debug info adicional
+        deterministic_decision: {
+          blockHandoff: deterministicDecision.blockHandoff,
+          blockReason: deterministicDecision.blockReason,
+          shouldHandoff: deterministicDecision.shouldHandoff,
+          handoffReason: deterministicDecision.handoffReason
+        },
+        value_delivered: answeredTopics.valueDelivered
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
