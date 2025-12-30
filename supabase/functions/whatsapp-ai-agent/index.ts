@@ -539,8 +539,15 @@ serve(async (req) => {
     // ========== 🆕 DETECÇÃO DE "QUEM É VOCÊ?" - Pitch Direto ==========
     if (detectWhoAreYou(cleanedMessage)) {
       console.log('[AI] Lead asked who we are - giving value pitch');
-      const offerShort = aiConfig.offer_description?.substring(0, 80) || 'crescer no digital';
-      const whoPitch = `Sou ${personaFirstName}! Ajudo empresas a ${offerShort}. Vi seu trabalho e achei que poderia ser útil pra você. Com o que você trabalha?`;
+      // Usar descrição genérica baseada no target_audience (evitar cortar markdown)
+      const targetAudience = aiConfig.target_audience || '';
+      const offerSummary = targetAudience.toLowerCase().includes('venda') 
+        ? 'estruturar marketing e aumentar vendas'
+        : targetAudience.toLowerCase().includes('marketing')
+        ? 'gerar demanda e escalar resultados' 
+        : 'crescer no digital de forma profissional';
+
+      const whoPitch = `Sou ${personaFirstName}! Trabalho ajudando empresas a ${offerSummary}. Vi seu trabalho e achei que poderia ser interessante conversar. Com o que você trabalha?`;
       
       await supabase
         .from('whatsapp_ai_logs')
