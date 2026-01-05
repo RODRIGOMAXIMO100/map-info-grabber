@@ -213,45 +213,55 @@ export default function WhatsAppConfig() {
   };
 
   const handleDelete = async () => {
-    console.log('handleDelete called, instanceToDelete:', instanceToDelete);
-    if (!instanceToDelete) {
-      console.log('No instance to delete, returning');
-      return;
-    }
-    
+    if (!instanceToDelete) return;
+
     try {
-      // Deletar dados relacionados primeiro
-      console.log('Deleting related data for instance:', instanceToDelete);
-      
-      await supabase.from('whatsapp_logs').delete().eq('config_id', instanceToDelete);
-      await supabase.from('whatsapp_queue').delete().eq('config_id', instanceToDelete);
-      await supabase.from('whatsapp_instance_limits').delete().eq('config_id', instanceToDelete);
-      
-      // Agora deletar a instância
+      // Remover dados relacionados (onde faz sentido) e desvincular conversas
+      const { error: logsError } = await supabase
+        .from('whatsapp_logs')
+        .delete()
+        .eq('config_id', instanceToDelete);
+      if (logsError) throw logsError;
+
+      const { error: queueError } = await supabase
+        .from('whatsapp_queue')
+        .delete()
+        .eq('config_id', instanceToDelete);
+      if (queueError) throw queueError;
+
+      const { error: limitsError } = await supabase
+        .from('whatsapp_instance_limits')
+        .delete()
+        .eq('config_id', instanceToDelete);
+      if (limitsError) throw limitsError;
+
+      // Mantém histórico, mas remove o vínculo com a instância para não bloquear o delete (FK)
+      const { error: convError } = await supabase
+        .from('whatsapp_conversations')
+        .update({ config_id: null })
+        .eq('config_id', instanceToDelete);
+      if (convError) throw convError;
+
       const { error } = await supabase
         .from('whatsapp_config')
         .delete()
         .eq('id', instanceToDelete);
 
-      if (error) {
-        console.error('Delete error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('Instance deleted successfully');
       toast({
         title: 'Instância removida',
-        description: 'A instância e seus dados relacionados foram removidos com sucesso.',
+        description: 'A instância foi removida e as conversas foram mantidas (desvinculadas).',
       });
-      
+
       setDeleteDialogOpen(false);
       setInstanceToDelete(null);
       loadInstances();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting instance:', error);
       toast({
         title: 'Erro ao remover',
-        description: 'Não foi possível remover a instância.',
+        description: error?.message || 'Não foi possível remover a instância.',
         variant: 'destructive',
       });
     }
@@ -657,7 +667,7 @@ export default function WhatsAppConfig() {
             <DialogHeader>
               <DialogTitle>Remover Instância</DialogTitle>
               <DialogDescription>
-                Tem certeza que deseja remover esta instância? As conversas vinculadas não serão excluídas.
+                Tem certeza que deseja remover esta instância? As conversas serão mantidas, mas ficarão desvinculadas desta instância.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
