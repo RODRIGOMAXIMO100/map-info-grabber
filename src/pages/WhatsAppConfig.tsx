@@ -213,19 +213,35 @@ export default function WhatsAppConfig() {
   };
 
   const handleDelete = async () => {
-    if (!instanceToDelete) return;
+    console.log('handleDelete called, instanceToDelete:', instanceToDelete);
+    if (!instanceToDelete) {
+      console.log('No instance to delete, returning');
+      return;
+    }
     
     try {
+      // Deletar dados relacionados primeiro
+      console.log('Deleting related data for instance:', instanceToDelete);
+      
+      await supabase.from('whatsapp_logs').delete().eq('config_id', instanceToDelete);
+      await supabase.from('whatsapp_queue').delete().eq('config_id', instanceToDelete);
+      await supabase.from('whatsapp_instance_limits').delete().eq('config_id', instanceToDelete);
+      
+      // Agora deletar a instância
       const { error } = await supabase
         .from('whatsapp_config')
         .delete()
         .eq('id', instanceToDelete);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Delete error:', error);
+        throw error;
+      }
 
+      console.log('Instance deleted successfully');
       toast({
         title: 'Instância removida',
-        description: 'A instância foi removida com sucesso.',
+        description: 'A instância e seus dados relacionados foram removidos com sucesso.',
       });
       
       setDeleteDialogOpen(false);
@@ -392,7 +408,10 @@ export default function WhatsAppConfig() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('Delete button clicked for instance:', instance.id);
                           setInstanceToDelete(instance.id);
                           setDeleteDialogOpen(true);
                         }}
@@ -626,7 +645,14 @@ export default function WhatsAppConfig() {
         </Dialog>
 
         {/* Delete Confirmation Dialog */}
-        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <Dialog 
+          open={deleteDialogOpen} 
+          onOpenChange={(open) => {
+            console.log('Delete dialog onOpenChange:', open);
+            setDeleteDialogOpen(open);
+            if (!open) setInstanceToDelete(null);
+          }}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Remover Instância</DialogTitle>
