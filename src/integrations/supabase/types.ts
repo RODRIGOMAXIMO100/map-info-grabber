@@ -62,6 +62,36 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcast_followup_templates: {
+        Row: {
+          created_at: string
+          followup_number: number
+          hours_after_broadcast: number
+          id: string
+          is_active: boolean
+          message_template: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          followup_number: number
+          hours_after_broadcast: number
+          id?: string
+          is_active?: boolean
+          message_template: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          followup_number?: number
+          hours_after_broadcast?: number
+          id?: string
+          is_active?: boolean
+          message_template?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       broadcast_lists: {
         Row: {
           created_at: string | null
@@ -420,6 +450,8 @@ export type Database = {
           ai_paused: boolean | null
           ai_pending_at: string | null
           avatar_url: string | null
+          broadcast_list_id: string | null
+          broadcast_sent_at: string | null
           config_id: string | null
           conversation_summary: string | null
           converted_at: string | null
@@ -460,6 +492,8 @@ export type Database = {
           ai_paused?: boolean | null
           ai_pending_at?: string | null
           avatar_url?: string | null
+          broadcast_list_id?: string | null
+          broadcast_sent_at?: string | null
           config_id?: string | null
           conversation_summary?: string | null
           converted_at?: string | null
@@ -500,6 +534,8 @@ export type Database = {
           ai_paused?: boolean | null
           ai_pending_at?: string | null
           avatar_url?: string | null
+          broadcast_list_id?: string | null
+          broadcast_sent_at?: string | null
           config_id?: string | null
           conversation_summary?: string | null
           converted_at?: string | null
@@ -536,6 +572,13 @@ export type Database = {
           video_sent?: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_broadcast_list_id_fkey"
+            columns: ["broadcast_list_id"]
+            isOneToOne: false
+            referencedRelation: "broadcast_lists"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_conversations_config_id_fkey"
             columns: ["config_id"]
