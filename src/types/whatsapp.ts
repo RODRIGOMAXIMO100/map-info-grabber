@@ -35,6 +35,7 @@ export interface WhatsAppConversation {
   updated_at: string;
   // CRM fields
   is_crm_lead?: boolean;
+  crm_funnel_id?: string | null;
   dna_id?: string;
   reminder_at?: string;
   estimated_value?: number;
