@@ -17,6 +17,8 @@ import Dashboard from "./pages/Dashboard";
 import Reminders from "./pages/Reminders";
 import AntiBlockConfig from "./pages/AntiBlockConfig";
 import FunnelStagesManager from "./pages/FunnelStagesManager";
+import FunnelManager from "./pages/FunnelManager";
+import FunnelStageEditor from "./pages/FunnelStageEditor";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +37,8 @@ const App = () => (
             <Route path="/whatsapp/broadcast" element={<BroadcastManager />} />
             <Route path="/whatsapp/broadcast/:id" element={<BroadcastDetails />} />
             <Route path="/crm" element={<CRMKanban />} />
+            <Route path="/crm/funnels" element={<FunnelManager />} />
+            <Route path="/crm/funnels/:id/edit" element={<FunnelStageEditor />} />
             <Route path="/lembretes" element={<Reminders />} />
             <Route path="/ai-config" element={<AIConfig />} />
             <Route path="/ai-logs" element={<AILogs />} />
