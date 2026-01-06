@@ -1,8 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, RefreshCw, Settings, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -20,8 +28,8 @@ import {
   type UrgencyFilter,
   type SortOption,
 } from '@/components/crm';
-import type { WhatsAppConversation, CRMStage } from '@/types/whatsapp';
-import { CRM_STAGES } from '@/types/whatsapp';
+import type { WhatsAppConversation } from '@/types/whatsapp';
+import type { CRMFunnel, CRMFunnelStage } from '@/types/crm';
 
 interface BANTScore {
   budget?: boolean;
@@ -32,12 +40,18 @@ interface BANTScore {
 
 export default function CRMKanban() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [bantScores, setBantScores] = useState<Record<string, BANTScore>>({});
   const [loading, setLoading] = useState(true);
   const [draggedItem, setDraggedItem] = useState<WhatsAppConversation | null>(null);
   const [selectedLead, setSelectedLead] = useState<WhatsAppConversation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Funnel state
+  const [funnels, setFunnels] = useState<CRMFunnel[]>([]);
+  const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(null);
+  const [stages, setStages] = useState<CRMFunnelStage[]>([]);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,36 +80,82 @@ export default function CRMKanban() {
     return conversations.filter(c => c.reminder_at).length;
   }, [conversations]);
 
-  useEffect(() => {
-    loadConversations();
+  // Selected funnel
+  const selectedFunnel = useMemo(() => {
+    return funnels.find(f => f.id === selectedFunnelId) || null;
+  }, [funnels, selectedFunnelId]);
 
+  useEffect(() => {
+    loadFunnels();
+  }, []);
+
+  useEffect(() => {
+    if (selectedFunnelId) {
+      loadStages(selectedFunnelId);
+      loadConversations(selectedFunnelId);
+    }
+  }, [selectedFunnelId]);
+
+  useEffect(() => {
     const channel = supabase
       .channel('crm-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_conversations' }, () => {
-        loadConversations();
+        if (selectedFunnelId) loadConversations(selectedFunnelId);
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [selectedFunnelId]);
 
-  const normalizePhone = (phone: string): string => {
-    const digits = phone.replace(/\D/g, '');
-    if (digits.startsWith('55') && digits.length > 10) {
-      return digits.slice(2);
+  const loadFunnels = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('crm_funnels')
+        .select('*')
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      setFunnels(data || []);
+
+      // Auto-select default funnel or first one
+      if (data && data.length > 0) {
+        const defaultFunnel = data.find(f => f.is_default) || data[0];
+        setSelectedFunnelId(defaultFunnel.id);
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error loading funnels:', error);
+      setLoading(false);
     }
-    return digits;
   };
 
-  const loadConversations = async () => {
+  const loadStages = async (funnelId: string) => {
     try {
-      // CRM mostra apenas leads (is_crm_lead = true)
+      const { data, error } = await supabase
+        .from('crm_funnel_stages')
+        .select('*')
+        .eq('funnel_id', funnelId)
+        .order('stage_order', { ascending: true });
+
+      if (error) throw error;
+      setStages(data || []);
+    } catch (error) {
+      console.error('Error loading stages:', error);
+    }
+  };
+
+  const loadConversations = async (funnelId: string) => {
+    try {
       const { data: leadConversations, error } = await supabase
         .from('whatsapp_conversations')
         .select('*')
         .eq('is_crm_lead', true)
+        .eq('crm_funnel_id', funnelId)
         .order('last_message_at', { ascending: false });
 
       if (error) throw error;
@@ -199,14 +259,14 @@ export default function CRMKanban() {
     return result;
   }, [conversations, searchQuery, periodFilter, aiStatusFilter, urgencyFilter, sortOption, showRemindersOnly]);
 
-  const getConversationsForStage = (stage: CRMStage) => {
+  const getConversationsForStage = (stage: CRMFunnelStage) => {
     return filteredConversations.filter(conv => 
       conv.funnel_stage === stage.id
     );
   };
 
   const getUnclassifiedConversations = () => {
-    const allStageIds = CRM_STAGES.map(s => s.id);
+    const allStageIds = stages.map(s => s.id);
     return filteredConversations.filter(conv => 
       !conv.funnel_stage || !allStageIds.includes(conv.funnel_stage)
     );
@@ -220,7 +280,7 @@ export default function CRMKanban() {
     e.preventDefault();
   };
 
-  const handleDrop = async (targetStage: CRMStage) => {
+  const handleDrop = async (targetStage: CRMFunnelStage) => {
     if (!draggedItem) return;
 
     try {
@@ -237,7 +297,7 @@ export default function CRMKanban() {
         description: `${draggedItem.name || draggedItem.phone} movido para ${targetStage.name}`,
       });
 
-      loadConversations();
+      if (selectedFunnelId) loadConversations(selectedFunnelId);
     } catch (error) {
       console.error('Error updating stage:', error);
       toast({
@@ -264,7 +324,7 @@ export default function CRMKanban() {
         description: `Lembrete para ${date.toLocaleString('pt-BR')}`,
       });
 
-      loadConversations();
+      if (selectedFunnelId) loadConversations(selectedFunnelId);
     } catch (error) {
       console.error('Error saving reminder:', error);
       toast({ title: 'Erro ao salvar lembrete', variant: 'destructive' });
@@ -282,7 +342,7 @@ export default function CRMKanban() {
         .eq('id', targetLead.id);
 
       toast({ title: 'Lembrete removido' });
-      loadConversations();
+      if (selectedFunnelId) loadConversations(selectedFunnelId);
     } catch (error) {
       console.error('Error removing reminder:', error);
       toast({ title: 'Erro ao remover lembrete', variant: 'destructive' });
@@ -299,7 +359,7 @@ export default function CRMKanban() {
         .eq('id', tagModal.lead.id);
 
       toast({ title: 'Tags atualizadas' });
-      loadConversations();
+      if (selectedFunnelId) loadConversations(selectedFunnelId);
     } catch (error) {
       console.error('Error saving tags:', error);
       toast({ title: 'Erro ao salvar tags', variant: 'destructive' });
@@ -316,24 +376,11 @@ export default function CRMKanban() {
         .eq('id', valueModal.lead.id);
 
       toast({ title: value ? `Valor definido: R$ ${value.toLocaleString('pt-BR')}` : 'Valor removido' });
-      loadConversations();
+      if (selectedFunnelId) loadConversations(selectedFunnelId);
     } catch (error) {
       console.error('Error saving value:', error);
       toast({ title: 'Erro ao salvar valor', variant: 'destructive' });
     }
-  };
-
-  const getStageColor = (stage: CRMStage) => {
-    const colors: Record<number, string> = {
-      1: 'border-t-blue-500',
-      2: 'border-t-cyan-500',
-      3: 'border-t-yellow-500',
-      4: 'border-t-orange-500',
-      5: 'border-t-purple-500',
-      6: 'border-t-green-500',
-      7: 'border-t-emerald-600',
-    };
-    return colors[stage.order] || 'border-t-gray-500';
   };
 
   const getStageValue = (conversations: WhatsAppConversation[]) => {
@@ -341,12 +388,22 @@ export default function CRMKanban() {
     return total > 0 ? `R$ ${total.toLocaleString('pt-BR')}` : null;
   };
 
-  const isAIControlled = (stage: CRMStage) => stage.is_ai_controlled;
-
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  // No funnels state
+  if (funnels.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-4">
+        <p className="text-muted-foreground">Nenhum funil configurado.</p>
+        <Button onClick={() => navigate('/crm/funnels')}>
+          Criar Funil
+        </Button>
       </div>
     );
   }
@@ -358,13 +415,46 @@ export default function CRMKanban() {
       {/* Header with Metrics */}
       <div className="border-b p-3 space-y-3 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold">CRM Kanban</h1>
+          <div className="flex items-center gap-3">
+            {/* Funnel Selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  {selectedFunnel?.name || 'Selecionar Funil'}
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {funnels.map((funnel) => (
+                  <DropdownMenuItem
+                    key={funnel.id}
+                    onClick={() => setSelectedFunnelId(funnel.id)}
+                    className={cn(
+                      'gap-2',
+                      funnel.id === selectedFunnelId && 'bg-accent'
+                    )}
+                  >
+                    {funnel.name}
+                    {funnel.is_default && (
+                      <Badge variant="secondary" className="ml-auto text-[10px]">
+                        Padrão
+                      </Badge>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/crm/funnels')} className="gap-2">
+                  <Settings className="h-4 w-4" />
+                  Gerenciar Funis
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Badge variant="secondary" className="text-xs">
               {filteredConversations.length} leads
             </Badge>
           </div>
-          <Button variant="ghost" size="sm" onClick={loadConversations} className="gap-1">
+          <Button variant="ghost" size="sm" onClick={() => selectedFunnelId && loadConversations(selectedFunnelId)} className="gap-1">
             <RefreshCw className="h-4 w-4" />
             <span className="hidden sm:inline">Atualizar</span>
           </Button>
@@ -422,7 +512,7 @@ export default function CRMKanban() {
           )}
 
           {/* Stage Columns */}
-          {CRM_STAGES.map((stage) => {
+          {stages.map((stage) => {
             const stageConversations = getConversationsForStage(stage);
             const stageValue = getStageValue(stageConversations);
 
@@ -433,15 +523,15 @@ export default function CRMKanban() {
                 onDragOver={handleDragOver}
                 onDrop={() => handleDrop(stage)}
               >
-                <div className={cn(
-                  'mb-2 flex items-center justify-between p-2 rounded-lg border-t-4 bg-muted/50',
-                  getStageColor(stage)
-                )}>
+                <div 
+                  className="mb-2 flex items-center justify-between p-2 rounded-lg border-t-4 bg-muted/50"
+                  style={{ borderTopColor: stage.color }}
+                >
                   <div className="flex flex-col">
                     <h3 className="font-medium text-sm">{stage.name}</h3>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-muted-foreground">
-                        {isAIControlled(stage) ? '🤖 IA' : '👤 Vendedor'}
+                        {stage.is_ai_controlled ? '🤖 IA' : '👤 Vendedor'}
                       </span>
                       {stageValue && (
                         <span className="text-[10px] text-green-600 font-medium">
@@ -490,7 +580,6 @@ export default function CRMKanban() {
         onSave={handleSaveReminder}
         onRemove={() => handleRemoveReminder()}
         currentReminder={reminderModal.lead?.reminder_at}
-        lastContactAt={reminderModal.lead?.last_message_at}
       />
 
       <TagModal
@@ -505,17 +594,18 @@ export default function CRMKanban() {
         open={valueModal.open}
         onOpenChange={(open) => setValueModal({ open, lead: open ? valueModal.lead : null })}
         leadName={valueModal.lead?.name || valueModal.lead?.phone || ''}
-        currentValue={valueModal.lead?.estimated_value || null}
+        currentValue={valueModal.lead?.estimated_value}
         onSave={handleSaveValue}
       />
 
-      {/* Lead Details Sheet */}
-      <LeadDetailsSheet
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        conversation={selectedLead}
-        onUpdate={loadConversations}
-      />
+      {selectedLead && (
+        <LeadDetailsSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          conversation={selectedLead}
+          onUpdate={() => selectedFunnelId && loadConversations(selectedFunnelId)}
+        />
+      )}
     </div>
   );
 }

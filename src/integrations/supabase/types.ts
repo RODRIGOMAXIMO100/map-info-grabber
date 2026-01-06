@@ -119,6 +119,71 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_funnel_stages: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          funnel_id: string
+          id: string
+          is_ai_controlled: boolean | null
+          name: string
+          stage_order: number
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          funnel_id: string
+          id?: string
+          is_ai_controlled?: boolean | null
+          name: string
+          stage_order?: number
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          funnel_id?: string
+          id?: string
+          is_ai_controlled?: boolean | null
+          name?: string
+          stage_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_funnel_stages_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_funnels: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       search_cache: {
         Row: {
           cache_key: string
@@ -359,6 +424,7 @@ export type Database = {
           conversation_summary: string | null
           converted_at: string | null
           created_at: string | null
+          crm_funnel_id: string | null
           custom_tags: string[] | null
           estimated_value: number | null
           followup_count: number | null
@@ -398,6 +464,7 @@ export type Database = {
           conversation_summary?: string | null
           converted_at?: string | null
           created_at?: string | null
+          crm_funnel_id?: string | null
           custom_tags?: string[] | null
           estimated_value?: number | null
           followup_count?: number | null
@@ -437,6 +504,7 @@ export type Database = {
           conversation_summary?: string | null
           converted_at?: string | null
           created_at?: string | null
+          crm_funnel_id?: string | null
           custom_tags?: string[] | null
           estimated_value?: number | null
           followup_count?: number | null
@@ -473,6 +541,13 @@ export type Database = {
             columns: ["config_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_config"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_conversations_crm_funnel_id_fkey"
+            columns: ["crm_funnel_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnels"
             referencedColumns: ["id"]
           },
         ]
