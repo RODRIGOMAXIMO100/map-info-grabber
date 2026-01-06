@@ -22,8 +22,20 @@ import {
 } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
-import { CRM_STAGES } from '@/types/whatsapp';
+import { useState, useEffect } from 'react';
+
+interface Funnel {
+  id: string;
+  name: string;
+  is_default: boolean;
+}
+
+interface Stage {
+  id: string;
+  name: string;
+  color: string;
+  stage_order: number;
+}
 
 interface LeadControlPanelProps {
   conversation: {
@@ -34,6 +46,7 @@ interface LeadControlPanelProps {
     is_crm_lead?: boolean;
     origin?: string | null;
     funnel_stage?: string | null;
+    crm_funnel_id?: string | null;
     tags?: string[];
   };
   onUpdate?: () => void;
@@ -48,12 +61,44 @@ const ORIGINS = [
 export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadControlPanelProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [funnels, setFunnels] = useState<Funnel[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
 
   const isInHandoff = conversation.tags?.includes('21') || conversation.tags?.includes('23');
   const isAiActive = conversation.is_crm_lead && !conversation.ai_paused && !conversation.is_group && !isInHandoff;
   const currentOrigin = conversation.origin || 'random';
-  const currentStage = conversation.funnel_stage || 'new';
+  const currentFunnelId = conversation.crm_funnel_id || '';
+  const currentStage = conversation.funnel_stage || '';
   const isCrmLead = conversation.is_crm_lead === true;
+
+  // Load funnels on mount
+  useEffect(() => {
+    const loadFunnels = async () => {
+      const { data } = await supabase
+        .from('crm_funnels')
+        .select('id, name, is_default')
+        .order('is_default', { ascending: false });
+      setFunnels(data || []);
+    };
+    loadFunnels();
+  }, []);
+
+  // Load stages when funnel changes
+  useEffect(() => {
+    const loadStages = async () => {
+      if (!currentFunnelId) {
+        setStages([]);
+        return;
+      }
+      const { data } = await supabase
+        .from('crm_funnel_stages')
+        .select('id, name, color, stage_order')
+        .eq('funnel_id', currentFunnelId)
+        .order('stage_order', { ascending: true });
+      setStages(data || []);
+    };
+    loadStages();
+  }, [currentFunnelId]);
 
   const handleToggleAI = async () => {
     if (conversation.is_group) return;
@@ -97,13 +142,40 @@ export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadContr
     setLoading(true);
     try {
       const newLeadState = !conversation.is_crm_lead;
+      
+      let updateData: Record<string, unknown> = {
+        is_crm_lead: newLeadState,
+        ai_paused: newLeadState ? false : true
+      };
+
+      if (newLeadState) {
+        // Get default funnel and first stage
+        const { data: defaultFunnel } = await supabase
+          .from('crm_funnels')
+          .select('id')
+          .eq('is_default', true)
+          .single();
+
+        if (defaultFunnel) {
+          const { data: firstStage } = await supabase
+            .from('crm_funnel_stages')
+            .select('id')
+            .eq('funnel_id', defaultFunnel.id)
+            .order('stage_order', { ascending: true })
+            .limit(1)
+            .single();
+
+          updateData.crm_funnel_id = defaultFunnel.id;
+          updateData.funnel_stage = firstStage?.id || null;
+        }
+      } else {
+        updateData.crm_funnel_id = null;
+        updateData.funnel_stage = null;
+      }
+
       const { error } = await supabase
         .from('whatsapp_conversations')
-        .update({ 
-          is_crm_lead: newLeadState,
-          funnel_stage: newLeadState ? 'new' : null,
-          ai_paused: newLeadState ? false : true
-        })
+        .update(updateData)
         .eq('id', conversation.id);
 
       if (error) throw error;
@@ -121,6 +193,42 @@ export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadContr
       toast({
         title: 'Erro',
         description: 'Não foi possível alterar status do lead.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFunnelChange = async (funnelId: string) => {
+    setLoading(true);
+    try {
+      // Get first stage of new funnel
+      const { data: firstStage } = await supabase
+        .from('crm_funnel_stages')
+        .select('id')
+        .eq('funnel_id', funnelId)
+        .order('stage_order', { ascending: true })
+        .limit(1)
+        .single();
+
+      const { error } = await supabase
+        .from('whatsapp_conversations')
+        .update({ 
+          crm_funnel_id: funnelId,
+          funnel_stage: firstStage?.id || null
+        })
+        .eq('id', conversation.id);
+
+      if (error) throw error;
+
+      toast({ title: 'Funil atualizado' });
+      onUpdate?.();
+    } catch (error) {
+      console.error('Error updating funnel:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atualizar funil.',
         variant: 'destructive',
       });
     } finally {
@@ -332,7 +440,25 @@ export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadContr
         </div>
       )}
 
-      {/* Row 2: Origin + Funnel Stage (only if lead) */}
+      {/* Row 2: Funnel selector (only if lead) */}
+      {isCrmLead && funnels.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Select value={currentFunnelId} onValueChange={handleFunnelChange} disabled={loading}>
+            <SelectTrigger className="h-8 text-xs flex-1">
+              <SelectValue placeholder="Selecione um funil" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              {funnels.map((funnel) => (
+                <SelectItem key={funnel.id} value={funnel.id} className="text-xs">
+                  {funnel.name} {funnel.is_default && '(Padrão)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Row 3: Origin + Stage (only if lead and funnel selected) */}
       {isCrmLead && (
         <div className="flex items-center gap-2">
           <Select value={currentOrigin} onValueChange={handleOriginChange} disabled={loading}>
@@ -351,18 +477,26 @@ export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadContr
             </SelectContent>
           </Select>
 
-          <Select value={currentStage} onValueChange={handleStageChange} disabled={loading}>
-            <SelectTrigger className="h-8 text-xs flex-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-popover">
-              {CRM_STAGES.map((stage) => (
-                <SelectItem key={stage.id} value={stage.id} className="text-xs">
-                  {stage.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {stages.length > 0 && (
+            <Select value={currentStage} onValueChange={handleStageChange} disabled={loading}>
+              <SelectTrigger className="h-8 text-xs flex-1">
+                <SelectValue placeholder="Estágio" />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                {stages.map((stage) => (
+                  <SelectItem key={stage.id} value={stage.id} className="text-xs">
+                    <div className="flex items-center gap-2">
+                      <span 
+                        className="w-2 h-2 rounded-full" 
+                        style={{ backgroundColor: stage.color }}
+                      />
+                      {stage.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       )}
 
