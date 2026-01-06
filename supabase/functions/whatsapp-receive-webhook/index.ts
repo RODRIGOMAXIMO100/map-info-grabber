@@ -14,6 +14,25 @@ const HANDOFF_LABEL_NUMERIC = '21';
 const HANDOFF_LABEL_STRING = 'handoff';
 const ALL_HANDOFF_LABELS = [HANDOFF_LABEL_NUMERIC, HANDOFF_LABEL_STRING];
 const INITIAL_STAGE = 'new'; // Lead Novo - usando string como padrão
+const INTEREST_STAGE = 'interest'; // Interesse Confirmado
+
+// Padrões para detectar mensagens automáticas de bot/WhatsApp Business
+const BOT_MESSAGE_PATTERNS = [
+  /^aguarde.*atendimento/i,
+  /^obrigad[oa].*aguarde/i,
+  /^mensagem automática/i,
+  /^atendimento.*horário/i,
+  /^fora do horário/i,
+  /^estamos fechados/i,
+  /^nosso horário/i,
+  /^em breve.*atenderemos/i,
+  /^sua mensagem foi recebida/i,
+  /^recebemos sua mensagem/i,
+  /^olá!.*bem-vind[oa]/i,
+  /^seja bem-vind[oa]/i,
+  /^este é um atendimento automático/i,
+  /^mensagem enviada fora do expediente/i,
+];
 
 // Normalize phone for robust comparison - extracts core 8 digits
 function normalizePhoneForComparison(phone: string): string {
@@ -491,7 +510,7 @@ serve(async (req) => {
     // Simple phone matching - exact match
     const { data: existingConv } = await supabase
       .from('whatsapp_conversations')
-      .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name')
+      .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead')
       .eq('phone', senderPhone)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -523,6 +542,33 @@ serve(async (req) => {
       if (!isFromMe) {
         updateData.unread_count = (existingConv.unread_count || 0) + 1;
         updateData.last_lead_message_at = new Date().toISOString();
+        
+        // === LÓGICA: Mover lead de broadcast para "Interesse" na primeira resposta ===
+        const isFirstResponse = !existingConv.last_lead_message_at;
+        const isFromBroadcastLead = existingConv.origin === 'broadcast' && existingConv.is_crm_lead === true;
+        const currentStage = existingConv.funnel_stage || '';
+        const isInEarlyStage = currentStage === 'new' || currentStage === '' || !currentStage;
+        
+        // Verificar se NÃO é mensagem automática de bot
+        const isBotMessage = typeof messageContent === 'string' && 
+          BOT_MESSAGE_PATTERNS.some(pattern => pattern.test(messageContent));
+        
+        console.log('[Broadcast Response Check]', {
+          isFirstResponse,
+          isFromBroadcastLead,
+          currentStage,
+          isInEarlyStage,
+          isBotMessage,
+          messagePreview: typeof messageContent === 'string' ? messageContent.substring(0, 50) : '[media]'
+        });
+        
+        // Se é primeira resposta real de lead de broadcast, mover para "Interesse"
+        if (isFirstResponse && isFromBroadcastLead && isInEarlyStage && !isBotMessage) {
+          console.log(`[Broadcast] ✅ Lead ${senderPhone} respondeu ao broadcast! Movendo para Interesse Confirmado`);
+          updateData.funnel_stage = INTEREST_STAGE;
+          updateData.tags = [INTEREST_STAGE];  // Atualiza tags para o novo estágio
+          updateData.followup_count = 0;       // Reset followups pois respondeu
+        }
       }
 
       // Update name - for groups, update if currently generic "Grupo"
