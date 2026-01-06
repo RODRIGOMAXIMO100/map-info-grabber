@@ -673,6 +673,7 @@ serve(async (req) => {
           if (existingConv) {
             conversationId = existingConv.id;
             // Se já existe, marca como CRM lead e atualiza
+            // Reset followup_count e salva dados do broadcast
             await supabase
               .from('whatsapp_conversations')
               .update({
@@ -683,6 +684,10 @@ serve(async (req) => {
                 tags: ['new'], // Coloca no funil - Lead Novo (string)
                 funnel_stage: 'new',
                 dna_id: dnaId || undefined,
+                // Dados do broadcast para follow-ups automáticos
+                broadcast_list_id: queueItem.broadcast_list_id,
+                broadcast_sent_at: new Date().toISOString(),
+                followup_count: 0,
                 updated_at: new Date().toISOString()
               })
               .eq('id', conversationId);
@@ -700,7 +705,11 @@ serve(async (req) => {
                 dna_id: dnaId,
                 last_message_at: new Date().toISOString(),
                 last_message_preview: processedMessage.substring(0, 100),
-                status: 'active'
+                status: 'active',
+                // Dados do broadcast para follow-ups automáticos
+                broadcast_list_id: queueItem.broadcast_list_id,
+                broadcast_sent_at: new Date().toISOString(),
+                followup_count: 0
               })
               .select('id')
               .single();
