@@ -298,7 +298,7 @@ export default function Index() {
   const error = mapsError || instagramError;
 
   // Calculate API usage totals
-  const totalApiCalls = apiUsage.serpapi + apiUsage.outscraper + apiUsage.cache;
+  const totalApiCalls = apiUsage.serper + apiUsage.cache;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted/30 p-4 md:p-8">
@@ -319,16 +319,12 @@ export default function Index() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-green-600" />
-                <span className="font-medium text-green-700 dark:text-green-400">Sistema Multi-API Ativo</span>
+                <span className="font-medium text-green-700 dark:text-green-400">Serper API Ativo</span>
               </div>
               <div className="flex flex-wrap gap-3 text-sm">
                 <Badge variant="outline" className="gap-1.5 border-blue-500/50 text-blue-600">
                   <Globe className="h-3 w-3" />
-                  SerpAPI: {apiUsage.serpapi} (100/mês)
-                </Badge>
-                <Badge variant="outline" className="gap-1.5 border-orange-500/50 text-orange-600">
-                  <Map className="h-3 w-3" />
-                  Outscraper: {apiUsage.outscraper} (500/mês)
+                  Serper: {apiUsage.serper}
                 </Badge>
                 <Badge variant="outline" className="gap-1.5 border-purple-500/50 text-purple-600">
                   <Database className="h-3 w-3" />
@@ -337,7 +333,7 @@ export default function Index() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              Ordem de prioridade: Cache → SerpAPI → Outscraper (sem enrichment). Enriquecimento opcional com Firecrawl.
+              Ordem de prioridade: Cache → Serper. Enriquecimento opcional com Firecrawl.
             </p>
           </CardContent>
         </Card>
@@ -610,11 +606,7 @@ export default function Index() {
                   <div className="flex items-center justify-center gap-4 mt-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <Globe className="h-3 w-3 text-blue-500" />
-                      SerpAPI: {apiUsage.serpapi}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Map className="h-3 w-3 text-orange-500" />
-                      Outscraper: {apiUsage.outscraper}
+                      Serper: {apiUsage.serper}
                     </div>
                     <div className="flex items-center gap-1">
                       <Database className="h-3 w-3 text-purple-500" />

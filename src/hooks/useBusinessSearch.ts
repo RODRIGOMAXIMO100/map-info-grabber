@@ -14,14 +14,10 @@ interface Progress {
   current: number;
   total: number;
   currentCity: string;
-  apiUsed?: string;
 }
 
-export type ApiSource = 'serpapi' | 'outscraper' | 'cache';
-
 export interface ApiUsageStats {
-  serpapi: number;
-  outscraper: number;
+  serper: number;
   cache: number;
   enriched: number;
 }
@@ -54,7 +50,7 @@ async function runWithConcurrency<T>(
 }
 
 function generateCacheKey(keyword: string, city: string, state: string, maxResults: number): string {
-  return `maps_${keyword.toLowerCase().trim()}_${city.toLowerCase()}_${state}_${maxResults}`;
+  return `serper_${keyword.toLowerCase().trim()}_${city.toLowerCase()}_${state}_${maxResults}`;
 }
 
 export function useBusinessSearch() {
@@ -62,67 +58,49 @@ export function useBusinessSearch() {
   const [results, setResults] = useState<Business[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>({ current: 0, total: 0, currentCity: '' });
-  const [apiUsage, setApiUsage] = useState<ApiUsageStats>({ serpapi: 0, outscraper: 0, cache: 0, enriched: 0 });
+  const [apiUsage, setApiUsage] = useState<ApiUsageStats>({ serper: 0, cache: 0, enriched: 0 });
   const abortController = useRef<AbortController | null>(null);
 
-  // Search a single location with API fallback
+  // Search a single location using Serper
   const searchLocation = async (
     keyword: string, 
     location: Location, 
     maxResults: number,
     useEnrichment: boolean
-  ): Promise<{ results: Business[]; api: ApiSource }> => {
+  ): Promise<Business[]> => {
     
-    // 1. Try SerpAPI first (100 free/month)
-    console.log(`[MultiAPI] Trying SerpAPI for ${location.city}`);
-    const { data: serpData, error: serpError } = await supabase.functions.invoke<SearchResult>('search-businesses-serpapi', {
+    console.log(`[Serper] Searching ${location.city}`);
+    const { data, error: apiError } = await supabase.functions.invoke<SearchResult>('search-businesses-serpapi', {
       body: { keyword, locations: [location], maxResults },
     });
 
-    if (serpData?.success && serpData.data && serpData.data.length > 0) {
-      console.log(`[MultiAPI] SerpAPI success: ${serpData.data.length} results`);
-      
-      // Optionally enrich with Firecrawl
-      if (useEnrichment && serpData.data.length > 0) {
-        const enriched = await enrichResults(serpData.data);
-        return { results: enriched, api: 'serpapi' };
-      }
-      
-      return { results: serpData.data, api: 'serpapi' };
+    if (apiError) {
+      console.error(`[Serper] API error:`, apiError);
+      throw new Error(apiError.message || 'Erro na API Serper');
     }
 
-    const serpNoCredits = serpData?.errorCode === 'NO_CREDITS' || serpData?.errorCode === 'NO_API_KEY';
-    if (serpNoCredits) {
-      console.log('[MultiAPI] SerpAPI sem créditos, tentando Outscraper básico...');
+    if (data?.errorCode === 'NO_CREDITS' || data?.errorCode === 'NO_API_KEY') {
+      throw new Error('Serper sem créditos ou chave inválida. Verifique sua API key.');
     }
 
-    // 2. Fallback to Outscraper WITHOUT enrichment (500 free/month)
-    console.log(`[MultiAPI] Trying Outscraper (basic) for ${location.city}`);
-    const { data: outData, error: outError } = await supabase.functions.invoke<SearchResult>('search-businesses', {
-      body: { keyword, locations: [location], maxResults },
-    });
-
-    if (outData?.success && outData.data && outData.data.length > 0) {
-      console.log(`[MultiAPI] Outscraper success: ${outData.data.length} results`);
-      
-      // Optionally enrich with Firecrawl
-      if (useEnrichment && outData.data.length > 0) {
-        const enriched = await enrichResults(outData.data);
-        return { results: enriched, api: 'outscraper' };
-      }
-      
-      return { results: outData.data, api: 'outscraper' };
+    if (data?.errorCode === 'RATE_LIMIT') {
+      throw new Error('Limite de requisições Serper atingido. Aguarde um momento.');
     }
 
-    const outNoCredits = outData?.errorCode === 'NO_CREDITS';
-    if (outNoCredits) {
-      console.log('[MultiAPI] Outscraper também sem créditos');
-      throw new Error('Todas as APIs estão sem créditos. Verifique SerpAPI e Outscraper.');
+    if (!data?.success) {
+      console.error(`[Serper] Error:`, data?.error);
+      return [];
     }
 
-    // No results from either API
-    console.log(`[MultiAPI] No results for ${location.city} from any API`);
-    return { results: [], api: 'outscraper' };
+    const results = data.data || [];
+    console.log(`[Serper] Found ${results.length} results for ${location.city}`);
+
+    // Optionally enrich with Firecrawl
+    if (useEnrichment && results.length > 0) {
+      return await enrichResults(results);
+    }
+
+    return results;
   };
 
   // Enrich results using Firecrawl
@@ -134,7 +112,7 @@ export function useBusinessSearch() {
 
     if (toEnrich.length === 0) return businesses;
 
-    console.log(`[MultiAPI] Enriching ${toEnrich.length} businesses with Firecrawl`);
+    console.log(`[Serper] Enriching ${toEnrich.length} businesses with Firecrawl`);
 
     try {
       const { data } = await supabase.functions.invoke('enrich-business', {
@@ -169,7 +147,7 @@ export function useBusinessSearch() {
         });
       }
     } catch (err) {
-      console.error('[MultiAPI] Enrichment error:', err);
+      console.error('[Serper] Enrichment error:', err);
     }
 
     return businesses;
@@ -185,13 +163,13 @@ export function useBusinessSearch() {
     setIsLoading(true);
     setError(null);
     setResults([]);
-    setApiUsage({ serpapi: 0, outscraper: 0, cache: 0, enriched: 0 });
+    setApiUsage({ serper: 0, cache: 0, enriched: 0 });
     abortController.current = new AbortController();
     
     const totalLocations = locations.length;
     setProgress({ current: 0, total: totalLocations, currentCity: 'Verificando cache...' });
 
-    const usage: ApiUsageStats = { serpapi: 0, outscraper: 0, cache: 0, enriched: 0 };
+    const usage: ApiUsageStats = { serper: 0, cache: 0, enriched: 0 };
 
     try {
       const allResults: Business[] = [];
@@ -221,7 +199,7 @@ export function useBusinessSearch() {
         if (allResults.length >= totalMax) break;
         
         if (cached) {
-          console.log(`[MultiAPI] Cache hit for ${location.city}`);
+          console.log(`[Serper] Cache hit for ${location.city}`);
           const remaining = totalMax - allResults.length;
           const resultsToAdd = (cached as unknown as Business[]).slice(0, remaining);
           allResults.push(...resultsToAdd);
@@ -238,12 +216,12 @@ export function useBusinessSearch() {
       }
       
       if (allResults.length >= totalMax) {
-        console.log(`[MultiAPI] Limit reached with cache: ${allResults.length}`);
+        console.log(`[Serper] Limit reached with cache: ${allResults.length}`);
         setResults(allResults.slice(0, totalMax));
         return;
       }
 
-      // Fetch non-cached locations with fallback
+      // Fetch non-cached locations
       if (tasksToFetch.length > 0) {
         setProgress({ 
           current: cacheResults.length - tasksToFetch.length, 
@@ -252,8 +230,8 @@ export function useBusinessSearch() {
         });
 
         const fetchTasks = tasksToFetch.map(({ location, cacheKey }) => async () => {
-          if (abortController.current?.signal.aborted) return { results: [], api: 'cache' as ApiSource };
-          if (allResults.length >= totalMax) return { results: [], api: 'cache' as ApiSource };
+          if (abortController.current?.signal.aborted) return [];
+          if (allResults.length >= totalMax) return [];
           
           setProgress(prev => ({ 
             ...prev, 
@@ -261,7 +239,7 @@ export function useBusinessSearch() {
           }));
 
           try {
-            const { results: locationResults, api } = await searchLocation(
+            const locationResults = await searchLocation(
               keyword, 
               location, 
               maxResultsPerCity,
@@ -269,36 +247,29 @@ export function useBusinessSearch() {
             );
 
             // Update usage stats
-            if (api === 'serpapi') usage.serpapi++;
-            else if (api === 'outscraper') usage.outscraper++;
+            usage.serper++;
             setApiUsage({ ...usage });
 
             // Cache results if we got any
             if (locationResults.length > 0) {
               supabase.from('search_cache').insert({
                 cache_key: cacheKey,
-                search_type: 'google_maps',
+                search_type: 'serper',
                 keyword: keyword.toLowerCase().trim(),
                 city: location.city,
                 state: location.state,
                 results: locationResults as any,
                 result_count: locationResults.length,
                 expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-              }).then(() => console.log(`[MultiAPI] Cached ${location.city} (${locationResults.length} results)`));
+              }).then(() => console.log(`[Serper] Cached ${location.city} (${locationResults.length} results)`));
             }
 
-            return { results: locationResults, api };
+            return locationResults;
           } catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown error';
-            console.error(`[MultiAPI] Error for ${location.city}:`, message);
-            
-            // If all APIs are out of credits, set error and abort
-            if (message.includes('Todas as APIs')) {
-              setError(message);
-              abortController.current?.abort();
-            }
-            
-            return { results: [], api: 'cache' as ApiSource };
+            console.error(`[Serper] Error for ${location.city}:`, message);
+            setError(message);
+            return [];
           }
         });
 
@@ -314,7 +285,7 @@ export function useBusinessSearch() {
         );
 
         // Add fetched results
-        for (const { results: cityResults } of fetchedResults) {
+        for (const cityResults of fetchedResults) {
           if (allResults.length >= totalMax) break;
           
           const remaining = totalMax - allResults.length;
@@ -328,12 +299,12 @@ export function useBusinessSearch() {
       setApiUsage({ ...usage });
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        console.log('[MultiAPI] Search cancelled');
+        console.log('[Serper] Search cancelled');
         return;
       }
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(message);
-      console.error('[MultiAPI] Search error:', err);
+      console.error('[Serper] Search error:', err);
     } finally {
       setIsLoading(false);
       setProgress({ current: 0, total: 0, currentCity: '' });
