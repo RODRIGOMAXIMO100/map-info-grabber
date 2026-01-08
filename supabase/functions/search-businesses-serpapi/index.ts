@@ -49,11 +49,12 @@ serve(async (req) => {
       );
     }
 
-    const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
-    if (!SERPAPI_KEY) {
-      console.error('SERPAPI_KEY not configured');
+    // Try SERPAPI_KEY first (for backwards compatibility), then SERPER_API_KEY
+    const SERPER_KEY = Deno.env.get('SERPAPI_KEY') || Deno.env.get('SERPER_API_KEY');
+    if (!SERPER_KEY) {
+      console.error('SERPER API KEY not configured');
       return new Response(
-        JSON.stringify({ success: false, error: 'SERPAPI_KEY not configured', errorCode: 'NO_API_KEY' }),
+        JSON.stringify({ success: false, error: 'SERPER_API_KEY not configured', errorCode: 'NO_API_KEY' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -62,29 +63,31 @@ serve(async (req) => {
 
     for (const location of locations) {
       const query = `${keyword} em ${location.city}, ${location.state}`;
-      console.log(`[SerpAPI] Searching: ${query}`);
+      console.log(`[Serper] Searching: ${query}`);
 
-      const params = new URLSearchParams({
-        engine: 'google_maps',
-        q: query,
-        hl: 'pt-br',
-        gl: 'br',
-        type: 'search',
-        api_key: SERPAPI_KEY,
+      const response = await fetch('https://google.serper.dev/places', {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': SERPER_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          q: query,
+          gl: 'br',
+          hl: 'pt-br',
+        }),
       });
-
-      const response = await fetch(`https://serpapi.com/search.json?${params}`);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[SerpAPI] API error for ${location.city}:`, response.status, errorText);
+        console.error(`[Serper] API error for ${location.city}:`, response.status, errorText);
         
         // Handle 401/403 - Auth issues
         if (response.status === 401 || response.status === 403) {
           return new Response(
             JSON.stringify({
               success: false,
-              error: 'SerpAPI sem créditos ou chave inválida.',
+              error: 'Serper sem créditos ou chave inválida.',
               errorCode: 'NO_CREDITS',
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -96,7 +99,7 @@ serve(async (req) => {
           return new Response(
             JSON.stringify({
               success: false,
-              error: 'Limite de requisições SerpAPI atingido.',
+              error: 'Limite de requisições Serper atingido.',
               errorCode: 'RATE_LIMIT',
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -110,26 +113,16 @@ serve(async (req) => {
       
       // Check for API errors in response
       if (data.error) {
-        console.error(`[SerpAPI] Response error:`, data.error);
-        if (data.error.includes('credit') || data.error.includes('quota')) {
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: 'SerpAPI sem créditos disponíveis.',
-              errorCode: 'NO_CREDITS',
-            }),
-            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+        console.error(`[Serper] Response error:`, data.error);
         continue;
       }
 
-      const places = data.local_results || [];
+      const places = data.places || [];
       
-      console.log(`[SerpAPI] Found ${places.length} results for ${location.city}`);
+      console.log(`[Serper] Found ${places.length} results for ${location.city}`);
 
       for (const result of places.slice(0, maxResults)) {
-        const phone = result.phone || '';
+        const phone = result.phoneNumber || '';
         const whatsapp = extractWhatsApp(phone);
 
         allResults.push({
@@ -138,29 +131,29 @@ serve(async (req) => {
           phone: phone,
           website: result.website || '',
           whatsapp: whatsapp,
-          instagram: '', // SerpAPI doesn't provide this directly
-          email: '', // SerpAPI doesn't provide this directly
+          instagram: '', // Serper doesn't provide this directly
+          email: '', // Serper doesn't provide this directly
           city: location.city,
           state: location.state,
           rating: result.rating || null,
-          reviews: result.reviews || 0,
+          reviews: result.reviewsCount || result.reviews || 0,
           source: 'google_maps',
-          place_id: result.place_id || '',
-          category: result.type || '',
-          thumbnail: result.thumbnail || '',
+          place_id: result.placeId || result.cid || '',
+          category: result.category || result.type || '',
+          thumbnail: result.thumbnailUrl || '',
         });
       }
     }
 
-    console.log(`[SerpAPI] Total results: ${allResults.length}`);
+    console.log(`[Serper] Total results: ${allResults.length}`);
 
     return new Response(
-      JSON.stringify({ success: true, data: allResults, apiUsed: 'serpapi' }),
+      JSON.stringify({ success: true, data: allResults, apiUsed: 'serper' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('[SerpAPI] Error:', error);
+    console.error('[Serper] Error:', error);
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
