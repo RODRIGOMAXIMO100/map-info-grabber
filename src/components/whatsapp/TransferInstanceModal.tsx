@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
@@ -40,6 +41,9 @@ export function TransferInstanceModal({
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
   const [sendNotification, setSendNotification] = useState(true);
+  const [notificationMessage, setNotificationMessage] = useState(
+    'Olá! Estamos continuando nossa conversa por este número. 📱'
+  );
   const [transferring, setTransferring] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -118,7 +122,7 @@ export function TransferInstanceModal({
           await supabase.functions.invoke('whatsapp-send-message', {
             body: {
               conversation_id: conversationId,
-              message: `Olá! Estamos continuando nossa conversa por este número. 📱`,
+              message: notificationMessage,
               config_id: selectedInstanceId,
             },
           });
@@ -253,7 +257,7 @@ export function TransferInstanceModal({
           </div>
 
           {/* Send notification option */}
-          {availableInstances.length > 0 && (
+          <div className="space-y-3">
             <div className="flex items-center space-x-2">
               <Checkbox 
                 id="send-notification" 
@@ -264,7 +268,22 @@ export function TransferInstanceModal({
                 Enviar mensagem avisando sobre o novo número
               </Label>
             </div>
-          )}
+            
+            {sendNotification && (
+              <div className="space-y-2 pl-6">
+                <Textarea
+                  value={notificationMessage}
+                  onChange={(e) => setNotificationMessage(e.target.value)}
+                  placeholder="Digite a mensagem de notificação..."
+                  className="min-h-[80px] resize-none text-sm"
+                  maxLength={500}
+                />
+                <p className="text-xs text-muted-foreground text-right">
+                  {notificationMessage.length}/500 caracteres
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         <DialogFooter>
