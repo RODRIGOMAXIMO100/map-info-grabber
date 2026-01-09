@@ -53,3 +53,9 @@ verify_jwt = false
 
 [functions.process-broadcast-followups]
 verify_jwt = false
+
+[functions.whatsapp-download-media]
+verify_jwt = false
+
+[functions.convert-audio-to-mp3]
+verify_jwt = false

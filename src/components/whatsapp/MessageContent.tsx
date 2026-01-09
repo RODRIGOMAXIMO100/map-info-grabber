@@ -32,6 +32,9 @@ interface MediaData {
   media_url?: string;
   FileEncSha256?: string;
   fileEncSha256?: string;
+  // Transcription for audio files
+  transcription?: string;
+  transcribed_at?: string;
 }
 
 interface MessageContentProps {
@@ -68,9 +71,10 @@ function normalizeMediaData(data: MediaData | null): {
   fileLength: number | null;
   mediaKey: string | null;
   mediaUrl: string | null;
+  transcription: string | null;
 } {
   if (!data) {
-    return { url: null, directPath: null, thumbnail: null, seconds: null, mimetype: null, caption: null, fileName: null, fileLength: null, mediaKey: null, mediaUrl: null };
+    return { url: null, directPath: null, thumbnail: null, seconds: null, mimetype: null, caption: null, fileName: null, fileLength: null, mediaKey: null, mediaUrl: null, transcription: null };
   }
   
   return {
@@ -84,6 +88,7 @@ function normalizeMediaData(data: MediaData | null): {
     fileLength: data.FileLength || data.fileLength || data.FileSize || data.fileSize || null,
     mediaKey: data.MediaKey || data.mediaKey || null,
     mediaUrl: data.media_url || null,
+    transcription: data.transcription || null,
   };
 }
 
@@ -130,6 +135,8 @@ interface AudioPlayerProps {
   isDownloading: boolean;
   downloadProgress: number;
   downloadStatus: 'idle' | 'downloading' | 'processing' | 'success' | 'error';
+  transcription?: string | null;
+  messageId?: string;
 }
 
 function AudioPlayer({ 
@@ -141,11 +148,15 @@ function AudioPlayer({
   onDownload,
   isDownloading,
   downloadProgress,
-  downloadStatus
+  downloadStatus,
+  transcription,
+  messageId
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [audioError, setAudioError] = useState(false);
   const [audioLoaded, setAudioLoaded] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [localTranscription, setLocalTranscription] = useState<string | null>(transcription || null);
 
   // Detectar se o navegador suporta OGG Opus
   const canPlayOgg = useMemo(() => {
@@ -173,6 +184,13 @@ function AudioPlayer({
     }
   }, [isOggFormat, canPlayOgg]);
 
+  // Atualizar transcrição local quando prop mudar
+  useEffect(() => {
+    if (transcription) {
+      setLocalTranscription(transcription);
+    }
+  }, [transcription]);
+
   const handleAudioError = () => {
     console.log('[Audio] Playback error for:', audioUrl?.substring(0, 50), 'mimetype:', mimetype);
     setAudioError(true);
@@ -181,6 +199,36 @@ function AudioPlayer({
   const handleAudioCanPlay = () => {
     setAudioLoaded(true);
     setAudioError(false);
+  };
+
+  // Função para transcrever o áudio
+  const handleTranscribe = async () => {
+    if (!audioUrl || !messageId) return;
+    
+    setIsTranscribing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('convert-audio-to-mp3', {
+        body: {
+          source_url: audioUrl,
+          message_id: messageId,
+          transcribe: true
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.transcription) {
+        setLocalTranscription(data.transcription);
+        toast.success('Áudio transcrito com sucesso!');
+      } else {
+        toast.info('Transcrição não disponível para este áudio');
+      }
+    } catch (err) {
+      console.error('[Audio] Transcription error:', err);
+      toast.error('Erro ao transcrever áudio');
+    } finally {
+      setIsTranscribing(false);
+    }
   };
 
   // Download button for audio (inline version)
@@ -239,6 +287,68 @@ function AudioPlayer({
     );
   };
 
+  // Componente de transcrição
+  const TranscriptionDisplay = () => {
+    if (localTranscription) {
+      return (
+        <div className={cn(
+          "mt-2 p-2 rounded-lg border",
+          isOutgoing 
+            ? "bg-primary-foreground/5 border-primary-foreground/20" 
+            : "bg-muted/30 border-muted"
+        )}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <FileText className="h-3 w-3 opacity-60" />
+            <span className={cn(
+              "text-xs font-medium opacity-60",
+              isOutgoing ? "text-primary-foreground" : ""
+            )}>
+              Transcrição:
+            </span>
+          </div>
+          <p className={cn(
+            "text-sm",
+            isOutgoing ? "text-primary-foreground/90" : "text-foreground/90"
+          )}>
+            {localTranscription}
+          </p>
+        </div>
+      );
+    }
+
+    // Botão para transcrever (apenas se tiver URL e messageId)
+    if (audioUrl && messageId && audioError) {
+      return (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleTranscribe}
+          disabled={isTranscribing}
+          className={cn(
+            "mt-2 gap-1.5 text-xs",
+            isOutgoing 
+              ? "text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10" 
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {isTranscribing ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Transcrevendo...
+            </>
+          ) : (
+            <>
+              <FileText className="h-3 w-3" />
+              Transcrever áudio
+            </>
+          )}
+        </Button>
+      );
+    }
+
+    return null;
+  };
+
   // Componente de fallback informativo para formato não suportado
   const UnsupportedFormatFallback = () => (
     <div className={cn(
@@ -262,14 +372,14 @@ function AudioPlayer({
       )}
       
       {/* Dica para Safari */}
-      {isSafari && (
+      {isSafari && !localTranscription && (
         <span className={cn("text-xs italic", isOutgoing ? "text-primary-foreground/60" : "text-muted-foreground")}>
           💡 Dica: Abra em Chrome ou Firefox para reproduzir
         </span>
       )}
       
       {audioUrl && (
-        <div className="flex gap-2 mt-1">
+        <div className="flex flex-wrap gap-2 mt-1">
           <a 
             href={audioUrl}
             download={`audio_${Date.now()}.ogg`}
@@ -299,6 +409,9 @@ function AudioPlayer({
           </a>
         </div>
       )}
+
+      {/* Mostrar transcrição ou botão de transcrever */}
+      <TranscriptionDisplay />
     </div>
   );
 
@@ -591,6 +704,8 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
         isDownloading={isDownloading}
         downloadProgress={downloadProgress}
         downloadStatus={downloadStatus}
+        transcription={normalized.transcription}
+        messageId={messageId}
       />
     );
   }
