@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { Image, Video, Mic, FileText, Play, Download, Loader2, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -147,6 +147,32 @@ function AudioPlayer({
   const [audioError, setAudioError] = useState(false);
   const [audioLoaded, setAudioLoaded] = useState(false);
 
+  // Detectar se o navegador suporta OGG Opus
+  const canPlayOgg = useMemo(() => {
+    if (typeof document === 'undefined') return true;
+    const audio = document.createElement('audio');
+    return audio.canPlayType('audio/ogg; codecs=opus') !== '';
+  }, []);
+  
+  // Detectar navegador Safari
+  const isSafari = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  }, []);
+
+  // Verificar se é formato OGG
+  const isOggFormat = useMemo(() => {
+    return mimetype?.includes('ogg') || mimetype?.includes('opus') || audioUrl?.includes('.ogg');
+  }, [mimetype, audioUrl]);
+
+  // Se é OGG e navegador não suporta, já marcar erro proativamente
+  useEffect(() => {
+    if (isOggFormat && !canPlayOgg) {
+      console.log('[Audio] Browser does not support OGG Opus format, showing fallback');
+      setAudioError(true);
+    }
+  }, [isOggFormat, canPlayOgg]);
+
   const handleAudioError = () => {
     console.log('[Audio] Playback error for:', audioUrl?.substring(0, 50), 'mimetype:', mimetype);
     setAudioError(true);
@@ -213,6 +239,69 @@ function AudioPlayer({
     );
   };
 
+  // Componente de fallback informativo para formato não suportado
+  const UnsupportedFormatFallback = () => (
+    <div className={cn(
+      "flex flex-col gap-2 p-3 rounded-lg",
+      isOutgoing ? "bg-primary-foreground/10" : "bg-muted/50"
+    )}>
+      <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+        <AlertCircle className="h-4 w-4" />
+        <span className="text-sm font-medium">
+          {isSafari 
+            ? "Safari não reproduz este formato" 
+            : "Formato não suportado pelo navegador"}
+        </span>
+      </div>
+      
+      {/* Mostrar duração se disponível */}
+      {duration !== null && (
+        <span className={cn("text-xs", isOutgoing ? "text-primary-foreground/60" : "text-muted-foreground")}>
+          Duração: {formatDuration(duration)}
+        </span>
+      )}
+      
+      {/* Dica para Safari */}
+      {isSafari && (
+        <span className={cn("text-xs italic", isOutgoing ? "text-primary-foreground/60" : "text-muted-foreground")}>
+          💡 Dica: Abra em Chrome ou Firefox para reproduzir
+        </span>
+      )}
+      
+      {audioUrl && (
+        <div className="flex gap-2 mt-1">
+          <a 
+            href={audioUrl}
+            download={`audio_${Date.now()}.ogg`}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors",
+              isOutgoing 
+                ? "bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30" 
+                : "bg-primary/10 text-primary hover:bg-primary/20"
+            )}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Baixar áudio
+          </a>
+          <a 
+            href={audioUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors",
+              isOutgoing 
+                ? "bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20" 
+                : "bg-muted text-foreground hover:bg-muted/80"
+            )}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Abrir em nova aba
+          </a>
+        </div>
+      )}
+    </div>
+  );
+
   // If we have a URL, try to play it
   if (audioUrl) {
     return (
@@ -227,53 +316,7 @@ function AudioPlayer({
             onCanPlay={handleAudioCanPlay}
           />
         ) : (
-          // Error fallback - browser can't play the format
-          <div className={cn(
-            "flex flex-col gap-2 p-3 rounded-lg",
-            isOutgoing ? "bg-primary-foreground/10" : "bg-muted/50"
-          )}>
-            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-sm font-medium">Formato não suportado</span>
-            </div>
-            {mimetype && (
-              <span className={cn(
-                "text-xs",
-                isOutgoing ? "text-primary-foreground/60" : "text-muted-foreground"
-              )}>
-                {mimetype}
-              </span>
-            )}
-            <div className="flex gap-2 mt-1">
-              <a 
-                href={audioUrl}
-                download
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors",
-                  isOutgoing 
-                    ? "bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30" 
-                    : "bg-primary/10 text-primary hover:bg-primary/20"
-                )}
-              >
-                <Download className="h-3.5 w-3.5" />
-                Baixar
-              </a>
-              <a 
-                href={audioUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors",
-                  isOutgoing 
-                    ? "bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20" 
-                    : "bg-muted text-foreground hover:bg-muted/80"
-                )}
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Abrir
-              </a>
-            </div>
-          </div>
+          <UnsupportedFormatFallback />
         )}
       </div>
     );
