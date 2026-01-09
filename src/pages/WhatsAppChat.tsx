@@ -247,6 +247,28 @@ export default function WhatsAppChat() {
       .eq('id', conversationId);
   };
 
+  const markAsUnread = async (conversationId: string) => {
+    const { error } = await supabase
+      .from('whatsapp_conversations')
+      .update({ unread_count: 1 })
+      .eq('id', conversationId);
+
+    if (error) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível marcar como não lido.',
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Marcado como não lido',
+        description: 'A conversa foi marcada para revisão.',
+      });
+      setSelectedConversation(null);
+      loadConversations();
+    }
+  };
+
   const handleSend = async () => {
     if ((!newMessage.trim() && !pendingMedia) || !selectedConversation) return;
 
@@ -1182,22 +1204,34 @@ export default function WhatsAppChat() {
                           </div>
                         </div>
                       </div>
-                      {/* Transfer Instance Button */}
-                      {instances.length > 1 && (
+                      <div className="flex items-center gap-2">
+                        {/* Mark as Unread Button */}
                         <Button 
-                          variant={selectedConversation.instance && !selectedConversation.instance.is_active ? "destructive" : "outline"} 
+                          variant="outline" 
                           size="sm"
-                          onClick={() => setTransferModalOpen(true)}
+                          onClick={() => markAsUnread(selectedConversation.id)}
                           className="gap-1.5"
                         >
-                          <ArrowRightLeft className="h-4 w-4" />
-                          <span className="hidden lg:inline">
-                            {selectedConversation.instance && !selectedConversation.instance.is_active 
-                              ? 'Transferir (Bloqueado)' 
-                              : 'Transferir'}
-                          </span>
+                          <Mail className="h-4 w-4" />
+                          <span className="hidden lg:inline">Não lido</span>
                         </Button>
-                      )}
+                        {/* Transfer Instance Button */}
+                        {instances.length > 1 && (
+                          <Button 
+                            variant={selectedConversation.instance && !selectedConversation.instance.is_active ? "destructive" : "outline"} 
+                            size="sm"
+                            onClick={() => setTransferModalOpen(true)}
+                            className="gap-1.5"
+                          >
+                            <ArrowRightLeft className="h-4 w-4" />
+                            <span className="hidden lg:inline">
+                              {selectedConversation.instance && !selectedConversation.instance.is_active 
+                                ? 'Transferir (Bloqueado)' 
+                                : 'Transferir'}
+                            </span>
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     {/* Lead Control Panel - unified controls */}
                     <LeadControlPanel 
