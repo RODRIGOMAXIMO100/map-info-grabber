@@ -127,6 +127,20 @@ serve(async (req) => {
     const result = await response.json();
     console.log('[Send] UAZAPI response:', result);
     
+    // Detectar especificamente erro de WhatsApp desconectado
+    if (result.error && result.message === 'WhatsApp disconnected') {
+      console.error(`[Send] Instance ${configToUse.name || configToUse.id} is disconnected`);
+      return new Response(
+        JSON.stringify({ 
+          error: `Instância "${configToUse.name || 'WhatsApp'}" está desconectada. Reconecte no painel UAZAPI.`,
+          instance_name: configToUse.name,
+          instance_id: configToUse.id,
+          disconnected: true
+        }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     if (!response.ok) throw new Error(result.message || 'Failed to send message');
 
     // Find or create conversation

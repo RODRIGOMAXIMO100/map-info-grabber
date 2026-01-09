@@ -248,7 +248,7 @@ export default function WhatsAppChat() {
 
     setSending(true);
     try {
-      const { error } = await supabase.functions.invoke('whatsapp-send-message', {
+      const { data, error } = await supabase.functions.invoke('whatsapp-send-message', {
         body: {
           conversation_id: selectedConversation.id,
           message: newMessage.trim() || undefined,
@@ -258,14 +258,28 @@ export default function WhatsAppChat() {
         },
       });
 
+      // Verificar se é erro de instância desconectada
+      if (data?.disconnected) {
+        toast({
+          title: `WhatsApp Desconectado: ${data.instance_name || 'Instância'}`,
+          description: 'Acesse o painel UAZAPI e reconecte esta instância.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       if (error) throw error;
       setNewMessage('');
       setPendingMedia(null);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error sending message:', error);
+      
+      // Tentar extrair mensagem de erro mais específica
+      const errorMessage = error instanceof Error ? error.message : 'Não foi possível enviar a mensagem.';
+      
       toast({
         title: 'Erro ao enviar',
-        description: 'Não foi possível enviar a mensagem.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
