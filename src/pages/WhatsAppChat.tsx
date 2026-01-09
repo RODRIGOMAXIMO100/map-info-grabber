@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users, Megaphone, Shuffle } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff } from 'lucide-react';
 import { 
   LeadControlPanel, 
   AIStatusIcon, 
   FunnelStageBadge, 
   WaitingTimeBadge,
   detectFunnelStage,
+  TransferInstanceModal,
   type FunnelStageId
 } from '@/components/whatsapp';
 import { MessageContent, formatMessagePreview } from '@/components/whatsapp/MessageContent';
@@ -66,6 +67,9 @@ export default function WhatsAppChat() {
     type: 'image' | 'video' | 'document' | 'audio';
     file: File;
   } | null>(null);
+
+  // Transfer modal state
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
 
   // Helper to detect if a conversation is a group
   const isGroup = (conv: ConversationWithInstance): boolean => {
@@ -1159,15 +1163,41 @@ export default function WhatsAppChat() {
                             {selectedConversation.instance && (
                               <Badge 
                                 variant="outline" 
-                                className="text-xs"
-                                style={{ borderColor: selectedConversation.instance.color, color: selectedConversation.instance.color }}
+                                className="text-xs flex items-center gap-1"
+                                style={{ 
+                                  borderColor: selectedConversation.instance.is_active 
+                                    ? selectedConversation.instance.color 
+                                    : 'hsl(var(--destructive))',
+                                  color: selectedConversation.instance.is_active 
+                                    ? selectedConversation.instance.color 
+                                    : 'hsl(var(--destructive))'
+                                }}
                               >
+                                {!selectedConversation.instance.is_active && (
+                                  <WifiOff className="h-3 w-3" />
+                                )}
                                 via {selectedConversation.instance.name}
                               </Badge>
                             )}
                           </div>
                         </div>
                       </div>
+                      {/* Transfer Instance Button */}
+                      {instances.length > 1 && (
+                        <Button 
+                          variant={selectedConversation.instance && !selectedConversation.instance.is_active ? "destructive" : "outline"} 
+                          size="sm"
+                          onClick={() => setTransferModalOpen(true)}
+                          className="gap-1.5"
+                        >
+                          <ArrowRightLeft className="h-4 w-4" />
+                          <span className="hidden lg:inline">
+                            {selectedConversation.instance && !selectedConversation.instance.is_active 
+                              ? 'Transferir (Bloqueado)' 
+                              : 'Transferir'}
+                          </span>
+                        </Button>
+                      )}
                     </div>
                     {/* Lead Control Panel - unified controls */}
                     <LeadControlPanel 
@@ -1312,6 +1342,36 @@ export default function WhatsAppChat() {
               )}
           </div>
       </div>
+
+      {/* Transfer Instance Modal */}
+      {selectedConversation && (
+        <TransferInstanceModal
+          open={transferModalOpen}
+          onOpenChange={setTransferModalOpen}
+          conversationId={selectedConversation.id}
+          currentConfigId={selectedConversation.config_id || null}
+          contactName={selectedConversation.name || ''}
+          contactPhone={selectedConversation.phone}
+          onTransferComplete={() => {
+            loadConversations();
+            // Refresh selected conversation with new instance
+            supabase
+              .from('whatsapp_conversations')
+              .select('*')
+              .eq('id', selectedConversation.id)
+              .single()
+              .then(({ data }) => {
+                if (data) {
+                  const instance = instances.find(i => i.id === data.config_id);
+                  setSelectedConversation({
+                    ...data,
+                    instance
+                  } as ConversationWithInstance);
+                }
+              });
+          }}
+        />
+      )}
     </div>
   );
 }
