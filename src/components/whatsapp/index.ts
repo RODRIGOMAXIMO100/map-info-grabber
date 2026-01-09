@@ -13,3 +13,4 @@ export {
   type FunnelStage
 } from './ConversationStatusBadges';
 export { FunnelStageFilter } from './FunnelStageFilter';
+export { TransferInstanceModal } from './TransferInstanceModal';
