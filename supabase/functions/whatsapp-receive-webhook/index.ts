@@ -507,14 +507,48 @@ serve(async (req) => {
     let aiPaused = false;
     let existingConfigId: string | null = null;
     
-    // Simple phone matching - exact match
-    const { data: existingConv } = await supabase
-      .from('whatsapp_conversations')
-      .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead')
-      .eq('phone', senderPhone)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // === FIX: Buscar conversa por phone + config_id para separar por instância ===
+    let existingConv = null;
+    
+    // Primeiro: buscar conversa específica desta instância (phone + config_id)
+    if (configId) {
+      const { data: specificConv } = await supabase
+        .from('whatsapp_conversations')
+        .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead')
+        .eq('phone', senderPhone)
+        .eq('config_id', configId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      existingConv = specificConv;
+      console.log(`[Conversation] Looking for phone=${senderPhone} + config_id=${configId}: ${existingConv ? 'FOUND' : 'NOT FOUND'}`);
+    }
+    
+    // Se não encontrou conversa específica, verificar se existe conversa órfã (sem config_id)
+    if (!existingConv) {
+      const { data: orphanConv } = await supabase
+        .from('whatsapp_conversations')
+        .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead')
+        .eq('phone', senderPhone)
+        .is('config_id', null)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (orphanConv && configId) {
+        // Adotar a conversa órfã para esta instância
+        console.log(`[Conversation] Found orphan conversation ${orphanConv.id} for ${senderPhone}, adopting to config_id=${configId}`);
+        await supabase
+          .from('whatsapp_conversations')
+          .update({ config_id: configId })
+          .eq('id', orphanConv.id);
+        
+        existingConv = { ...orphanConv, config_id: configId };
+      } else if (orphanConv) {
+        existingConv = orphanConv;
+      }
+    }
 
     const messagePreview = typeof messageContent === 'string' 
       ? messageContent.substring(0, 100) 
