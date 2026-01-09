@@ -1,9 +1,10 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Image, Video, Mic, FileText, Play, Download, Loader2, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Image, Video, Mic, FileText, Play, Download, Loader2, CheckCircle2, AlertCircle, ExternalLink, User, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -35,6 +36,9 @@ interface MediaData {
   // Transcription for audio files
   transcription?: string;
   transcribed_at?: string;
+  // Contact card fields
+  displayName?: string;
+  vcard?: string;
 }
 
 interface MessageContentProps {
@@ -107,7 +111,12 @@ function formatFileSize(bytes: number): string {
 }
 
 // Infer media type from data
-function inferMediaType(normalized: ReturnType<typeof normalizeMediaData>): string | null {
+function inferMediaType(normalized: ReturnType<typeof normalizeMediaData>, rawData?: MediaData | null): string | null {
+  // Detect contact card
+  if (rawData?.displayName && rawData?.vcard) {
+    return 'contacts';
+  }
+  
   const mime = (normalized.mimetype || '').toLowerCase();
   
   if (mime.startsWith('image/')) return 'image';
@@ -473,10 +482,10 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
   const normalized = normalizeMediaData(mediaData);
 
   // Known media types that should be trusted from the database
-  const KNOWN_MEDIA_TYPES = ['image', 'video', 'audio', 'ptt', 'document', 'sticker'];
+  const KNOWN_MEDIA_TYPES = ['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'contacts'];
   
   // Infer media type when backend stored message_type as "text" but content is JSON metadata
-  const inferredType = inferMediaType(normalized);
+  const inferredType = inferMediaType(normalized, mediaData);
   
   // Priority: 1) Known messageType from DB, 2) inferredType from content, 3) fallback to messageType
   const effectiveType = KNOWN_MEDIA_TYPES.includes(messageType) 
@@ -843,6 +852,84 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
       </div>
     );
   }
+
+  // Handle contacts type (vCard)
+  if (effectiveType === 'contacts' && mediaData) {
+    const displayName = mediaData.displayName || 'Contato';
+    const vcard = mediaData.vcard || '';
+    
+    // Extract phone from vCard
+    const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s-]+)/);
+    const phone = phoneMatch ? phoneMatch[1].trim() : null;
+    
+    // Extract business description
+    const descMatch = vcard.match(/X-WA-BIZ-DESCRIPTION:(.+)/);
+    const description = descMatch ? descMatch[1].trim() : null;
+
+    const handleCopyPhone = () => {
+      if (phone) {
+        navigator.clipboard.writeText(phone.replace(/\s/g, ''));
+        toast.success('Número copiado!');
+      }
+    };
+    
+    return (
+      <div className={cn(
+        "p-3 rounded-lg space-y-2 min-w-[200px]",
+        isOutgoing ? "bg-primary-foreground/10" : "bg-muted/50"
+      )}>
+        <div className="flex items-center gap-3">
+          <Avatar className="h-10 w-10">
+            <AvatarFallback className={cn(
+              isOutgoing ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted"
+            )}>
+              {displayName[0]?.toUpperCase() || <User className="h-4 w-4" />}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className={cn(
+              "font-medium truncate",
+              isOutgoing ? "text-primary-foreground" : ""
+            )}>
+              {displayName}
+            </p>
+            {phone && (
+              <p className={cn(
+                "text-sm truncate",
+                isOutgoing ? "text-primary-foreground/70" : "text-muted-foreground"
+              )}>
+                {phone}
+              </p>
+            )}
+          </div>
+        </div>
+        {description && (
+          <p className={cn(
+            "text-xs line-clamp-2",
+            isOutgoing ? "text-primary-foreground/60" : "text-muted-foreground"
+          )}>
+            {description}
+          </p>
+        )}
+        {phone && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCopyPhone}
+            className={cn(
+              "gap-1.5 w-full",
+              isOutgoing 
+                ? "border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20" 
+                : "hover:bg-primary/10"
+            )}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            Copiar número
+          </Button>
+        )}
+      </div>
+    );
+  }
   
   // Default: text message or unrecognized JSON
   if (mediaData && hasEncryptedMedia) {
@@ -901,6 +988,7 @@ export function formatMessagePreview(content: string | null, messageType: string
     case 'ptt': return '🎵 Áudio';
     case 'document': return '📄 Documento';
     case 'sticker': return '🏷️ Figurinha';
+    case 'contacts': return '👤 Contato compartilhado';
   }
   
   // If JSON, prefer caption when available
