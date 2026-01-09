@@ -500,9 +500,30 @@ serve(async (req) => {
       }
       // ============= END DUPLICATE CHECK =============
 
-      // Round-robin: select config FIRST (needed for number verification)
-      const selectedConfig = availableConfigs[configIndex % availableConfigs.length];
-      configIndex++;
+      // ============= INSTANCE SELECTION WITH FALLBACK =============
+      // Try to use the original assigned instance, but fallback to any available active instance
+      let selectedConfig: WhatsAppConfig | null = null;
+      
+      if (queueItem.config_id) {
+        // Check if original instance is available
+        selectedConfig = availableConfigs.find(c => c.id === queueItem.config_id) || null;
+        
+        if (!selectedConfig) {
+          // Original instance is not available (inactive or paused), use any available one
+          console.log(`[Broadcast] Instância original ${queueItem.config_id} inativa, redirecionando para instância ativa`);
+          selectedConfig = availableConfigs[configIndex % availableConfigs.length];
+          configIndex++;
+        }
+      } else {
+        // No assigned instance, use round-robin
+        selectedConfig = availableConfigs[configIndex % availableConfigs.length];
+        configIndex++;
+      }
+
+      if (!selectedConfig) {
+        console.log(`[Broadcast] No available instance for message ${queueItem.id}`);
+        continue;
+      }
 
       const limit = instanceLimits.get(selectedConfig.id);
       if (!limit) continue;
@@ -513,6 +534,7 @@ serve(async (req) => {
         console.log(`[Broadcast] Instance ${selectedConfig.name} hit limit during batch, skipping`);
         continue;
       }
+      // ============= END INSTANCE SELECTION =============
 
       // ============= NUMBER VERIFICATION =============
       // Check if number exists on WhatsApp BEFORE sending
