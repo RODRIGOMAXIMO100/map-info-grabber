@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Sparkles } from 'lucide-react';
 import { 
   LeadControlPanel, 
   AIStatusIcon, 
@@ -70,6 +70,45 @@ export default function WhatsAppChat() {
 
   // Transfer modal state
   const [transferModalOpen, setTransferModalOpen] = useState(false);
+
+  // Auto-correction state
+  const [isCorrecting, setIsCorrecting] = useState(false);
+  const correctionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-correct text function
+  const correctText = async (text: string) => {
+    if (text.length < 5) return;
+    
+    setIsCorrecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('correct-text', {
+        body: { text }
+      });
+      
+      if (!error && data?.corrected && data.corrected !== text) {
+        setNewMessage(data.corrected);
+      }
+    } catch (e) {
+      console.log('Correção não disponível:', e);
+    } finally {
+      setIsCorrecting(false);
+    }
+  };
+
+  // Handle message change with debounced auto-correction
+  const handleMessageChange = (value: string) => {
+    setNewMessage(value);
+    
+    // Clear previous timeout
+    if (correctionTimeoutRef.current) {
+      clearTimeout(correctionTimeoutRef.current);
+    }
+    
+    // Schedule correction after 800ms of inactivity
+    correctionTimeoutRef.current = setTimeout(() => {
+      correctText(value);
+    }, 800);
+  };
 
   // Helper to detect if a conversation is a group
   const isGroup = (conv: ConversationWithInstance): boolean => {
@@ -804,13 +843,18 @@ export default function WhatsAppChat() {
                     disabled={sending || !!pendingMedia}
                   />
                   
-                  <Input
-                    placeholder="Digite sua mensagem..."
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    disabled={sending}
-                    className="flex-1"
-                  />
+                  <div className="relative flex-1">
+                    <Input
+                      placeholder="Digite sua mensagem..."
+                      value={newMessage}
+                      onChange={(e) => handleMessageChange(e.target.value)}
+                      disabled={sending}
+                      className="flex-1 pr-8"
+                    />
+                    {isCorrecting && (
+                      <Sparkles className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-primary animate-pulse" />
+                    )}
+                  </div>
                   <Button 
                     type="submit" 
                     size="icon" 
@@ -1348,13 +1392,18 @@ export default function WhatsAppChat() {
                         disabled={sending || !!pendingMedia}
                       />
                       
-                      <Input
-                        placeholder="Digite sua mensagem..."
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        disabled={sending}
-                        className="flex-1"
-                      />
+                      <div className="relative flex-1">
+                        <Input
+                          placeholder="Digite sua mensagem..."
+                          value={newMessage}
+                          onChange={(e) => handleMessageChange(e.target.value)}
+                          disabled={sending}
+                          className="flex-1 pr-8"
+                        />
+                        {isCorrecting && (
+                          <Sparkles className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-primary animate-pulse" />
+                        )}
+                      </div>
                       <Button 
                         type="submit" 
                         size="icon" 
