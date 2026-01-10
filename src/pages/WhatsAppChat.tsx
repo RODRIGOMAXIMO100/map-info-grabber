@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Sparkles } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Sparkles, Archive } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AIStatusIcon, 
   FunnelStageBadge, 
@@ -60,6 +61,7 @@ export default function WhatsAppChat() {
   const [conversationType, setConversationType] = useState<ConversationType>('all');
   const [originType, setOriginType] = useState<OriginType>('all');
   const [funnelStageFilter, setFunnelStageFilter] = useState<FunnelStageId | 'all'>('all');
+  const [viewTab, setViewTab] = useState<'active' | 'archived'>('active');
   
   // Media state
   const [pendingMedia, setPendingMedia] = useState<{
@@ -508,6 +510,13 @@ export default function WhatsAppChat() {
 
   const filteredConversations = useMemo(() => {
     return conversations.filter(conv => {
+      // First, filter by active/archived tab
+      const matchesTab = viewTab === 'active' 
+        ? conv.status !== 'archived' 
+        : conv.status === 'archived';
+      
+      if (!matchesTab) return false;
+
       const matchesSearch = conv.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         conv.phone.includes(searchTerm);
       
@@ -549,7 +558,38 @@ export default function WhatsAppChat() {
           return true;
       }
     });
-  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType, originType, funnelStageFilter]);
+  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType, originType, funnelStageFilter, viewTab]);
+
+  // Archive counts
+  const activeCount = useMemo(() => conversations.filter(c => c.status !== 'archived').length, [conversations]);
+  const archivedCount = useMemo(() => conversations.filter(c => c.status === 'archived').length, [conversations]);
+
+  // Archive conversation function
+  const archiveConversation = async (conversationId: string, archive: boolean) => {
+    const { error } = await supabase
+      .from('whatsapp_conversations')
+      .update({ status: archive ? 'archived' : 'active' })
+      .eq('id', conversationId);
+
+    if (!error) {
+      toast({
+        title: archive ? 'Conversa arquivada' : 'Conversa desarquivada',
+        description: archive 
+          ? 'A conversa foi movida para arquivados.' 
+          : 'A conversa foi restaurada.',
+      });
+      loadConversations();
+      if (archive) {
+        setSelectedConversation(null);
+      }
+    } else {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível arquivar a conversa.',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -629,6 +669,21 @@ export default function WhatsAppChat() {
           "border-r flex flex-col bg-background min-w-0 overflow-hidden w-full",
           selectedConversation ? "hidden" : "flex"
         )}>
+          {/* Tabs for Active/Archived - Mobile */}
+          <div className="px-3 pt-3">
+            <Tabs value={viewTab} onValueChange={(v) => setViewTab(v as 'active' | 'archived')}>
+              <TabsList className="w-full h-8">
+                <TabsTrigger value="active" className="flex-1 text-xs h-7">
+                  Conversas ({activeCount})
+                </TabsTrigger>
+                <TabsTrigger value="archived" className="flex-1 text-xs h-7">
+                  <Archive className="h-3 w-3 mr-1" />
+                  Arquivadas ({archivedCount})
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
           <div className="p-3 border-b space-y-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -908,6 +963,21 @@ export default function WhatsAppChat() {
                     </SelectContent>
                   </Select>
                 )}
+              </div>
+
+              {/* Tabs for Active/Archived */}
+              <div className="px-3 pt-3">
+                <Tabs value={viewTab} onValueChange={(v) => setViewTab(v as 'active' | 'archived')}>
+                  <TabsList className="w-full h-8">
+                    <TabsTrigger value="active" className="flex-1 text-xs h-7">
+                      Conversas ({activeCount})
+                    </TabsTrigger>
+                    <TabsTrigger value="archived" className="flex-1 text-xs h-7">
+                      <Archive className="h-3 w-3 mr-1" />
+                      Arquivadas ({archivedCount})
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </div>
 
               <div className="p-3 border-b space-y-2">
@@ -1287,6 +1357,7 @@ export default function WhatsAppChat() {
                             funnel_stage: (selectedConversation as any).funnel_stage,
                             crm_funnel_id: (selectedConversation as any).crm_funnel_id,
                             tags: selectedConversation.tags,
+                            status: selectedConversation.status,
                           }}
                           onUpdate={() => {
                             loadConversations();
@@ -1311,6 +1382,7 @@ export default function WhatsAppChat() {
                             setSelectedConversation(null);
                             loadConversations();
                           }}
+                          onArchive={(archive) => archiveConversation(selectedConversation.id, archive)}
                         />
                       </div>
                     </div>
