@@ -306,7 +306,6 @@ export default function WhatsAppChat() {
         title: 'Marcado como não lido',
         description: 'A conversa foi marcada para revisão.',
       });
-      setSelectedConversation(null);
       loadConversations();
     }
   };
