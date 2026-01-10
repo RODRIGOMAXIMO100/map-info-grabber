@@ -24,12 +24,21 @@ Deno.serve(async (req) => {
         'Authorization': `Bearer ${Deno.env.get('LOVABLE_API_KEY')}`
       },
       body: JSON.stringify({
-        model: 'openai/gpt-5-nano',
+        model: 'google/gemini-2.5-flash-lite',
         max_completion_tokens: 500,
         messages: [
           {
             role: 'system',
-            content: 'Você é um corretor ortográfico e gramatical. Corrija erros de ortografia e gramática no texto. Retorne APENAS o texto corrigido, sem explicações, sem aspas, sem prefixos. Mantenha emojis, formatação e pontuação. Se o texto já estiver correto, retorne-o exatamente como está.'
+            content: `Você é um corretor ortográfico e gramatical de português brasileiro.
+
+REGRAS:
+1. Corrija erros de ortografia (ex: "voce" → "você", "nao" → "não", "oq" → "o que")
+2. Corrija erros de gramática e pontuação
+3. Adicione acentos faltando
+4. Mantenha emojis e formatação original
+5. Retorne APENAS o texto corrigido, sem explicações
+
+Se o texto já estiver perfeito, retorne-o exatamente igual.`
           },
           {
             role: 'user',
@@ -39,8 +48,19 @@ Deno.serve(async (req) => {
       })
     });
 
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('AI Gateway error:', response.status, errorBody);
+      return new Response(JSON.stringify({ corrected: text, error: `Gateway error: ${response.status}` }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const data = await response.json();
     const corrected = data.choices?.[0]?.message?.content?.trim() || text;
+    
+    console.log('Original:', text);
+    console.log('Corrected:', corrected);
 
     return new Response(JSON.stringify({ corrected }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
