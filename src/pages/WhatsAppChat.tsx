@@ -73,41 +73,44 @@ export default function WhatsAppChat() {
 
   // Auto-correction state
   const [isCorrecting, setIsCorrecting] = useState(false);
-  const correctionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lastCorrectedIndex, setLastCorrectedIndex] = useState(0);
 
-  // Auto-correct text function
-  const correctText = async (text: string) => {
-    if (text.length < 5) return;
-    
-    setIsCorrecting(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('correct-text', {
-        body: { text }
-      });
-      
-      if (!error && data?.corrected && data.corrected !== text) {
-        setNewMessage(data.corrected);
-      }
-    } catch (e) {
-      console.log('Correção não disponível:', e);
-    } finally {
-      setIsCorrecting(false);
-    }
-  };
-
-  // Handle message change with debounced auto-correction
-  const handleMessageChange = (value: string) => {
+  // Handle message change with word-by-word correction on space
+  const handleMessageChange = async (value: string) => {
     setNewMessage(value);
     
-    // Clear previous timeout
-    if (correctionTimeoutRef.current) {
-      clearTimeout(correctionTimeoutRef.current);
+    // Detect if space was pressed and we have new content to check
+    if (value.endsWith(' ') && value.length > lastCorrectedIndex) {
+      const textBeforeSpace = value.trimEnd();
+      const words = textBeforeSpace.split(' ');
+      const lastWord = words[words.length - 1];
+      
+      // Only correct words with 3+ characters
+      if (lastWord && lastWord.length >= 3) {
+        setIsCorrecting(true);
+        
+        try {
+          const { data } = await supabase.functions.invoke('correct-text', {
+            body: { text: lastWord }
+          });
+          
+          if (data?.corrected && data.corrected !== lastWord) {
+            // Replace the last word with the corrected version
+            words[words.length - 1] = data.corrected;
+            const correctedText = words.join(' ') + ' ';
+            setNewMessage(correctedText);
+            setLastCorrectedIndex(correctedText.length);
+          } else {
+            setLastCorrectedIndex(value.length);
+          }
+        } catch (e) {
+          console.log('Correção não disponível:', e);
+          setLastCorrectedIndex(value.length);
+        } finally {
+          setIsCorrecting(false);
+        }
+      }
     }
-    
-    // Schedule correction after 800ms of inactivity
-    correctionTimeoutRef.current = setTimeout(() => {
-      correctText(value);
-    }, 800);
   };
 
   // Helper to detect if a conversation is a group
@@ -335,6 +338,7 @@ export default function WhatsAppChat() {
 
       if (error) throw error;
       setNewMessage('');
+      setLastCorrectedIndex(0);
       setPendingMedia(null);
     } catch (error: unknown) {
       console.error('Error sending message:', error);

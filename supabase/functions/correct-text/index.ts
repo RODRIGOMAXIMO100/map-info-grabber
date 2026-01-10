@@ -29,16 +29,10 @@ Deno.serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `Você é um corretor ortográfico e gramatical de português brasileiro.
-
-REGRAS:
-1. Corrija erros de ortografia (ex: "voce" → "você", "nao" → "não", "oq" → "o que")
-2. Corrija erros de gramática e pontuação
-3. Adicione acentos faltando
-4. Mantenha emojis e formatação original
-5. Retorne APENAS o texto corrigido, sem explicações
-
-Se o texto já estiver perfeito, retorne-o exatamente igual.`
+            content: `Corrija a ortografia da palavra em português brasileiro.
+Adicione acentos se necessário (voce→você, nao→não, vc→você, oq→o que, pq→porque, tb→também, q→que).
+Retorne APENAS a palavra corrigida, sem explicações.
+Se já estiver correta, retorne igual.`
           },
           {
             role: 'user',
