@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, Check, Info, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Sparkles } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Sparkles } from 'lucide-react';
 import { 
-  LeadControlPanel, 
   AIStatusIcon, 
   FunnelStageBadge, 
   WaitingTimeBadge,
@@ -10,6 +9,7 @@ import {
   TransferInstanceModal,
   type FunnelStageId
 } from '@/components/whatsapp';
+import { LeadControlPanelCompact } from '@/components/whatsapp/LeadControlPanelCompact';
 import { MessageContent, formatMessagePreview } from '@/components/whatsapp/MessageContent';
 import { MediaUploader, MediaPreview } from '@/components/whatsapp/MediaUploader';
 import { AudioRecorder } from '@/components/whatsapp/AudioRecorder';
@@ -1203,121 +1203,117 @@ export default function WhatsAppChat() {
           <div className="flex-1 h-full flex flex-col bg-background">
             {selectedConversation ? (
                 <>
-                  {/* Chat Header */}
-                  <div className="border-b p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <Avatar className="h-9 w-9">
-                            <AvatarFallback>
+                  {/* Chat Header - Compact */}
+                  <div className="border-b px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      {/* Left: Avatar + Name/Phone + Instance */}
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className="relative shrink-0">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback className="text-xs">
                               {selectedConversation.name?.charAt(0).toUpperCase() || selectedConversation.phone.slice(-2)}
                             </AvatarFallback>
                           </Avatar>
                           {selectedConversation.instance && (
                             <div 
-                              className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
+                              className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background"
                               style={{ backgroundColor: selectedConversation.instance.color }}
                             />
                           )}
                         </div>
-                        <div>
-                          <h2 className="font-medium text-sm">
-                            {selectedConversation.name || selectedConversation.phone}
-                          </h2>
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <Phone className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground">
-                              {selectedConversation.phone}
-                            </span>
+                            <h2 className="font-medium text-sm truncate">
+                              {selectedConversation.name || selectedConversation.phone}
+                            </h2>
                             {selectedConversation.instance && (
-                              <Badge 
-                                variant="outline" 
-                                className="text-xs flex items-center gap-1"
+                              <span 
+                                className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
                                 style={{ 
-                                  borderColor: selectedConversation.instance.is_active 
-                                    ? selectedConversation.instance.color 
-                                    : 'hsl(var(--destructive))',
-                                  color: selectedConversation.instance.is_active 
-                                    ? selectedConversation.instance.color 
-                                    : 'hsl(var(--destructive))'
+                                  backgroundColor: `${selectedConversation.instance.color}20`,
+                                  color: selectedConversation.instance.color 
                                 }}
                               >
-                                {!selectedConversation.instance.is_active && (
-                                  <WifiOff className="h-3 w-3" />
-                                )}
-                                via {selectedConversation.instance.name}
-                              </Badge>
+                                {selectedConversation.instance.name}
+                              </span>
                             )}
                           </div>
+                          <span className="text-xs text-muted-foreground">
+                            {selectedConversation.phone}
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {/* Mark as Unread Button */}
+
+                      {/* Right: Compact Controls */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* Mark as Unread - icon only */}
                         <Button 
-                          variant="outline" 
-                          size="sm"
+                          variant="ghost" 
+                          size="icon"
+                          className="h-7 w-7"
                           onClick={() => markAsUnread(selectedConversation.id)}
-                          className="gap-1.5"
+                          title="Marcar não lido"
                         >
-                          <Mail className="h-4 w-4" />
-                          <span className="hidden lg:inline">Não lido</span>
+                          <Mail className="h-3.5 w-3.5" />
                         </Button>
-                        {/* Transfer Instance Button */}
+                        
+                        {/* Transfer Instance - icon only */}
                         {instances.length > 1 && (
                           <Button 
-                            variant={selectedConversation.instance && !selectedConversation.instance.is_active ? "destructive" : "outline"} 
-                            size="sm"
+                            variant={selectedConversation.instance && !selectedConversation.instance.is_active ? "destructive" : "ghost"} 
+                            size="icon"
+                            className="h-7 w-7"
                             onClick={() => setTransferModalOpen(true)}
-                            className="gap-1.5"
+                            title={selectedConversation.instance && !selectedConversation.instance.is_active 
+                              ? 'Transferir (Instância Desconectada)' 
+                              : 'Transferir instância'}
                           >
-                            <ArrowRightLeft className="h-4 w-4" />
-                            <span className="hidden lg:inline">
-                              {selectedConversation.instance && !selectedConversation.instance.is_active 
-                                ? 'Transferir (Bloqueado)' 
-                                : 'Transferir'}
-                            </span>
+                            <ArrowRightLeft className="h-3.5 w-3.5" />
                           </Button>
                         )}
+
+                        {/* Separator */}
+                        <div className="w-px h-5 bg-border mx-1" />
+
+                        {/* Lead Control Panel Compact */}
+                        <LeadControlPanelCompact 
+                          conversation={{
+                            id: selectedConversation.id,
+                            ai_paused: selectedConversation.ai_paused,
+                            ai_handoff_reason: selectedConversation.ai_handoff_reason,
+                            is_group: selectedConversation.is_group,
+                            is_crm_lead: selectedConversation.is_crm_lead,
+                            origin: (selectedConversation as any).origin,
+                            funnel_stage: (selectedConversation as any).funnel_stage,
+                            crm_funnel_id: (selectedConversation as any).crm_funnel_id,
+                            tags: selectedConversation.tags,
+                          }}
+                          onUpdate={() => {
+                            loadConversations();
+                            if (selectedConversation) {
+                              supabase
+                                .from('whatsapp_conversations')
+                                .select('*')
+                                .eq('id', selectedConversation.id)
+                                .single()
+                                .then(({ data }) => {
+                                  if (data) {
+                                    setSelectedConversation(prev => ({
+                                      ...prev!,
+                                      ...data,
+                                      instance: prev?.instance
+                                    }));
+                                  }
+                                });
+                            }
+                          }}
+                          onDelete={() => {
+                            setSelectedConversation(null);
+                            loadConversations();
+                          }}
+                        />
                       </div>
                     </div>
-                    {/* Lead Control Panel - unified controls */}
-                    <LeadControlPanel 
-                      conversation={{
-                        id: selectedConversation.id,
-                        ai_paused: selectedConversation.ai_paused,
-                        ai_handoff_reason: selectedConversation.ai_handoff_reason,
-                        is_group: selectedConversation.is_group,
-                        is_crm_lead: selectedConversation.is_crm_lead,
-                        origin: (selectedConversation as any).origin,
-                        funnel_stage: (selectedConversation as any).funnel_stage,
-                        crm_funnel_id: (selectedConversation as any).crm_funnel_id,
-                        tags: selectedConversation.tags,
-                      }}
-                      onUpdate={() => {
-                        loadConversations();
-                        // Refresh selected conversation
-                        if (selectedConversation) {
-                          supabase
-                            .from('whatsapp_conversations')
-                            .select('*')
-                            .eq('id', selectedConversation.id)
-                            .single()
-                            .then(({ data }) => {
-                              if (data) {
-                                setSelectedConversation(prev => ({
-                                  ...prev!,
-                                  ...data,
-                                  instance: prev?.instance
-                                }));
-                              }
-                            });
-                        }
-                      }}
-                      onDelete={() => {
-                        setSelectedConversation(null);
-                        loadConversations();
-                      }}
-                    />
                   </div>
 
                   {/* Messages */}
