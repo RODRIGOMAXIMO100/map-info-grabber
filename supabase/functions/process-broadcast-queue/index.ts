@@ -297,6 +297,36 @@ serve(async (req) => {
       max_consecutive_errors: 5
     };
 
+    // ============= FETCH DEFAULT FUNNEL AND FIRST STAGE =============
+    // Get default CRM funnel and its first stage for new leads
+    let defaultFunnelId: string | null = null;
+    let defaultStageId: string | null = null;
+
+    const { data: defaultFunnel } = await supabase
+      .from('crm_funnels')
+      .select('id')
+      .eq('is_default', true)
+      .maybeSingle();
+
+    if (defaultFunnel?.id) {
+      defaultFunnelId = defaultFunnel.id;
+      
+      const { data: firstStage } = await supabase
+        .from('crm_funnel_stages')
+        .select('id')
+        .eq('funnel_id', defaultFunnelId)
+        .order('stage_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      
+      if (firstStage?.id) {
+        defaultStageId = firstStage.id;
+      }
+    }
+    
+    console.log(`[Broadcast] Default funnel: ${defaultFunnelId}, first stage: ${defaultStageId}`);
+    // ============= END FETCH DEFAULT FUNNEL =============
+
     // Check business hours
     if (!isWithinBusinessHours(settings)) {
       console.log('[Broadcast] Outside business hours, skipping');
@@ -703,8 +733,9 @@ serve(async (req) => {
                 last_message_preview: processedMessage.substring(0, 100),
                 config_id: selectedConfig.id,
                 is_crm_lead: true, // MARCA COMO CRM LEAD
-                tags: ['new'], // Coloca no funil - Lead Novo (string)
-                funnel_stage: 'new',
+                crm_funnel_id: defaultFunnelId, // ADICIONA AO FUNIL PADRÃO
+                funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
+                tags: ['new'],
                 dna_id: dnaId || undefined,
                 // Dados do broadcast para follow-ups automáticos
                 broadcast_list_id: queueItem.broadcast_list_id,
@@ -722,8 +753,9 @@ serve(async (req) => {
                 name: leadData?.name ? String(leadData.name) : null,
                 config_id: selectedConfig.id,
                 is_crm_lead: true, // MARCA COMO CRM LEAD
-                tags: ['new'], // Coloca no funil - Lead Novo (string)
-                funnel_stage: 'new',
+                crm_funnel_id: defaultFunnelId, // ADICIONA AO FUNIL PADRÃO
+                funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
+                tags: ['new'],
                 dna_id: dnaId,
                 last_message_at: new Date().toISOString(),
                 last_message_preview: processedMessage.substring(0, 100),
