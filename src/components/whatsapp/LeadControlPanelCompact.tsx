@@ -1,4 +1,4 @@
-import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone } from 'lucide-react';
+import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone, Archive, ArchiveRestore } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -53,12 +53,14 @@ interface LeadControlPanelCompactProps {
     funnel_stage?: string | null;
     crm_funnel_id?: string | null;
     tags?: string[];
+    status?: string;
   };
   onUpdate?: () => void;
+  onArchive?: (archive: boolean) => void;
   onDelete?: () => void;
 }
 
-export function LeadControlPanelCompact({ conversation, onUpdate, onDelete }: LeadControlPanelCompactProps) {
+export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onArchive }: LeadControlPanelCompactProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -70,6 +72,7 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete }: Le
   const currentStage = conversation.funnel_stage || '';
   const isCrmLead = conversation.is_crm_lead === true;
   const currentOrigin = conversation.origin || 'random';
+  const isArchived = conversation.status === 'archived';
 
   // Load stages when funnel changes
   useEffect(() => {
@@ -384,6 +387,24 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete }: Le
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
+            )}
+            {onArchive && (
+              <DropdownMenuItem 
+                onClick={() => onArchive(!isArchived)}
+                className="text-xs"
+              >
+                {isArchived ? (
+                  <>
+                    <ArchiveRestore className="h-3.5 w-3.5 mr-2" />
+                    Desarquivar
+                  </>
+                ) : (
+                  <>
+                    <Archive className="h-3.5 w-3.5 mr-2" />
+                    Arquivar
+                  </>
+                )}
+              </DropdownMenuItem>
             )}
             <DropdownMenuItem 
               onClick={() => setDeleteDialogOpen(true)}
