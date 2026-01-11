@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
   try {
     const { text } = await req.json();
 
-    if (!text || text.length < 5) {
+    if (!text || text.length < 2) {
       return new Response(JSON.stringify({ corrected: text }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -29,10 +29,14 @@ Deno.serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `Corrija a ortografia da palavra em português brasileiro.
-Adicione acentos se necessário (voce→você, nao→não, vc→você, oq→o que, pq→porque, tb→também, q→que).
-Retorne APENAS a palavra corrigida, sem explicações.
-Se já estiver correta, retorne igual.`
+            content: `Você é um corretor ortográfico de português brasileiro.
+
+REGRAS:
+1. Corrija erros de digitação comuns (oli→olá, tdfo→tudo, nda→nada)
+2. Expanda abreviações: vc→você, pq→porque, tb→também, oq→o que, q→que, hj→hoje, vcs→vocês, msm→mesmo, cmg→comigo, n→não, s→sim, blz→beleza
+3. Adicione acentos: voce→você, nao→não, entao→então, ja→já, so→só
+4. Se a palavra já estiver correta, retorne-a igual
+5. Retorne APENAS a palavra/expressão corrigida, sem explicações`
           },
           {
             role: 'user',
