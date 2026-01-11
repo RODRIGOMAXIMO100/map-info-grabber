@@ -39,6 +39,10 @@ interface MediaData {
   // Contact card fields
   displayName?: string;
   vcard?: string;
+  // Text message in JSON format (from WhatsApp API)
+  text?: string;
+  key?: unknown;
+  contextInfo?: unknown;
 }
 
 interface MessageContentProps {
@@ -108,6 +112,18 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Extract text content from JSON message format
+function extractTextFromJson(data: MediaData | null): string | null {
+  if (!data) return null;
+  
+  // If has 'text' field, it's a text message in JSON format
+  if (typeof data.text === 'string' && data.text.trim()) {
+    return data.text;
+  }
+  
+  return null;
 }
 
 // Infer media type from data
@@ -948,6 +964,15 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
     );
   }
   
+  // Check if it's a text message in JSON format (e.g., {"text": "message"})
+  const jsonTextContent = extractTextFromJson(mediaData);
+  if (mediaData && jsonTextContent) {
+    // It's a text message wrapped in JSON - render normally
+    return (
+      <p className="text-sm whitespace-pre-wrap break-words">{jsonTextContent}</p>
+    );
+  }
+  
   if (mediaData) {
     // It's JSON but unrecognized type - show placeholder
     return (
@@ -975,6 +1000,11 @@ export function formatMessagePreview(content: string | null, messageType: string
   const mediaData = trimmed.startsWith('{') ? (() => {
     try { return JSON.parse(trimmed) as MediaData; } catch { return null; }
   })() : null;
+
+  // Check for text message in JSON format FIRST
+  if (mediaData && typeof mediaData.text === 'string' && mediaData.text.trim()) {
+    return mediaData.text;
+  }
 
   const normalized = normalizeMediaData(mediaData);
   const inferredType = inferMediaType(normalized);
