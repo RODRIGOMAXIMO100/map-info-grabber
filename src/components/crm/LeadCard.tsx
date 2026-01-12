@@ -54,14 +54,27 @@ export function LeadCard({
 
   const formatPhone = (phone: string): string => {
     const digits = phone.replace(/\D/g, '');
-    if (digits.length >= 10) {
-      const ddd = digits.slice(-11, -9) || digits.slice(0, 2);
-      const rest = digits.slice(-9);
-      if (rest.length === 9) {
-        return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    
+    // Formato brasileiro: 55 + DDD (2) + Número (8-9)
+    if (digits.startsWith('55') && digits.length >= 12) {
+      const ddd = digits.slice(2, 4);
+      const number = digits.slice(4);
+      if (number.length === 9) {
+        return `(${ddd}) ${number.slice(0, 5)}-${number.slice(5)}`;
       }
-      return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+      return `(${ddd}) ${number.slice(0, 4)}-${number.slice(4)}`;
     }
+    
+    // Fallback para outros formatos
+    if (digits.length >= 10) {
+      const ddd = digits.slice(0, 2);
+      const number = digits.slice(2);
+      if (number.length >= 9) {
+        return `(${ddd}) ${number.slice(0, 5)}-${number.slice(5)}`;
+      }
+      return `(${ddd}) ${number.slice(0, 4)}-${number.slice(4)}`;
+    }
+    
     return phone;
   };
 
