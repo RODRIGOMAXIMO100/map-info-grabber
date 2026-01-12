@@ -1,4 +1,6 @@
-import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone, Archive, ArchiveRestore } from 'lucide-react';
+import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone, Archive, ArchiveRestore, Bell } from 'lucide-react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -34,6 +36,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
+import { cn } from '@/lib/utils';
 
 interface Stage {
   id: string;
@@ -54,13 +57,15 @@ interface LeadControlPanelCompactProps {
     crm_funnel_id?: string | null;
     tags?: string[];
     status?: string;
+    reminder_at?: string | null;
   };
   onUpdate?: () => void;
   onArchive?: (archive: boolean) => void;
   onDelete?: () => void;
+  onReminderClick?: () => void;
 }
 
-export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onArchive }: LeadControlPanelCompactProps) {
+export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onArchive, onReminderClick }: LeadControlPanelCompactProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -73,6 +78,7 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
   const isCrmLead = conversation.is_crm_lead === true;
   const currentOrigin = conversation.origin || 'random';
   const isArchived = conversation.status === 'archived';
+  const hasReminder = !!conversation.reminder_at;
 
   // Load stages when funnel changes
   useEffect(() => {
@@ -280,6 +286,29 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
 
         {!isInHandoff && (
           <>
+            {/* Reminder Button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant={hasReminder ? "default" : "ghost"} 
+                  size="icon" 
+                  className={cn("h-7 w-7", hasReminder && "bg-amber-500 hover:bg-amber-600")}
+                  onClick={onReminderClick}
+                  disabled={loading}
+                >
+                  <Bell className={cn("h-3.5 w-3.5", hasReminder && "text-white")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>
+                  {hasReminder 
+                    ? `Lembrete: ${format(new Date(conversation.reminder_at!), "dd/MM 'às' HH:mm", { locale: ptBR })}` 
+                    : 'Agendar Lembrete'
+                  }
+                </p>
+              </TooltipContent>
+            </Tooltip>
+
             {/* Toggle Lead - icon only */}
             <Tooltip>
               <TooltipTrigger asChild>

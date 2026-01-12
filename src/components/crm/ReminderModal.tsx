@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { format, addHours, addDays, setHours, setMinutes, formatDistanceToNow } from 'date-fns';
+import { useState, useMemo } from 'react';
+import { format, addHours, addMinutes, addDays, setHours, setMinutes, formatDistanceToNow, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Clock, Calendar, Bell, Trash2, MessageCircle } from 'lucide-react';
 import {
@@ -38,8 +38,13 @@ export function ReminderModal({
   const [customTime, setCustomTime] = useState('09:00');
   const [mode, setMode] = useState<'quick' | 'custom'>('quick');
 
+  // Calculate today at midnight to allow same-day scheduling
+  const today = useMemo(() => startOfDay(new Date()), []);
+
   const quickOptions = [
+    { label: 'Em 30 min', getValue: () => addMinutes(new Date(), 30) },
     { label: 'Em 1 hora', getValue: () => addHours(new Date(), 1) },
+    { label: 'Em 2 horas', getValue: () => addHours(new Date(), 2) },
     { label: 'Em 4 horas', getValue: () => addHours(new Date(), 4) },
     { label: 'Amanhã 9h', getValue: () => setHours(setMinutes(addDays(new Date(), 1), 0), 9) },
     { label: 'Amanhã 14h', getValue: () => setHours(setMinutes(addDays(new Date(), 1), 0), 14) },
@@ -141,10 +146,10 @@ export function ReminderModal({
                 <Button
                   key={option.label}
                   variant="outline"
-                  className="h-auto py-3 flex flex-col items-center gap-1"
+                  className="h-auto py-2.5 flex flex-col items-center gap-0.5"
                   onClick={() => handleQuickSelect(option.getValue)}
                 >
-                  <span className="text-sm font-medium">{option.label}</span>
+                  <span className="text-xs font-medium">{option.label}</span>
                   <span className="text-[10px] text-muted-foreground">
                     {format(option.getValue(), "dd/MM HH:mm", { locale: ptBR })}
                   </span>
@@ -158,7 +163,7 @@ export function ReminderModal({
                 selected={selectedDate}
                 onSelect={setSelectedDate}
                 locale={ptBR}
-                disabled={(date) => date < new Date()}
+                disabled={(date) => date < today}
                 className={cn("rounded-md border p-3 pointer-events-auto")}
               />
 
