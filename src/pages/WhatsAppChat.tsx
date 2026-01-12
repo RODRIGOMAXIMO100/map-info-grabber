@@ -14,6 +14,7 @@ import { LeadControlPanelCompact } from '@/components/whatsapp/LeadControlPanelC
 import { MessageContent, formatMessagePreview } from '@/components/whatsapp/MessageContent';
 import { MediaUploader, MediaPreview } from '@/components/whatsapp/MediaUploader';
 import { AudioRecorder } from '@/components/whatsapp/AudioRecorder';
+import { ReminderModal } from '@/components/crm/ReminderModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -72,6 +73,9 @@ export default function WhatsAppChat() {
 
   // Transfer modal state
   const [transferModalOpen, setTransferModalOpen] = useState(false);
+  
+  // Reminder modal state
+  const [reminderModalOpen, setReminderModalOpen] = useState(false);
 
   // Helper to detect if a conversation is a group
   const isGroup = (conv: ConversationWithInstance): boolean => {
@@ -357,6 +361,65 @@ export default function WhatsAppChat() {
       });
     } catch (error) {
       console.error('Error toggling AI:', error);
+    }
+  };
+
+  const handleSaveReminder = async (date: Date) => {
+    if (!selectedConversation) return;
+    
+    const { error } = await supabase
+      .from('whatsapp_conversations')
+      .update({ 
+        reminder_at: date.toISOString(), 
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', selectedConversation.id);
+
+    if (error) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível agendar o lembrete.',
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Lembrete agendado!',
+        description: `Você será lembrado em ${date.toLocaleDateString('pt-BR')} às ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      });
+      loadConversations();
+      setSelectedConversation(prev => prev ? { 
+        ...prev, 
+        reminder_at: date.toISOString() 
+      } : null);
+    }
+  };
+
+  const handleRemoveReminder = async () => {
+    if (!selectedConversation) return;
+    
+    const { error } = await supabase
+      .from('whatsapp_conversations')
+      .update({ 
+        reminder_at: null, 
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', selectedConversation.id);
+
+    if (error) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível remover o lembrete.',
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Lembrete removido',
+      });
+      loadConversations();
+      setSelectedConversation(prev => prev ? { 
+        ...prev, 
+        reminder_at: null 
+      } : null);
     }
   };
 
@@ -1312,6 +1375,7 @@ export default function WhatsAppChat() {
                             crm_funnel_id: (selectedConversation as any).crm_funnel_id,
                             tags: selectedConversation.tags,
                             status: selectedConversation.status,
+                            reminder_at: selectedConversation.reminder_at,
                           }}
                           onUpdate={() => {
                             loadConversations();
@@ -1337,6 +1401,7 @@ export default function WhatsAppChat() {
                             loadConversations();
                           }}
                           onArchive={(archive) => archiveConversation(selectedConversation.id, archive)}
+                          onReminderClick={() => setReminderModalOpen(true)}
                         />
                       </div>
                     </div>
@@ -1475,6 +1540,19 @@ export default function WhatsAppChat() {
                 }
               });
           }}
+        />
+      )}
+
+      {/* Reminder Modal */}
+      {selectedConversation && (
+        <ReminderModal
+          open={reminderModalOpen}
+          onOpenChange={setReminderModalOpen}
+          leadName={selectedConversation.name || selectedConversation.phone}
+          onSave={handleSaveReminder}
+          onRemove={handleRemoveReminder}
+          currentReminder={selectedConversation.reminder_at}
+          lastContactAt={selectedConversation.last_message_at}
         />
       )}
     </div>
