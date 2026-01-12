@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { 
   Users, 
@@ -11,21 +12,22 @@ import {
   MessageSquare, 
   AlertCircle, 
   TrendingUp,
-  Send,
   Bot,
   Clock,
   Calendar,
-  
   DollarSign
 } from "lucide-react";
 import InstanceMonitor from "@/components/InstanceMonitor";
-import { CRM_STAGES, CRMStage } from "@/types/whatsapp";
+import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
 
 type DateFilter = 'today' | '7days' | '30days' | 'all';
 
-interface StageCount extends CRMStage {
+interface StageCount {
+  id: string;
+  name: string;
+  color: string;
   count: number;
-  hexColor: string;
+  is_ai_controlled: boolean;
 }
 
 interface RecentHandoff {
@@ -35,18 +37,6 @@ interface RecentHandoff {
   reason: string | null;
   time: string;
 }
-
-// Mapa de cores para cada estágio (baseado no color number do CRM_STAGES)
-const STAGE_COLORS: Record<number, string> = {
-  1: '#6B7280', // Lead Novo - cinza
-  2: '#3B82F6', // Levantamento - azul
-  3: '#8B5CF6', // Apresentação - roxo
-  4: '#F59E0B', // Interesse - amarelo
-  5: '#EF4444', // Handoff - vermelho
-  6: '#10B981', // Negociando - verde
-  7: '#22C55E', // Convertido - verde claro
-  8: '#9CA3AF', // Perdido - cinza claro
-};
 
 const getStartDate = (filter: DateFilter): Date | null => {
   const now = new Date();
@@ -69,6 +59,9 @@ export default function Dashboard() {
   const [recentHandoffs, setRecentHandoffs] = useState<RecentHandoff[]>([]);
   const [aiActive, setAiActive] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [funnels, setFunnels] = useState<CRMFunnel[]>([]);
+  const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(null);
+  const [stages, setStages] = useState<CRMFunnelStage[]>([]);
   const [metrics, setMetrics] = useState({
     totalLeads: 0,
     todayMessages: 0,
@@ -77,32 +70,89 @@ export default function Dashboard() {
     pipelineValue: 0,
   });
 
+  // Carregar funis na inicialização
   useEffect(() => {
-    loadDashboardData();
+    loadFunnels();
+  }, []);
 
+  // Carregar estágios quando o funil for selecionado
+  useEffect(() => {
+    if (selectedFunnelId) {
+      loadStages(selectedFunnelId);
+    }
+  }, [selectedFunnelId]);
+
+  // Carregar dados do dashboard quando estágios ou filtro mudarem
+  useEffect(() => {
+    if (stages.length > 0 && selectedFunnelId) {
+      loadDashboardData();
+    }
+  }, [stages, dateFilter, selectedFunnelId]);
+
+  // Configurar realtime
+  useEffect(() => {
     const channel = supabase
       .channel('dashboard-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'whatsapp_conversations' },
-        () => loadDashboardData()
+        () => {
+          if (stages.length > 0 && selectedFunnelId) {
+            loadDashboardData();
+          }
+        }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [dateFilter]);
+  }, [stages, selectedFunnelId]);
+
+  const loadFunnels = async () => {
+    try {
+      const { data } = await supabase
+        .from('crm_funnels')
+        .select('*')
+        .order('is_default', { ascending: false });
+      
+      if (data && data.length > 0) {
+        setFunnels(data as CRMFunnel[]);
+        const defaultFunnel = data.find(f => f.is_default) || data[0];
+        setSelectedFunnelId(defaultFunnel.id);
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error loading funnels:', error);
+      setLoading(false);
+    }
+  };
+
+  const loadStages = async (funnelId: string) => {
+    try {
+      const { data } = await supabase
+        .from('crm_funnel_stages')
+        .select('*')
+        .eq('funnel_id', funnelId)
+        .order('stage_order', { ascending: true });
+      
+      setStages((data || []) as CRMFunnelStage[]);
+    } catch (error) {
+      console.error('Error loading stages:', error);
+    }
+  };
 
   const loadDashboardData = async () => {
     try {
       const startDate = getStartDate(dateFilter);
 
-      // Buscar conversas CRM com filtro de período
+      // Buscar conversas CRM com filtro de período e funil
       let conversationsQuery = supabase
         .from('whatsapp_conversations')
         .select('*')
         .eq('is_crm_lead', true)
+        .eq('crm_funnel_id', selectedFunnelId)
         .order('last_message_at', { ascending: false });
       
       if (startDate) {
@@ -112,43 +162,66 @@ export default function Dashboard() {
       const { data: conversations } = await conversationsQuery;
       const filteredConversations = conversations || [];
 
-      // Contagens por estágio usando CRM_STAGES
+      // Contagens por estágio usando IDs do banco (UUIDs)
       const counts: Record<string, number> = {};
-      CRM_STAGES.forEach(stage => {
+      stages.forEach(stage => {
         counts[stage.id] = 0;
       });
 
       let pipelineValue = 0;
+      let unclassifiedCount = 0;
+      
       filteredConversations.forEach(conv => {
-        const stage = conv.funnel_stage || 'new';
-        if (counts[stage] !== undefined) {
-          counts[stage]++;
+        const stageId = conv.funnel_stage;
+        if (stageId && counts[stageId] !== undefined) {
+          counts[stageId]++;
         } else {
-          counts['new']++;
+          unclassifiedCount++;
         }
         if (conv.estimated_value) {
           pipelineValue += Number(conv.estimated_value);
         }
       });
 
-      // Mapear CRM_STAGES com contagens
-      const stageCountsData: StageCount[] = CRM_STAGES.map(stage => ({
-        ...stage,
+      // Mapear estágios com contagens
+      const stageCountsData: StageCount[] = stages.map(stage => ({
+        id: stage.id,
+        name: stage.name,
+        color: stage.color || '#6B7280',
         count: counts[stage.id] || 0,
-        hexColor: STAGE_COLORS[stage.color] || '#6B7280',
+        is_ai_controlled: stage.is_ai_controlled || false,
       }));
 
+      // Adicionar não classificados se houver
+      if (unclassifiedCount > 0) {
+        stageCountsData.unshift({
+          id: 'unclassified',
+          name: 'Não Classificados',
+          color: '#9CA3AF',
+          count: unclassifiedCount,
+          is_ai_controlled: false,
+        });
+      }
+
+      // Encontrar estágio de handoff (pelo nome ou por is_ai_controlled = false após estágios de IA)
+      const handoffStage = stages.find(s => 
+        s.name.toLowerCase().includes('handoff') || 
+        s.name.toLowerCase().includes('atendimento')
+      );
+
       // Handoffs recentes
-      const handoffs = filteredConversations
-        .filter(c => c.funnel_stage === 'handoff')
-        .slice(0, 5)
-        .map(c => ({
-          id: c.id,
-          name: c.name,
-          phone: c.phone,
-          reason: c.ai_handoff_reason,
-          time: c.last_message_at ? new Date(c.last_message_at).toLocaleString('pt-BR') : '',
-        }));
+      const handoffs = handoffStage 
+        ? filteredConversations
+            .filter(c => c.funnel_stage === handoffStage.id)
+            .slice(0, 5)
+            .map(c => ({
+              id: c.id,
+              name: c.name,
+              phone: c.phone,
+              reason: c.ai_handoff_reason,
+              time: c.last_message_at ? new Date(c.last_message_at).toLocaleString('pt-BR') : '',
+            }))
+        : [];
 
       // IDs das conversas
       const conversationIds = filteredConversations.map(c => c.id);
@@ -207,20 +280,26 @@ export default function Dashboard() {
     }
   };
 
-  // Taxa de avanço: leads que saíram de "Novo"
+  // Taxa de avanço: leads que saíram do primeiro estágio
   const advancementRate = useMemo(() => {
-    const newLeads = stageCounts.find(s => s.id === 'new')?.count || 0;
+    if (stageCounts.length === 0) return 0;
+    // Pegar o primeiro estágio real (não o "Não Classificados")
+    const firstStage = stageCounts.find(s => s.id !== 'unclassified');
+    const firstStageCount = firstStage?.count || 0;
     const total = metrics.totalLeads;
     if (total === 0) return 0;
-    return Math.round(((total - newLeads) / total) * 100);
+    return Math.round(((total - firstStageCount) / total) * 100);
   }, [stageCounts, metrics.totalLeads]);
 
-  // Taxa de conversão geral (Lead Novo → Convertido)
+  // Taxa de conversão geral (Primeiro estágio → Último estágio)
   const overallConversionRate = useMemo(() => {
-    const newLeads = stageCounts.find(s => s.id === 'new')?.count || 0;
-    const converted = stageCounts.find(s => s.id === 'converted')?.count || 0;
-    if (newLeads === 0) return 0;
-    return Math.round((converted / newLeads) * 100);
+    if (stageCounts.length === 0) return 0;
+    const realStages = stageCounts.filter(s => s.id !== 'unclassified');
+    if (realStages.length < 2) return 0;
+    const firstStageCount = realStages[0]?.count || 0;
+    const lastStageCount = realStages[realStages.length - 1]?.count || 0;
+    if (firstStageCount === 0) return 0;
+    return Math.round((lastStageCount / firstStageCount) * 100);
   }, [stageCounts]);
 
   // Maior contagem para escala do funil
@@ -236,6 +315,15 @@ export default function Dashboard() {
     );
   }
 
+  if (funnels.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <p className="text-muted-foreground">Nenhum funil CRM encontrado</p>
+        <p className="text-sm text-muted-foreground">Crie um funil na página de Funis para começar</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -243,19 +331,37 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">Pipeline de leads do CRM</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <ToggleGroup 
-            type="single" 
-            value={dateFilter} 
-            onValueChange={(value) => value && setDateFilter(value as DateFilter)}
-            className="bg-muted rounded-lg p-1"
-          >
-            <ToggleGroupItem value="today" className="text-xs px-3">Hoje</ToggleGroupItem>
-            <ToggleGroupItem value="7days" className="text-xs px-3">7 dias</ToggleGroupItem>
-            <ToggleGroupItem value="30days" className="text-xs px-3">30 dias</ToggleGroupItem>
-            <ToggleGroupItem value="all" className="text-xs px-3">Tudo</ToggleGroupItem>
-          </ToggleGroup>
+        <div className="flex items-center gap-4">
+          {/* Seletor de Funil */}
+          {funnels.length > 1 && (
+            <Select value={selectedFunnelId || ''} onValueChange={setSelectedFunnelId}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Selecione o funil" />
+              </SelectTrigger>
+              <SelectContent>
+                {funnels.map(funnel => (
+                  <SelectItem key={funnel.id} value={funnel.id}>
+                    {funnel.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <ToggleGroup 
+              type="single" 
+              value={dateFilter} 
+              onValueChange={(value) => value && setDateFilter(value as DateFilter)}
+              className="bg-muted rounded-lg p-1"
+            >
+              <ToggleGroupItem value="today" className="text-xs px-3">Hoje</ToggleGroupItem>
+              <ToggleGroupItem value="7days" className="text-xs px-3">7 dias</ToggleGroupItem>
+              <ToggleGroupItem value="30days" className="text-xs px-3">30 dias</ToggleGroupItem>
+              <ToggleGroupItem value="all" className="text-xs px-3">Tudo</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
         </div>
       </div>
 
@@ -279,7 +385,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{advancementRate}%</div>
-            <p className="text-xs text-muted-foreground">Saíram de "Novo"</p>
+            <p className="text-xs text-muted-foreground">Saíram do 1º estágio</p>
           </CardContent>
         </Card>
 
@@ -290,7 +396,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{overallConversionRate}%</div>
-            <p className="text-xs text-muted-foreground">Lead → Convertido</p>
+            <p className="text-xs text-muted-foreground">1º → Último estágio</p>
           </CardContent>
         </Card>
 
@@ -334,7 +440,9 @@ export default function Dashboard() {
         <Card className="col-span-4">
           <CardHeader>
             <CardTitle>Funil de Conversão</CardTitle>
-            <CardDescription>Distribuição de leads por estágio do CRM</CardDescription>
+            <CardDescription>
+              Distribuição de leads por estágio - {funnels.find(f => f.id === selectedFunnelId)?.name || 'Funil'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -367,7 +475,7 @@ export default function Dashboard() {
                             className="h-full rounded-full transition-all duration-300"
                             style={{ 
                               width: `${Math.max(widthPercentage, stage.count > 0 ? 8 : 0)}%`,
-                              backgroundColor: stage.hexColor 
+                              backgroundColor: stage.color 
                             }}
                           />
                         </div>
