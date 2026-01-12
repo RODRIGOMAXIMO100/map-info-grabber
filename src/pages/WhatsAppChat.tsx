@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Sparkles, Archive } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AIStatusIcon, 
@@ -72,48 +72,6 @@ export default function WhatsAppChat() {
 
   // Transfer modal state
   const [transferModalOpen, setTransferModalOpen] = useState(false);
-
-  // Auto-correction state
-  const [isCorrecting, setIsCorrecting] = useState(false);
-  const [lastCorrectedIndex, setLastCorrectedIndex] = useState(0);
-
-  // Handle message change with word-by-word correction on space
-  const handleMessageChange = async (value: string) => {
-    setNewMessage(value);
-    
-    // Detect if space was pressed and we have new content to check
-    if (value.endsWith(' ') && value.length > lastCorrectedIndex) {
-      const textBeforeSpace = value.trimEnd();
-      const words = textBeforeSpace.split(' ');
-      const lastWord = words[words.length - 1];
-      
-      // Only correct words with 3+ characters
-      if (lastWord && lastWord.length >= 3) {
-        setIsCorrecting(true);
-        
-        try {
-          const { data } = await supabase.functions.invoke('correct-text', {
-            body: { text: lastWord }
-          });
-          
-          if (data?.corrected && data.corrected !== lastWord) {
-            // Replace the last word with the corrected version
-            words[words.length - 1] = data.corrected;
-            const correctedText = words.join(' ') + ' ';
-            setNewMessage(correctedText);
-            setLastCorrectedIndex(correctedText.length);
-          } else {
-            setLastCorrectedIndex(value.length);
-          }
-        } catch (e) {
-          console.log('Correção não disponível:', e);
-          setLastCorrectedIndex(value.length);
-        } finally {
-          setIsCorrecting(false);
-        }
-      }
-    }
-  };
 
   // Helper to detect if a conversation is a group
   const isGroup = (conv: ConversationWithInstance): boolean => {
@@ -339,7 +297,6 @@ export default function WhatsAppChat() {
 
       if (error) throw error;
       setNewMessage('');
-      setLastCorrectedIndex(0);
       setPendingMedia(null);
     } catch (error: unknown) {
       console.error('Error sending message:', error);
@@ -905,13 +862,10 @@ export default function WhatsAppChat() {
                     <Input
                       placeholder="Digite sua mensagem..."
                       value={newMessage}
-                      onChange={(e) => handleMessageChange(e.target.value)}
+                      onChange={(e) => setNewMessage(e.target.value)}
                       disabled={sending}
                       className="flex-1 pr-8"
                     />
-                    {isCorrecting && (
-                      <Sparkles className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-primary animate-pulse" />
-                    )}
                   </div>
                   <Button 
                     type="submit" 
@@ -1467,13 +1421,10 @@ export default function WhatsAppChat() {
                         <Input
                           placeholder="Digite sua mensagem..."
                           value={newMessage}
-                          onChange={(e) => handleMessageChange(e.target.value)}
+                          onChange={(e) => setNewMessage(e.target.value)}
                           disabled={sending}
                           className="flex-1 pr-8"
                         />
-                        {isCorrecting && (
-                          <Sparkles className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-primary animate-pulse" />
-                        )}
                       </div>
                       <Button 
                         type="submit" 
