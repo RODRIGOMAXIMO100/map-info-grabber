@@ -5,3 +5,4 @@ export { LeadCard } from './LeadCard';
 export { ReminderModal } from './ReminderModal';
 export { TagModal } from './TagModal';
 export { ValueModal } from './ValueModal';
+export { AddLeadModal } from './AddLeadModal';

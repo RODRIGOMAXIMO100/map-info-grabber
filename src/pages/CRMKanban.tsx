@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, RefreshCw, Settings, ChevronDown } from 'lucide-react';
+import { Loader2, RefreshCw, Settings, ChevronDown, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -23,6 +23,7 @@ import {
   ReminderModal,
   TagModal,
   ValueModal,
+  AddLeadModal,
   type PeriodFilter,
   type AIStatusFilter,
   type UrgencyFilter,
@@ -65,6 +66,8 @@ export default function CRMKanban() {
   const [reminderModal, setReminderModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
   const [tagModal, setTagModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
   const [valueModal, setValueModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
+  const [addLeadModalOpen, setAddLeadModalOpen] = useState(false);
+  const [whatsappConfigs, setWhatsappConfigs] = useState<{ id: string; name: string | null }[]>([]);
 
   // Reminder notifications
   useReminderNotifications({
@@ -87,7 +90,23 @@ export default function CRMKanban() {
 
   useEffect(() => {
     loadFunnels();
+    loadWhatsAppConfigs();
   }, []);
+
+  const loadWhatsAppConfigs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('whatsapp_config')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setWhatsappConfigs(data || []);
+    } catch (error) {
+      console.error('Error loading WhatsApp configs:', error);
+    }
+  };
 
   useEffect(() => {
     if (selectedFunnelId) {
@@ -388,6 +407,70 @@ export default function CRMKanban() {
     return total > 0 ? `R$ ${total.toLocaleString('pt-BR')}` : null;
   };
 
+  const handleAddLead = async (data: {
+    phone: string;
+    name?: string;
+    stageId: string;
+    configId: string;
+  }) => {
+    // Format phone (add 55 if necessary)
+    let formattedPhone = data.phone.replace(/\D/g, '');
+    if (!formattedPhone.startsWith('55')) {
+      formattedPhone = '55' + formattedPhone;
+    }
+
+    // Check if conversation already exists
+    const { data: existing } = await supabase
+      .from('whatsapp_conversations')
+      .select('id')
+      .eq('phone', formattedPhone)
+      .maybeSingle();
+
+    if (existing) {
+      // Update existing conversation to be a CRM lead
+      const { error } = await supabase
+        .from('whatsapp_conversations')
+        .update({
+          is_crm_lead: true,
+          crm_funnel_id: selectedFunnelId,
+          funnel_stage: data.stageId,
+          name: data.name || null,
+          config_id: data.configId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Lead atualizado',
+        description: 'Conversa existente foi adicionada ao funil.',
+      });
+    } else {
+      // Create new conversation
+      const { error } = await supabase
+        .from('whatsapp_conversations')
+        .insert({
+          phone: formattedPhone,
+          name: data.name || null,
+          status: 'active',
+          is_crm_lead: true,
+          crm_funnel_id: selectedFunnelId,
+          funnel_stage: data.stageId,
+          config_id: data.configId,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Lead adicionado',
+        description: 'Novo lead foi criado no funil.',
+      });
+    }
+
+    if (selectedFunnelId) loadConversations(selectedFunnelId);
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -453,6 +536,15 @@ export default function CRMKanban() {
             <Badge variant="secondary" className="text-xs">
               {filteredConversations.length} leads
             </Badge>
+
+            <Button 
+              size="sm" 
+              onClick={() => setAddLeadModalOpen(true)}
+              className="gap-1"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">Adicionar Lead</span>
+            </Button>
           </div>
           <Button variant="ghost" size="sm" onClick={() => selectedFunnelId && loadConversations(selectedFunnelId)} className="gap-1">
             <RefreshCw className="h-4 w-4" />
@@ -596,6 +688,14 @@ export default function CRMKanban() {
         leadName={valueModal.lead?.name || valueModal.lead?.phone || ''}
         currentValue={valueModal.lead?.estimated_value}
         onSave={handleSaveValue}
+      />
+
+      <AddLeadModal
+        open={addLeadModalOpen}
+        onOpenChange={setAddLeadModalOpen}
+        stages={stages}
+        whatsappConfigs={whatsappConfigs}
+        onSave={handleAddLead}
       />
 
       {selectedLead && (
