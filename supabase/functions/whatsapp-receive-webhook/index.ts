@@ -628,6 +628,33 @@ serve(async (req) => {
       
       const fromBroadcast = await isFromBroadcast(supabase, senderPhone);
       
+      // Buscar dados do broadcast se veio do broadcast
+      let broadcastListId: string | null = null;
+      let broadcastSentAt: string | null = null;
+      
+      if (fromBroadcast) {
+        const phoneCore = normalizePhoneForComparison(senderPhone);
+        const { data: queueItems } = await supabase
+          .from('whatsapp_queue')
+          .select('broadcast_list_id, processed_at, phone')
+          .in('status', ['sent', 'delivered'])
+          .order('processed_at', { ascending: false })
+          .limit(500);
+        
+        if (queueItems && queueItems.length > 0) {
+          const matchedQueue = queueItems.find((item: any) => {
+            const queuePhoneCore = normalizePhoneForComparison(item.phone || '');
+            return queuePhoneCore === phoneCore;
+          });
+          
+          if (matchedQueue) {
+            broadcastListId = matchedQueue.broadcast_list_id;
+            broadcastSentAt = matchedQueue.processed_at;
+            console.log(`[Broadcast] Found queue data: list_id=${broadcastListId}, sent_at=${broadcastSentAt}`);
+          }
+        }
+      }
+      
       // Só marca como lead se veio do broadcast
       const shouldBeLeadValue = fromBroadcast;
       conversationTags = fromBroadcast ? [INITIAL_STAGE] : []; // Usa 'new' (string) como padrão
@@ -651,7 +678,9 @@ serve(async (req) => {
           status: 'active',
           followup_count: 0,
           config_id: configId,
-          origin: fromBroadcast ? 'broadcast' : 'random'  // Define origin based on broadcast check
+          origin: fromBroadcast ? 'broadcast' : 'random',
+          broadcast_list_id: broadcastListId,
+          broadcast_sent_at: broadcastSentAt
         })
         .select()
         .single();
