@@ -18,7 +18,16 @@ import {
   DollarSign
 } from "lucide-react";
 import InstanceMonitor from "@/components/InstanceMonitor";
-import FunnelMovementFeed from "@/components/dashboard/FunnelMovementFeed";
+import { 
+  FunnelMovementFeed,
+  FunnelEvolutionChart,
+  PeriodComparison,
+  CriticalLeadsAlert,
+  AIMetricsCard,
+  FunnelVelocity,
+  ActivityHeatmap,
+  StageTimeMetrics
+} from "@/components/dashboard";
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
 
 type DateFilter = 'today' | '7days' | '30days' | 'all';
@@ -54,8 +63,17 @@ const getStartDate = (filter: DateFilter): Date | null => {
   }
 };
 
+const getPeriodDays = (filter: DateFilter): number => {
+  switch (filter) {
+    case 'today': return 1;
+    case '7days': return 7;
+    case '30days': return 30;
+    default: return 30;
+  }
+};
+
 export default function Dashboard() {
-  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('30days');
   const [stageCounts, setStageCounts] = useState<StageCount[]>([]);
   const [recentHandoffs, setRecentHandoffs] = useState<RecentHandoff[]>([]);
   const [aiActive, setAiActive] = useState(false);
@@ -328,6 +346,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
@@ -366,6 +385,15 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Funnel Velocity Card */}
+      {selectedFunnelId && (
+        <FunnelVelocity 
+          funnelId={selectedFunnelId}
+          pipelineValue={metrics.pipelineValue}
+          conversionRate={overallConversionRate}
+        />
+      )}
 
       {/* Cards de Métricas Resumo */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
@@ -436,10 +464,18 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Funil Visual e Handoffs */}
-      <div className="grid gap-4 md:grid-cols-7">
+      {/* Evolution Chart - Full Width */}
+      {selectedFunnelId && (
+        <FunnelEvolutionChart 
+          funnelId={selectedFunnelId}
+          startDate={getStartDate(dateFilter)}
+        />
+      )}
+
+      {/* Funil Visual + Comparativo */}
+      <div className="grid gap-4 lg:grid-cols-7">
         {/* Funil Visual */}
-        <Card className="col-span-4">
+        <Card className="lg:col-span-5">
           <CardHeader>
             <CardTitle>Funil de Conversão</CardTitle>
             <CardDescription>
@@ -453,6 +489,7 @@ export default function Dashboard() {
                   <TableHead className="w-12 pl-4"></TableHead>
                   <TableHead className="w-40">Etapa</TableHead>
                   <TableHead>Distribuição</TableHead>
+                  <TableHead className="text-center w-24">Tempo Médio</TableHead>
                   <TableHead className="text-right w-20 pr-4">Leads</TableHead>
                 </TableRow>
               </TableHeader>
@@ -482,6 +519,14 @@ export default function Dashboard() {
                           />
                         </div>
                       </TableCell>
+                      <TableCell className="text-center">
+                        {stage.id !== 'unclassified' && selectedFunnelId && (
+                          <StageTimeMetrics 
+                            funnelId={selectedFunnelId}
+                            stageId={stage.id}
+                          />
+                        )}
+                      </TableCell>
                       <TableCell className="text-right font-bold pr-4">{stage.count}</TableCell>
                     </TableRow>
                   );
@@ -503,8 +548,26 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
+        {/* Comparativo de Período */}
+        {selectedFunnelId && (
+          <div className="lg:col-span-2">
+            <PeriodComparison 
+              funnelId={selectedFunnelId}
+              periodDays={getPeriodDays(dateFilter)}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Row 3: Alertas + Handoffs + AI Metrics */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Leads Críticos */}
+        {selectedFunnelId && (
+          <CriticalLeadsAlert funnelId={selectedFunnelId} />
+        )}
+
         {/* Handoffs Recentes */}
-        <Card className="col-span-3">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               Handoffs Pendentes
@@ -543,39 +606,36 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* AI Metrics */}
+        {selectedFunnelId && (
+          <AIMetricsCard 
+            funnelId={selectedFunnelId}
+            periodDays={getPeriodDays(dateFilter)}
+          />
+        )}
       </div>
 
-      {/* Feed de Movimentações do Funil */}
-      {selectedFunnelId && (
-        <FunnelMovementFeed 
-          funnelId={selectedFunnelId} 
-          startDate={getStartDate(dateFilter)} 
-        />
-      )}
+      {/* Row 4: Movimentações + Heatmap */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Feed de Movimentações do Funil */}
+        <div className="lg:col-span-2">
+          {selectedFunnelId && (
+            <FunnelMovementFeed 
+              funnelId={selectedFunnelId} 
+              startDate={getStartDate(dateFilter)} 
+            />
+          )}
+        </div>
+
+        {/* Activity Heatmap */}
+        {selectedFunnelId && (
+          <ActivityHeatmap funnelId={selectedFunnelId} />
+        )}
+      </div>
 
       {/* Monitor de Instâncias WhatsApp */}
       <InstanceMonitor />
-
-      {/* Status da IA */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            Status do Agente IA
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <div className={`h-3 w-3 rounded-full ${aiActive ? 'bg-green-500' : 'bg-muted-foreground'}`} />
-            <span className="font-medium">
-              {aiActive ? 'Agente ativo e respondendo' : 'Agente inativo'}
-            </span>
-            {!aiActive && (
-              <Badge variant="outline">Configure em Agente IA</Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
