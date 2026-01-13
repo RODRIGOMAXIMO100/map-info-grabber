@@ -11,7 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 
 export type PeriodFilter = 'all' | 'today' | 'week' | 'month';
-export type AIStatusFilter = 'all' | 'ai_active' | 'manual' | 'handoff';
+export type AIStatusFilter = 'all' | 'ai_active' | 'manual';
 export type UrgencyFilter = 'all' | 'hot' | 'warm' | 'cold';
 export type SortOption = 'recent' | 'oldest' | 'bant' | 'value';
 
@@ -109,7 +109,6 @@ export function CRMFilters({
           <SelectItem value="all">Todos Status</SelectItem>
           <SelectItem value="ai_active">🤖 IA Ativa</SelectItem>
           <SelectItem value="manual">👤 Manual</SelectItem>
-          <SelectItem value="handoff">⚠️ Handoff</SelectItem>
         </SelectContent>
       </Select>
 

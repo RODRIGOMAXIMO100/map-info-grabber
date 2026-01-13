@@ -27,17 +27,15 @@ export function CRMMetricsBar({ conversations }: CRMMetricsBarProps) {
       return new Date(c.last_message_at).getTime() < oneDayAgo;
     }).length;
 
-    // Handoff stage label_id
-    const handoffLabelId = CRM_STAGES.find(s => s.name.includes('Handoff'))?.label_id;
+    // Converted today (in Closed stage, moved today)
     const closedLabelId = CRM_STAGES.find(s => s.name.includes('Fechado'))?.label_id;
 
-    // Converted today (in Handoff or Closed stage, moved today)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const convertedToday = conversations.filter(c => {
-      const hasHandoffTag = c.tags?.includes(handoffLabelId || '') || c.tags?.includes(closedLabelId || '');
+      const hasClosedTag = c.tags?.includes(closedLabelId || '');
       const updatedToday = new Date(c.updated_at) >= today;
-      return hasHandoffTag && updatedToday;
+      return hasClosedTag && updatedToday;
     }).length;
 
     // Leads with pending reminders
