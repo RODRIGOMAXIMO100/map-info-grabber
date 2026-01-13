@@ -155,8 +155,12 @@ export default function Dashboard() {
         .eq('crm_funnel_id', selectedFunnelId)
         .order('last_message_at', { ascending: false });
       
+      // Filtrar por movimentação no funil OU atividade recente
       if (startDate) {
-        conversationsQuery = conversationsQuery.gte('created_at', startDate.toISOString());
+        const isoDate = startDate.toISOString();
+        conversationsQuery = conversationsQuery.or(
+          `funnel_stage_changed_at.gte.${isoDate},last_message_at.gte.${isoDate}`
+        );
       }
 
       const { data: conversations } = await conversationsQuery;
