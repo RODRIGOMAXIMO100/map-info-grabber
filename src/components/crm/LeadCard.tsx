@@ -10,6 +10,7 @@ import {
   DollarSign,
   AlertTriangle,
   Shuffle,
+  ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,7 +20,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
+import type { CRMFunnelStage } from '@/types/crm';
 import {
   Tooltip,
   TooltipContent,
@@ -40,6 +45,8 @@ interface LeadCardProps {
   onAddTag: () => void;
   onSetValue: () => void;
   bantScore?: { budget?: boolean; authority?: boolean; need?: boolean; timing?: boolean } | null;
+  stages?: CRMFunnelStage[];
+  onStageChange?: (stageId: string) => void;
 }
 
 export function LeadCard({
@@ -51,6 +58,8 @@ export function LeadCard({
   onAddTag,
   onSetValue,
   bantScore,
+  stages,
+  onStageChange,
 }: LeadCardProps) {
   const navigate = useNavigate();
 
@@ -240,6 +249,33 @@ export function LeadCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-popover">
+                {stages && stages.length > 0 && onStageChange && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>
+                      <ArrowRight className="h-4 w-4 mr-2" />
+                      Mover para etapa
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="bg-popover">
+                      {stages.map((stage) => (
+                        <DropdownMenuItem
+                          key={stage.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onStageChange(stage.id);
+                          }}
+                          disabled={stage.id === conv.funnel_stage}
+                          className="gap-2"
+                        >
+                          <div
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: stage.color || '#888' }}
+                          />
+                          {stage.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddTag(); }}>
                   <Tag className="h-4 w-4 mr-2" />
                   Adicionar tag

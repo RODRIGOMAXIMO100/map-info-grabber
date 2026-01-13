@@ -5,6 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { 
   MessageCircle, 
   Phone, 
@@ -21,7 +28,8 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   FileText,
-  RefreshCw
+  RefreshCw,
+  GitBranch
 } from 'lucide-react';
 import { toast as sonnerToast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -30,6 +38,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { formatPhoneNumber } from '@/lib/phone';
 import type { WhatsAppConversation } from '@/types/whatsapp';
+import type { CRMFunnelStage } from '@/types/crm';
 import { CRM_STAGES } from '@/types/whatsapp';
 
 interface LeadDetailsSheetProps {
@@ -37,6 +46,8 @@ interface LeadDetailsSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdate?: () => void;
+  stages?: CRMFunnelStage[];
+  onStageChange?: (stageId: string) => void;
 }
 
 interface AILog {
@@ -63,7 +74,7 @@ interface Message {
   created_at: string | null;
 }
 
-export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }: LeadDetailsSheetProps) {
+export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate, stages, onStageChange }: LeadDetailsSheetProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [aiLogs, setAiLogs] = useState<AILog[]>([]);
@@ -316,7 +327,35 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
                 <span>{messageCount} mensagens trocadas</span>
               </div>
 
-              {currentStage && (
+              {/* Stage selector */}
+              {stages && stages.length > 0 && onStageChange && (
+                <div className="flex items-center gap-2 text-sm">
+                  <GitBranch className="h-4 w-4 text-muted-foreground" />
+                  <Select 
+                    value={conversation.funnel_stage || ''} 
+                    onValueChange={(value) => onStageChange(value)}
+                  >
+                    <SelectTrigger className="h-8 w-[180px]">
+                      <SelectValue placeholder="Selecione etapa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stages.map((stage) => (
+                        <SelectItem key={stage.id} value={stage.id}>
+                          <div className="flex items-center gap-2">
+                            <div 
+                              className="w-3 h-3 rounded-full flex-shrink-0" 
+                              style={{ backgroundColor: stage.color || '#888' }} 
+                            />
+                            {stage.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {currentStage && !stages && (
                 <div className="flex items-center gap-2 text-sm">
                   <Badge variant="secondary">{currentStage.name}</Badge>
                 </div>
