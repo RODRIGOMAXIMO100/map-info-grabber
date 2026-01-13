@@ -39,6 +39,7 @@ export interface WhatsAppConversation {
   dna_id?: string;
   reminder_at?: string;
   estimated_value?: number;
+  closed_value?: number | null;
   custom_tags?: string[];
   notes?: string;
   next_action?: string;

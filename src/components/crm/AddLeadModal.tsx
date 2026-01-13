@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { UserPlus } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { UserPlus, MapPin, Megaphone } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -18,11 +18,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import type { CRMFunnelStage } from '@/types/crm';
+import { CITIES_BY_STATE } from '@/data/brazilianCities';
+import { cn } from '@/lib/utils';
 
 interface WhatsAppConfig {
   id: string;
   name: string | null;
+}
+
+interface BroadcastList {
+  id: string;
+  name: string;
+  status: string;
 }
 
 interface AddLeadModalProps {
@@ -30,27 +51,48 @@ interface AddLeadModalProps {
   onOpenChange: (open: boolean) => void;
   stages: CRMFunnelStage[];
   whatsappConfigs: WhatsAppConfig[];
+  broadcastLists: BroadcastList[];
   onSave: (data: {
     phone: string;
     name?: string;
     stageId: string;
     configId: string;
+    city?: string;
+    state?: string;
+    broadcastListId?: string;
   }) => Promise<void>;
 }
+
+const BRAZILIAN_STATES = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
+  'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 
+  'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+];
 
 export function AddLeadModal({
   open,
   onOpenChange,
   stages,
   whatsappConfigs,
+  broadcastLists,
   onSave,
 }: AddLeadModalProps) {
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [stageId, setStageId] = useState('');
   const [configId, setConfigId] = useState('');
+  const [state, setState] = useState('');
+  const [city, setCity] = useState('');
+  const [broadcastListId, setBroadcastListId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cityOpen, setCityOpen] = useState(false);
+
+  // Get cities for selected state
+  const citiesForState = useMemo(() => {
+    if (!state) return [];
+    return CITIES_BY_STATE[state]?.map(c => c.city) || [];
+  }, [state]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -59,9 +101,17 @@ export function AddLeadModal({
       setName('');
       setStageId(stages[0]?.id || '');
       setConfigId(whatsappConfigs[0]?.id || '');
+      setState('');
+      setCity('');
+      setBroadcastListId('');
       setError(null);
     }
   }, [open, stages, whatsappConfigs]);
+
+  // Reset city when state changes
+  useEffect(() => {
+    setCity('');
+  }, [state]);
 
   // Format phone as user types (Brazilian format)
   const formatPhoneInput = (value: string) => {
@@ -108,6 +158,9 @@ export function AddLeadModal({
         name: name.trim() || undefined,
         stageId,
         configId,
+        city: city.trim() || undefined,
+        state: state || undefined,
+        broadcastListId: broadcastListId || undefined,
       });
       onOpenChange(false);
     } catch (err) {
@@ -120,7 +173,7 @@ export function AddLeadModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" />
@@ -152,6 +205,93 @@ export function AddLeadModal({
               onChange={(e) => setName(e.target.value)}
             />
           </div>
+
+          {/* Location Row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <MapPin className="h-3.5 w-3.5" />
+                Estado
+              </Label>
+              <Select value={state} onValueChange={setState}>
+                <SelectTrigger>
+                  <SelectValue placeholder="UF" />
+                </SelectTrigger>
+                <SelectContent>
+                  {BRAZILIAN_STATES.map((uf) => (
+                    <SelectItem key={uf} value={uf}>
+                      {uf}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cidade</Label>
+              <Popover open={cityOpen} onOpenChange={setCityOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={cityOpen}
+                    className={cn(
+                      "w-full justify-between font-normal",
+                      !city && "text-muted-foreground"
+                    )}
+                    disabled={!state}
+                  >
+                    {city || "Selecione..."}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar cidade..." />
+                    <CommandList>
+                      <CommandEmpty>Nenhuma cidade encontrada.</CommandEmpty>
+                      <CommandGroup>
+                        {citiesForState.map((cityName) => (
+                          <CommandItem
+                            key={cityName}
+                            value={cityName}
+                            onSelect={() => {
+                              setCity(cityName);
+                              setCityOpen(false);
+                            }}
+                          >
+                            {cityName}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          {/* Broadcast List */}
+          {broadcastLists.length > 0 && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <Megaphone className="h-3.5 w-3.5" />
+                Lista de Disparo (opcional)
+              </Label>
+              <Select value={broadcastListId} onValueChange={setBroadcastListId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Nenhuma lista selecionada" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Nenhuma</SelectItem>
+                  {broadcastLists.map((list) => (
+                    <SelectItem key={list.id} value={list.id}>
+                      {list.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="stage">Estágio Inicial</Label>

@@ -1,5 +1,6 @@
 export { CRMMetricsBar } from './CRMMetricsBar';
 export { ClosedValueModal } from './ClosedValueModal';
+export { UndoSaleModal } from './UndoSaleModal';
 export { RemindersPanel } from './RemindersPanel';
 export { CRMFilters, type PeriodFilter, type AIStatusFilter, type UrgencyFilter, type SortOption } from './CRMFilters';
 export { LeadCard } from './LeadCard';

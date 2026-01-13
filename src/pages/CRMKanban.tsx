@@ -25,6 +25,7 @@ import {
   ValueModal,
   AddLeadModal,
   ClosedValueModal,
+  UndoSaleModal,
   type PeriodFilter,
   type AIStatusFilter,
   type UrgencyFilter,
@@ -74,6 +75,8 @@ export default function CRMKanban() {
   }>({ open: false, lead: null, targetStageId: null });
   const [addLeadModalOpen, setAddLeadModalOpen] = useState(false);
   const [whatsappConfigs, setWhatsappConfigs] = useState<{ id: string; name: string | null }[]>([]);
+  const [broadcastLists, setBroadcastLists] = useState<{ id: string; name: string; status: string }[]>([]);
+  const [undoSaleModal, setUndoSaleModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
 
   // Reminder notifications
   useReminderNotifications({
@@ -97,6 +100,7 @@ export default function CRMKanban() {
   useEffect(() => {
     loadFunnels();
     loadWhatsAppConfigs();
+    loadBroadcastLists();
   }, []);
 
   const loadWhatsAppConfigs = async () => {
@@ -111,6 +115,20 @@ export default function CRMKanban() {
       setWhatsappConfigs(data || []);
     } catch (error) {
       console.error('Error loading WhatsApp configs:', error);
+    }
+  };
+
+  const loadBroadcastLists = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('broadcast_lists')
+        .select('id, name, status')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setBroadcastLists(data || []);
+    } catch (error) {
+      console.error('Error loading broadcast lists:', error);
     }
   };
 
@@ -492,6 +510,9 @@ export default function CRMKanban() {
     name?: string;
     stageId: string;
     configId: string;
+    city?: string;
+    state?: string;
+    broadcastListId?: string;
   }) => {
     // Format phone (add 55 if necessary)
     let formattedPhone = data.phone.replace(/\D/g, '');
@@ -506,18 +527,24 @@ export default function CRMKanban() {
       .eq('phone', formattedPhone)
       .maybeSingle();
 
+    const baseData = {
+      is_crm_lead: true,
+      crm_funnel_id: selectedFunnelId,
+      funnel_stage: data.stageId,
+      name: data.name || null,
+      config_id: data.configId,
+      lead_city: data.city || null,
+      lead_state: data.state || null,
+      broadcast_list_id: data.broadcastListId || null,
+      broadcast_sent_at: data.broadcastListId ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    };
+
     if (existing) {
       // Update existing conversation to be a CRM lead
       const { error } = await supabase
         .from('whatsapp_conversations')
-        .update({
-          is_crm_lead: true,
-          crm_funnel_id: selectedFunnelId,
-          funnel_stage: data.stageId,
-          name: data.name || null,
-          config_id: data.configId,
-          updated_at: new Date().toISOString(),
-        })
+        .update(baseData)
         .eq('id', existing.id);
 
       if (error) throw error;
@@ -532,12 +559,8 @@ export default function CRMKanban() {
         .from('whatsapp_conversations')
         .insert({
           phone: formattedPhone,
-          name: data.name || null,
           status: 'active',
-          is_crm_lead: true,
-          crm_funnel_id: selectedFunnelId,
-          funnel_stage: data.stageId,
-          config_id: data.configId,
+          ...baseData,
         });
 
       if (error) throw error;
@@ -549,6 +572,42 @@ export default function CRMKanban() {
     }
 
     if (selectedFunnelId) loadConversations(selectedFunnelId);
+  };
+
+  const handleUndoSale = async (newStageId: string, clearClosedValue: boolean) => {
+    if (!undoSaleModal.lead) return;
+
+    try {
+      const updateData: Record<string, unknown> = {
+        funnel_stage: newStageId,
+        updated_at: new Date().toISOString(),
+        status: 'active', // Reactivate if was archived
+      };
+
+      if (clearClosedValue) {
+        updateData.closed_value = null;
+      }
+
+      await supabase
+        .from('whatsapp_conversations')
+        .update(updateData)
+        .eq('id', undoSaleModal.lead.id);
+
+      const targetStage = stages.find(s => s.id === newStageId);
+      toast({
+        title: 'Venda revertida',
+        description: `${undoSaleModal.lead.name || undoSaleModal.lead.phone} movido para ${targetStage?.name || 'novo estágio'}`,
+      });
+
+      if (selectedFunnelId) loadConversations(selectedFunnelId);
+    } catch (error) {
+      console.error('Error undoing sale:', error);
+      toast({
+        title: 'Erro ao reverter venda',
+        description: 'Tente novamente.',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (loading) {
@@ -729,6 +788,7 @@ export default function CRMKanban() {
                           onSetReminder={() => setReminderModal({ open: true, lead: conv })}
                           onAddTag={() => setTagModal({ open: true, lead: conv })}
                           onSetValue={() => setValueModal({ open: true, lead: conv })}
+                          onUndoSale={() => setUndoSaleModal({ open: true, lead: conv })}
                           bantScore={bantScores[conv.id]}
                           stages={stages}
                           onStageChange={(stageId) => handleStageChange(conv.id, stageId)}
@@ -790,7 +850,18 @@ export default function CRMKanban() {
         onOpenChange={setAddLeadModalOpen}
         stages={stages}
         whatsappConfigs={whatsappConfigs}
+        broadcastLists={broadcastLists}
         onSave={handleAddLead}
+      />
+
+      <UndoSaleModal
+        open={undoSaleModal.open}
+        onOpenChange={(open) => setUndoSaleModal({ open, lead: open ? undoSaleModal.lead : null })}
+        leadName={undoSaleModal.lead?.name || undoSaleModal.lead?.phone || ''}
+        closedValue={undoSaleModal.lead?.closed_value || null}
+        stages={stages}
+        currentStageId={undoSaleModal.lead?.funnel_stage || null}
+        onConfirm={handleUndoSale}
       />
 
       {selectedLead && (
