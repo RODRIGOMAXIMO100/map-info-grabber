@@ -18,6 +18,7 @@ import {
   DollarSign
 } from "lucide-react";
 import InstanceMonitor from "@/components/InstanceMonitor";
+import FunnelMovementFeed from "@/components/dashboard/FunnelMovementFeed";
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
 
 type DateFilter = 'today' | '7days' | '30days' | 'all';
@@ -543,6 +544,14 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Feed de Movimentações do Funil */}
+      {selectedFunnelId && (
+        <FunnelMovementFeed 
+          funnelId={selectedFunnelId} 
+          startDate={getStartDate(dateFilter)} 
+        />
+      )}
 
       {/* Monitor de Instâncias WhatsApp */}
       <InstanceMonitor />
