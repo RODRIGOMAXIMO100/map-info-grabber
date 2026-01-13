@@ -29,7 +29,9 @@ import {
   ArrowUpRight,
   FileText,
   RefreshCw,
-  GitBranch
+  GitBranch,
+  MapPin,
+  Megaphone,
 } from 'lucide-react';
 import { toast as sonnerToast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -326,6 +328,24 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate, s
                 <MessageSquare className="h-4 w-4 text-muted-foreground" />
                 <span>{messageCount} mensagens trocadas</span>
               </div>
+
+              {/* Origin info */}
+              {(conversation.lead_city || conversation.broadcast_lists?.name) && (
+                <div className="space-y-1.5 pt-2 border-t">
+                  {conversation.lead_city && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <span>{conversation.lead_city}{conversation.lead_state ? `, ${conversation.lead_state}` : ''}</span>
+                    </div>
+                  )}
+                  {conversation.broadcast_lists?.name && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Megaphone className="h-4 w-4 text-muted-foreground" />
+                      <span>Campanha: {conversation.broadcast_lists.name}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Stage selector */}
               {stages && stages.length > 0 && onStageChange && (

@@ -172,7 +172,12 @@ export default function CRMKanban() {
     try {
       const { data: leadConversations, error } = await supabase
         .from('whatsapp_conversations')
-        .select('*')
+        .select(`
+          *,
+          broadcast_lists:broadcast_list_id (
+            name
+          )
+        `)
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
         .order('last_message_at', { ascending: false });

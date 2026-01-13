@@ -758,6 +758,9 @@ serve(async (req) => {
                 broadcast_sent_at: new Date().toISOString(),
                 followup_count: 0,
                 contacted_by_instances: updatedInstances,
+                // Dados de origem do lead
+                lead_city: leadData?.city ? String(leadData.city) : undefined,
+                lead_state: leadData?.state ? String(leadData.state) : undefined,
                 updated_at: new Date().toISOString()
               })
               .eq('id', conversationId);
@@ -781,7 +784,10 @@ serve(async (req) => {
                 broadcast_list_id: queueItem.broadcast_list_id,
                 broadcast_sent_at: new Date().toISOString(),
                 followup_count: 0,
-                contacted_by_instances: [selectedConfig.id]
+                contacted_by_instances: [selectedConfig.id],
+                // Dados de origem do lead
+                lead_city: leadData?.city ? String(leadData.city) : null,
+                lead_state: leadData?.state ? String(leadData.state) : null
               })
               .select('id')
               .single();

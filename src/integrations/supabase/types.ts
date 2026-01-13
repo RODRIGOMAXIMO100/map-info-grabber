@@ -470,6 +470,8 @@ export type Database = {
           last_lead_message_at: string | null
           last_message_at: string | null
           last_message_preview: string | null
+          lead_city: string | null
+          lead_state: string | null
           messages_in_current_stage: number | null
           muted_until: string | null
           name: string | null
@@ -513,6 +515,8 @@ export type Database = {
           last_lead_message_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
+          lead_city?: string | null
+          lead_state?: string | null
           messages_in_current_stage?: number | null
           muted_until?: string | null
           name?: string | null
@@ -556,6 +560,8 @@ export type Database = {
           last_lead_message_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
+          lead_city?: string | null
+          lead_state?: string | null
           messages_in_current_stage?: number | null
           muted_until?: string | null
           name?: string | null
