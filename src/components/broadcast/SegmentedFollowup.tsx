@@ -45,9 +45,9 @@ export function SegmentedFollowup() {
     try {
       let query = supabase
         .from('whatsapp_conversations')
-        .select('id, phone, name, lead_city, funnel_stage, last_message_at, broadcast_sent_at, followup_count, last_lead_message_at')
+        .select('id, phone, name, lead_city, funnel_stage, last_message_at, broadcast_sent_at, followup_count, last_lead_message_at, broadcast_list_id')
         .eq('is_crm_lead', true)
-        .not('broadcast_sent_at', 'is', null);
+        .not('broadcast_list_id', 'is', null);
 
       // Apply filters
       if (filters.cities.length > 0) {
