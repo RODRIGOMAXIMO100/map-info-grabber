@@ -610,6 +610,26 @@ export default function CRMKanban() {
     }
   };
 
+  const handleEditClosedValue = (conv: WhatsAppConversation) => {
+    // Open the closed value modal to edit the value without changing stage
+    setClosedValueModal({ open: true, lead: conv, targetStageId: conv.funnel_stage });
+  };
+
+  const handleRemoveClosedValue = async (conv: WhatsAppConversation) => {
+    try {
+      await supabase
+        .from('whatsapp_conversations')
+        .update({ closed_value: null, updated_at: new Date().toISOString() })
+        .eq('id', conv.id);
+
+      toast({ title: 'Valor fechado removido' });
+      if (selectedFunnelId) loadConversations(selectedFunnelId);
+    } catch (error) {
+      console.error('Error removing closed value:', error);
+      toast({ title: 'Erro ao remover valor', variant: 'destructive' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -734,6 +754,9 @@ export default function CRMKanban() {
                         onSetReminder={() => setReminderModal({ open: true, lead: conv })}
                         onAddTag={() => setTagModal({ open: true, lead: conv })}
                         onSetValue={() => setValueModal({ open: true, lead: conv })}
+                        onUndoSale={() => setUndoSaleModal({ open: true, lead: conv })}
+                        onEditClosedValue={() => handleEditClosedValue(conv)}
+                        onRemoveClosedValue={() => handleRemoveClosedValue(conv)}
                         bantScore={bantScores[conv.id]}
                         stages={stages}
                         onStageChange={(stageId) => handleStageChange(conv.id, stageId)}
@@ -789,6 +812,8 @@ export default function CRMKanban() {
                           onAddTag={() => setTagModal({ open: true, lead: conv })}
                           onSetValue={() => setValueModal({ open: true, lead: conv })}
                           onUndoSale={() => setUndoSaleModal({ open: true, lead: conv })}
+                          onEditClosedValue={() => handleEditClosedValue(conv)}
+                          onRemoveClosedValue={() => handleRemoveClosedValue(conv)}
                           bantScore={bantScores[conv.id]}
                           stages={stages}
                           onStageChange={(stageId) => handleStageChange(conv.id, stageId)}

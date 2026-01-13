@@ -13,6 +13,8 @@ import {
   MapPin,
   Megaphone,
   Undo2,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -50,6 +52,8 @@ interface LeadCardProps {
   onAddTag: () => void;
   onSetValue: () => void;
   onUndoSale?: () => void;
+  onEditClosedValue?: () => void;
+  onRemoveClosedValue?: () => void;
   bantScore?: { budget?: boolean; authority?: boolean; need?: boolean; timing?: boolean } | null;
   stages?: CRMFunnelStage[];
   onStageChange?: (stageId: string) => void;
@@ -64,6 +68,8 @@ export function LeadCard({
   onAddTag,
   onSetValue,
   onUndoSale,
+  onEditClosedValue,
+  onRemoveClosedValue,
   bantScore,
   stages,
   onStageChange,
@@ -282,15 +288,48 @@ export function LeadCard({
                   <DollarSign className="h-4 w-4 mr-2" />
                   Definir valor
                 </DropdownMenuItem>
-                {onUndoSale && conv.closed_value !== null && conv.closed_value !== undefined && (
-                  <DropdownMenuItem 
-                    onClick={(e) => { e.stopPropagation(); onUndoSale(); }}
-                    className="text-amber-600"
-                  >
-                    <Undo2 className="h-4 w-4 mr-2" />
-                    Desfazer venda
-                  </DropdownMenuItem>
-                )}
+                {/* Show Won stage specific options */}
+                {(() => {
+                  const currentStage = stages?.find(s => s.id === conv.funnel_stage);
+                  const isWonStage = currentStage && (
+                    currentStage.name.toLowerCase().includes('fechado') ||
+                    currentStage.name.toLowerCase().includes('ganho') ||
+                    currentStage.name.toLowerCase().includes('won')
+                  );
+                  
+                  if (!isWonStage) return null;
+                  
+                  return (
+                    <>
+                      {onEditClosedValue && (
+                        <DropdownMenuItem 
+                          onClick={(e) => { e.stopPropagation(); onEditClosedValue(); }}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Editar valor fechado
+                        </DropdownMenuItem>
+                      )}
+                      {onRemoveClosedValue && conv.closed_value !== null && conv.closed_value !== undefined && (
+                        <DropdownMenuItem 
+                          onClick={(e) => { e.stopPropagation(); onRemoveClosedValue(); }}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Remover valor fechado
+                        </DropdownMenuItem>
+                      )}
+                      {onUndoSale && (
+                        <DropdownMenuItem 
+                          onClick={(e) => { e.stopPropagation(); onUndoSale(); }}
+                          className="text-amber-600"
+                        >
+                          <Undo2 className="h-4 w-4 mr-2" />
+                          Desfazer venda
+                        </DropdownMenuItem>
+                      )}
+                    </>
+                  );
+                })()}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
