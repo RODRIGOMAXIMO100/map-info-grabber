@@ -169,13 +169,14 @@ serve(async (req) => {
       }
     }
 
-    // Update conversation
+    // Update conversation (reactivate if archived)
     if (conversationId) {
       await supabase
         .from('whatsapp_conversations')
         .update({
           last_message_at: new Date().toISOString(),
-          last_message_preview: `Você: ${message?.substring(0, 100) || `[${media_type}]`}`
+          last_message_preview: `Você: ${message?.substring(0, 100) || `[${media_type}]`}`,
+          status: 'active'
         })
         .eq('id', conversationId);
 
