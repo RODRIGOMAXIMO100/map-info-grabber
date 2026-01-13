@@ -12,6 +12,7 @@ import {
   ArrowRight,
   MapPin,
   Megaphone,
+  Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -48,6 +49,7 @@ interface LeadCardProps {
   onSetReminder: () => void;
   onAddTag: () => void;
   onSetValue: () => void;
+  onUndoSale?: () => void;
   bantScore?: { budget?: boolean; authority?: boolean; need?: boolean; timing?: boolean } | null;
   stages?: CRMFunnelStage[];
   onStageChange?: (stageId: string) => void;
@@ -61,6 +63,7 @@ export function LeadCard({
   onSetReminder,
   onAddTag,
   onSetValue,
+  onUndoSale,
   bantScore,
   stages,
   onStageChange,
@@ -279,6 +282,15 @@ export function LeadCard({
                   <DollarSign className="h-4 w-4 mr-2" />
                   Definir valor
                 </DropdownMenuItem>
+                {onUndoSale && conv.closed_value !== null && conv.closed_value !== undefined && (
+                  <DropdownMenuItem 
+                    onClick={(e) => { e.stopPropagation(); onUndoSale(); }}
+                    className="text-amber-600"
+                  >
+                    <Undo2 className="h-4 w-4 mr-2" />
+                    Desfazer venda
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
