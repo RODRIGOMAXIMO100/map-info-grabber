@@ -214,6 +214,55 @@ export type Database = {
         }
         Relationships: []
       }
+      funnel_stage_history: {
+        Row: {
+          changed_at: string | null
+          changed_by: string | null
+          conversation_id: string | null
+          from_stage_id: string | null
+          id: string
+          to_stage_id: string | null
+        }
+        Insert: {
+          changed_at?: string | null
+          changed_by?: string | null
+          conversation_id?: string | null
+          from_stage_id?: string | null
+          id?: string
+          to_stage_id?: string | null
+        }
+        Update: {
+          changed_at?: string | null
+          changed_by?: string | null
+          conversation_id?: string | null
+          from_stage_id?: string | null
+          id?: string
+          to_stage_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_stage_history_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funnel_stage_history_from_stage_id_fkey"
+            columns: ["from_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funnel_stage_history_to_stage_id_fkey"
+            columns: ["to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       search_cache: {
         Row: {
           cache_key: string
