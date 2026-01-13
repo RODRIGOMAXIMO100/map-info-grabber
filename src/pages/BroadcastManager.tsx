@@ -206,20 +206,35 @@ export default function BroadcastManager() {
     if (!confirm('Tem certeza que deseja excluir esta lista?')) return;
 
     try {
+      // 1. Deletar items da fila de disparo
       await supabase
         .from('whatsapp_queue')
         .delete()
         .eq('broadcast_list_id', list.id);
 
+      // 2. Desvincular conversas (setar broadcast_list_id = null)
       await supabase
+        .from('whatsapp_conversations')
+        .update({ broadcast_list_id: null })
+        .eq('broadcast_list_id', list.id);
+
+      // 3. Agora sim, deletar a lista
+      const { error } = await supabase
         .from('broadcast_lists')
         .delete()
         .eq('id', list.id);
+
+      if (error) throw error;
 
       toast({ title: 'Lista excluída' });
       loadLists();
     } catch (error) {
       console.error('Error deleting list:', error);
+      toast({
+        title: 'Erro ao excluir lista',
+        description: 'Não foi possível excluir a lista.',
+        variant: 'destructive',
+      });
     }
   };
 
