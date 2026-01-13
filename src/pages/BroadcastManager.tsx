@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Send, Loader2, Play, Pause, Trash2, Users, Clock, Eye, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Plus, Send, Loader2, Play, Pause, Trash2, Users, Clock, Eye, MessageSquare, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,8 +9,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { SegmentedFollowup } from '@/components/broadcast';
 import type { BroadcastList } from '@/types/whatsapp';
 
 interface QueueStats {
@@ -244,24 +246,37 @@ export default function BroadcastManager() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold">Listas de Disparo</h1>
-              <p className="text-muted-foreground">Gerencie seus disparos em massa</p>
-            </div>
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">Disparos em Massa</h1>
+            <p className="text-muted-foreground">Gerencie listas e follow-ups segmentados</p>
           </div>
+        </div>
 
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                Nova Lista
-              </Button>
-            </DialogTrigger>
+        <Tabs defaultValue="lists" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="lists" className="gap-2">
+              <Users className="h-4 w-4" />
+              Listas de Disparo
+            </TabsTrigger>
+            <TabsTrigger value="followup" className="gap-2">
+              <Target className="h-4 w-4" />
+              Follow-up Segmentado
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="lists" className="space-y-6">
+            <div className="flex justify-end">
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Nova Lista
+                  </Button>
+                </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Criar Nova Lista</DialogTitle>
@@ -455,8 +470,14 @@ export default function BroadcastManager() {
                 </Card>
               );
             })}
-          </div>
-        )}
+            </div>
+          )}
+          </TabsContent>
+
+          <TabsContent value="followup">
+            <SegmentedFollowup />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
