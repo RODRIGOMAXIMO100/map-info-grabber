@@ -17,6 +17,7 @@ import { AudioRecorder } from '@/components/whatsapp/AudioRecorder';
 import { ReminderModal } from '@/components/crm/ReminderModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -922,12 +923,19 @@ export default function WhatsAppChat() {
                   />
                   
                   <div className="relative flex-1">
-                    <Input
+                    <Textarea
                       placeholder="Digite sua mensagem..."
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       disabled={sending}
-                      className="flex-1 pr-8"
+                      className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2"
+                      rows={1}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
                     />
                   </div>
                   <Button 
@@ -1483,12 +1491,19 @@ export default function WhatsAppChat() {
                       />
                       
                       <div className="relative flex-1">
-                        <Input
+                        <Textarea
                           placeholder="Digite sua mensagem..."
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
                           disabled={sending}
-                          className="flex-1 pr-8"
+                          className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2"
+                          rows={1}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSend();
+                            }
+                          }}
                         />
                       </div>
                       <Button 
