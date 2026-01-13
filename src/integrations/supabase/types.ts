@@ -501,6 +501,7 @@ export type Database = {
           avatar_url: string | null
           broadcast_list_id: string | null
           broadcast_sent_at: string | null
+          closed_value: number | null
           config_id: string | null
           contacted_by_instances: string[] | null
           conversation_summary: string | null
@@ -547,6 +548,7 @@ export type Database = {
           avatar_url?: string | null
           broadcast_list_id?: string | null
           broadcast_sent_at?: string | null
+          closed_value?: number | null
           config_id?: string | null
           contacted_by_instances?: string[] | null
           conversation_summary?: string | null
@@ -593,6 +595,7 @@ export type Database = {
           avatar_url?: string | null
           broadcast_list_id?: string | null
           broadcast_sent_at?: string | null
+          closed_value?: number | null
           config_id?: string | null
           contacted_by_instances?: string[] | null
           conversation_summary?: string | null

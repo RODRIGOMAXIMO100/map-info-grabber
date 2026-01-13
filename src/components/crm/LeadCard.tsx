@@ -38,7 +38,10 @@ import type { WhatsAppConversation } from '@/types/whatsapp';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
 
 interface LeadCardProps {
-  conv: WhatsAppConversation & { contacted_by_instances?: string[] | null };
+  conv: WhatsAppConversation & { 
+    contacted_by_instances?: string[] | null;
+    closed_value?: number | null;
+  };
   isDragging?: boolean;
   onDragStart: () => void;
   onClick: () => void;
@@ -284,9 +287,13 @@ export function LeadCard({
         {/* Row 2: Phone + Value */}
         <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
           <span className="truncate">📱 {formatPhoneNumber(conv.phone)}</span>
-          {conv.estimated_value && (
-            <span className="text-green-600 font-medium">
-              R$ {Number(conv.estimated_value).toLocaleString('pt-BR')}
+          {(conv.closed_value || conv.estimated_value) && (
+            <span className={cn(
+              "font-medium",
+              conv.closed_value ? "text-green-600" : "text-muted-foreground"
+            )}>
+              {conv.closed_value ? '✅ ' : ''}
+              R$ {Number(conv.closed_value || conv.estimated_value).toLocaleString('pt-BR')}
             </span>
           )}
         </div>
