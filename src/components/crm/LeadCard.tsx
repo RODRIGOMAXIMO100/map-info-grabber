@@ -9,6 +9,7 @@ import {
   Tag,
   DollarSign,
   AlertTriangle,
+  Shuffle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -30,7 +31,7 @@ import type { WhatsAppConversation } from '@/types/whatsapp';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
 
 interface LeadCardProps {
-  conv: WhatsAppConversation;
+  conv: WhatsAppConversation & { contacted_by_instances?: string[] | null };
   isDragging?: boolean;
   onDragStart: () => void;
   onClick: () => void;
@@ -301,6 +302,21 @@ export function LeadCard({
               </Badge>
             )}
             {getNextActionBadge()}
+            {conv.contacted_by_instances && conv.contacted_by_instances.length > 1 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-400 text-amber-600 bg-amber-50 dark:bg-amber-950/30 gap-0.5">
+                      <Shuffle className="h-2.5 w-2.5" />
+                      {conv.contacted_by_instances.length}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Contatado por {conv.contacted_by_instances.length} números diferentes
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
           <span className="text-[10px] text-muted-foreground flex-shrink-0">
             <Clock className="h-3 w-3 inline mr-0.5" />

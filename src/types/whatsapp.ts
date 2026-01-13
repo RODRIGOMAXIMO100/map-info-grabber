@@ -47,6 +47,7 @@ export interface WhatsAppConversation {
   origin?: string;
   conversation_summary?: string;
   summary_updated_at?: string;
+  contacted_by_instances?: string[];
 }
 
 export interface WhatsAppMessage {

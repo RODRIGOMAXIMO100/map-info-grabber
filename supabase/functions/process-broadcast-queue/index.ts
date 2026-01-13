@@ -698,12 +698,23 @@ serve(async (req) => {
           
           const { data: existingConvs } = await supabase
             .from('whatsapp_conversations')
-            .select('id, is_crm_lead, phone')
+            .select('id, is_crm_lead, phone, contacted_by_instances')
             .ilike('phone', `%${phoneCore}`);
           
           const existingConv = existingConvs?.[0] || null;
           if (existingConv) {
             console.log(`[BROADCAST] Conversa encontrada: ${existingConv.phone} (ID: ${existingConv.id})`);
+            
+            // Check for cross-instance contact
+            const existingInstances = (existingConv.contacted_by_instances || []) as string[];
+            if (existingInstances.length > 0 && !existingInstances.includes(selectedConfig.id)) {
+              console.log(`[Broadcast] ⚠️ ALERTA: ${queueItem.phone} já foi contatado por ${existingInstances.length} instância(s) diferente(s)`);
+              // Add warning to queue item
+              await supabase
+                .from('whatsapp_queue')
+                .update({ warning_message: `Contato já abordado por outra(s) instância(s)` })
+                .eq('id', queueItem.id);
+            }
           } else {
             console.log(`[BROADCAST] Nenhuma conversa encontrada, criando nova com: ${formattedPhone}`);
           }
@@ -726,6 +737,11 @@ serve(async (req) => {
             conversationId = existingConv.id;
             // Se já existe, marca como CRM lead e atualiza
             // Reset followup_count e salva dados do broadcast
+            
+            // Update contacted_by_instances array
+            const existingInstances = (existingConv.contacted_by_instances || []) as string[];
+            const updatedInstances = Array.from(new Set([...existingInstances, selectedConfig.id]));
+            
             await supabase
               .from('whatsapp_conversations')
               .update({
@@ -741,6 +757,7 @@ serve(async (req) => {
                 broadcast_list_id: queueItem.broadcast_list_id,
                 broadcast_sent_at: new Date().toISOString(),
                 followup_count: 0,
+                contacted_by_instances: updatedInstances,
                 updated_at: new Date().toISOString()
               })
               .eq('id', conversationId);
@@ -763,7 +780,8 @@ serve(async (req) => {
                 // Dados do broadcast para follow-ups automáticos
                 broadcast_list_id: queueItem.broadcast_list_id,
                 broadcast_sent_at: new Date().toISOString(),
-                followup_count: 0
+                followup_count: 0,
+                contacted_by_instances: [selectedConfig.id]
               })
               .select('id')
               .single();
