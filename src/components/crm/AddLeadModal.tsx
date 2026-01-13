@@ -99,8 +99,8 @@ export function AddLeadModal({
     if (open) {
       setPhone('');
       setName('');
-      setStageId(stages[0]?.id || '');
-      setConfigId(whatsappConfigs[0]?.id || '');
+      setStageId(stages?.[0]?.id || '');
+      setConfigId(whatsappConfigs?.[0]?.id || '');
       setState('');
       setCity('');
       setBroadcastListId('');
@@ -271,7 +271,7 @@ export function AddLeadModal({
           </div>
 
           {/* Broadcast List */}
-          {broadcastLists.length > 0 && (
+          {broadcastLists && broadcastLists.length > 0 && (
             <div className="space-y-2">
               <Label className="flex items-center gap-1">
                 <Megaphone className="h-3.5 w-3.5" />
