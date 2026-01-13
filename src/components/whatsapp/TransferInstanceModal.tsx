@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { formatPhoneNumber } from '@/lib/phone';
 
 interface WhatsAppInstance {
   id: string;
@@ -85,16 +86,6 @@ export function TransferInstanceModal({
     }
   };
 
-  const formatPhone = (phone: string) => {
-    if (!phone) return '';
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length === 11) {
-      return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-    } else if (digits.length === 13 && digits.startsWith('55')) {
-      return `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
-    }
-    return phone;
-  };
 
   const handleTransfer = async () => {
     if (!selectedInstanceId) {
@@ -171,7 +162,7 @@ export function TransferInstanceModal({
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium text-sm">{contactName || contactPhone}</p>
-                <p className="text-xs text-muted-foreground">{formatPhone(contactPhone)}</p>
+                <p className="text-xs text-muted-foreground">{formatPhoneNumber(contactPhone)}</p>
               </div>
               {currentInstance ? (
                 <Badge 
@@ -192,7 +183,7 @@ export function TransferInstanceModal({
             </div>
             {currentInstance && (
               <p className="text-xs text-muted-foreground mt-1">
-                via {formatPhone(currentInstance.instance_phone)}
+                via {formatPhoneNumber(currentInstance.instance_phone)}
               </p>
             )}
             {currentInstance && !currentInstance.is_active && (
@@ -243,7 +234,7 @@ export function TransferInstanceModal({
                           <Wifi className="h-3 w-3 text-green-500" />
                         </Label>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatPhone(instance.instance_phone)}
+                          {formatPhoneNumber(instance.instance_phone)}
                         </p>
                       </div>
                       {selectedInstanceId === instance.id && (

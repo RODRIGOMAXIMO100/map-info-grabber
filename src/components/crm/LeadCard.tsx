@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { formatPhoneNumber } from '@/lib/phone';
 import type { WhatsAppConversation } from '@/types/whatsapp';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
 
@@ -53,31 +54,6 @@ export function LeadCard({
 }: LeadCardProps) {
   const navigate = useNavigate();
 
-  const formatPhone = (phone: string): string => {
-    const digits = phone.replace(/\D/g, '');
-    
-    // Formato brasileiro: 55 + DDD (2) + Número (8-9)
-    if (digits.startsWith('55') && digits.length >= 12) {
-      const ddd = digits.slice(2, 4);
-      const number = digits.slice(4);
-      if (number.length === 9) {
-        return `(${ddd}) ${number.slice(0, 5)}-${number.slice(5)}`;
-      }
-      return `(${ddd}) ${number.slice(0, 4)}-${number.slice(4)}`;
-    }
-    
-    // Fallback para outros formatos
-    if (digits.length >= 10) {
-      const ddd = digits.slice(0, 2);
-      const number = digits.slice(2);
-      if (number.length >= 9) {
-        return `(${ddd}) ${number.slice(0, 5)}-${number.slice(5)}`;
-      }
-      return `(${ddd}) ${number.slice(0, 4)}-${number.slice(4)}`;
-    }
-    
-    return phone;
-  };
 
   const formatTime = (date: string | null) => {
     if (!date) return '-';
@@ -206,7 +182,7 @@ export function LeadCard({
         {/* Row 1: Name + Actions */}
         <div className="flex items-center gap-1">
           <span className="font-medium text-sm truncate min-w-0 flex-1" style={{ maxWidth: '120px' }}>
-            {conv.name || formatPhone(conv.phone)}
+            {conv.name || formatPhoneNumber(conv.phone)}
           </span>
           <div className="flex items-center gap-0.5 ml-auto">
             <BANTIndicator />
@@ -279,7 +255,7 @@ export function LeadCard({
 
         {/* Row 2: Phone + Value */}
         <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-          <span className="truncate">📱 {formatPhone(conv.phone)}</span>
+          <span className="truncate">📱 {formatPhoneNumber(conv.phone)}</span>
           {conv.estimated_value && (
             <span className="text-green-600 font-medium">
               R$ {Number(conv.estimated_value).toLocaleString('pt-BR')}
