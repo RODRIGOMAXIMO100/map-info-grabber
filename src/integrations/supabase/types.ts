@@ -453,6 +453,7 @@ export type Database = {
           broadcast_list_id: string | null
           broadcast_sent_at: string | null
           config_id: string | null
+          contacted_by_instances: string[] | null
           conversation_summary: string | null
           converted_at: string | null
           created_at: string | null
@@ -495,6 +496,7 @@ export type Database = {
           broadcast_list_id?: string | null
           broadcast_sent_at?: string | null
           config_id?: string | null
+          contacted_by_instances?: string[] | null
           conversation_summary?: string | null
           converted_at?: string | null
           created_at?: string | null
@@ -537,6 +539,7 @@ export type Database = {
           broadcast_list_id?: string | null
           broadcast_sent_at?: string | null
           config_id?: string | null
+          contacted_by_instances?: string[] | null
           conversation_summary?: string | null
           converted_at?: string | null
           created_at?: string | null
@@ -840,6 +843,7 @@ export type Database = {
           schedule_id: string | null
           status: string
           updated_at: string | null
+          warning_message: string | null
         }
         Insert: {
           attempts?: number | null
@@ -856,6 +860,7 @@ export type Database = {
           schedule_id?: string | null
           status?: string
           updated_at?: string | null
+          warning_message?: string | null
         }
         Update: {
           attempts?: number | null
@@ -872,6 +877,7 @@ export type Database = {
           schedule_id?: string | null
           status?: string
           updated_at?: string | null
+          warning_message?: string | null
         }
         Relationships: [
           {
@@ -955,6 +961,7 @@ export type Database = {
           schedule_id: string | null
           status: string
           updated_at: string | null
+          warning_message: string | null
         }[]
         SetofOptions: {
           from: "*"

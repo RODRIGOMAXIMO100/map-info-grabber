@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AIStatusIcon, 
@@ -807,9 +807,15 @@ export default function WhatsAppChat() {
                         <span className="font-medium truncate text-sm max-w-[140px]">
                           {conv.name || conv.group_name || conv.phone}
                         </span>
-                        {conv.is_crm_lead && (
+                       {conv.is_crm_lead && (
                           <Badge variant="outline" className="h-4 px-1 text-[10px] bg-green-500/10 text-green-600 border-green-500/30 flex-shrink-0">
                             Lead
+                          </Badge>
+                        )}
+                        {conv.contacted_by_instances && (conv.contacted_by_instances as string[]).length > 1 && (
+                          <Badge variant="outline" className="h-4 px-1 text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30 flex-shrink-0 gap-0.5">
+                            <AlertTriangle className="h-2.5 w-2.5" />
+                            {(conv.contacted_by_instances as string[]).length}
                           </Badge>
                         )}
                       </div>
