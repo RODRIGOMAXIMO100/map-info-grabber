@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
-import { Gauge, TrendingUp } from "lucide-react";
+import { Gauge, TrendingUp, DollarSign } from "lucide-react";
 
 interface FunnelVelocityProps {
   funnelId: string;
@@ -11,6 +11,7 @@ interface FunnelVelocityProps {
 
 export default function FunnelVelocity({ funnelId, pipelineValue, conversionRate }: FunnelVelocityProps) {
   const [avgCycleDays, setAvgCycleDays] = useState<number>(7);
+  const [wonValue, setWonValue] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,24 +22,57 @@ export default function FunnelVelocity({ funnelId, pipelineValue, conversionRate
     try {
       setLoading(true);
 
-      // Get converted leads from this funnel
-      const { data: convertedLeads } = await supabase
+      // Buscar estágios do funil para identificar o de ganho
+      const { data: stagesData } = await supabase
+        .from('crm_funnel_stages')
+        .select('id, name, stage_order')
+        .eq('funnel_id', funnelId)
+        .order('stage_order', { ascending: false });
+
+      // Identificar estágio de ganho: "FECHADO" ou maior ordem exceto "PERDIDO"
+      const wonStage = stagesData?.find(s => 
+        s.name.toLowerCase().includes('fechado') || 
+        s.name.toLowerCase().includes('ganho') ||
+        s.name.toLowerCase().includes('won')
+      ) || stagesData?.find(s => 
+        !s.name.toLowerCase().includes('perdido') && 
+        !s.name.toLowerCase().includes('lost')
+      );
+
+      if (!wonStage) {
+        setLoading(false);
+        return;
+      }
+
+      // Buscar leads no estágio de ganho
+      const { data: wonLeads } = await supabase
         .from('whatsapp_conversations')
-        .select('created_at, converted_at')
+        .select('id, created_at, funnel_stage_changed_at, estimated_value')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
-        .not('converted_at', 'is', null)
-        .limit(50);
+        .eq('funnel_stage', wonStage.id)
+        .limit(100);
 
-      if (convertedLeads && convertedLeads.length > 0) {
-        const cycleTimes = convertedLeads.map(lead => {
-          const created = new Date(lead.created_at!);
-          const converted = new Date(lead.converted_at!);
-          return (converted.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
-        });
+      if (wonLeads && wonLeads.length > 0) {
+        // Calcular tempo médio de ciclo
+        const cycleTimes = wonLeads
+          .filter(lead => lead.funnel_stage_changed_at && lead.created_at)
+          .map(lead => {
+            const created = new Date(lead.created_at!);
+            const closed = new Date(lead.funnel_stage_changed_at!);
+            return (closed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
+          });
         
-        const avgDays = Math.round(cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length);
-        setAvgCycleDays(Math.max(avgDays, 1));
+        if (cycleTimes.length > 0) {
+          const avgDays = Math.round(cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length);
+          setAvgCycleDays(Math.max(avgDays, 1));
+        }
+
+        // Calcular valor total ganho
+        const totalWon = wonLeads.reduce((sum, lead) => 
+          sum + (Number(lead.estimated_value) || 0), 0
+        );
+        setWonValue(totalWon);
       }
     } catch (error) {
       console.error('Error calculating velocity:', error);
@@ -81,6 +115,18 @@ export default function FunnelVelocity({ funnelId, pipelineValue, conversionRate
               </p>
             </div>
           </div>
+          
+          {/* Valor Ganho */}
+          <div className="text-center px-4 border-x border-border/50">
+            <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+              <DollarSign className="h-3 w-3" />
+              Total Ganho
+            </div>
+            <p className="font-bold text-green-600">
+              {wonValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </p>
+          </div>
+          
           <div className="text-right">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <TrendingUp className="h-3 w-3" />
