@@ -48,6 +48,10 @@ export interface WhatsAppConversation {
   conversation_summary?: string;
   summary_updated_at?: string;
   contacted_by_instances?: string[];
+  lead_city?: string;
+  lead_state?: string;
+  broadcast_list_id?: string;
+  broadcast_lists?: { name: string } | null;
 }
 
 export interface WhatsAppMessage {

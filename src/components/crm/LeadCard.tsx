@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   Shuffle,
   ArrowRight,
+  MapPin,
+  Megaphone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -298,6 +300,24 @@ export function LeadCard({
             </span>
           )}
         </div>
+
+        {/* Row 2.5: Origin (City + Broadcast) */}
+        {(conv.lead_city || conv.broadcast_lists?.name) && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground mt-1 gap-1">
+            {conv.lead_city && (
+              <span className="truncate flex items-center gap-1 min-w-0">
+                <MapPin className="h-3 w-3 flex-shrink-0" />
+                {conv.lead_city}{conv.lead_state ? `/${conv.lead_state}` : ''}
+              </span>
+            )}
+            {conv.broadcast_lists?.name && (
+              <Badge variant="outline" className="text-[9px] h-4 px-1 flex-shrink-0 gap-0.5">
+                <Megaphone className="h-2.5 w-2.5" />
+                {conv.broadcast_lists.name}
+              </Badge>
+            )}
+          </div>
+        )}
 
         {/* Row 3: Status badges */}
         <div className="flex items-center justify-between mt-1.5 gap-1">
