@@ -462,6 +462,7 @@ export type Database = {
           estimated_value: number | null
           followup_count: number | null
           funnel_stage: string | null
+          funnel_stage_changed_at: string | null
           group_name: string | null
           id: string
           is_crm_lead: boolean | null
@@ -507,6 +508,7 @@ export type Database = {
           estimated_value?: number | null
           followup_count?: number | null
           funnel_stage?: string | null
+          funnel_stage_changed_at?: string | null
           group_name?: string | null
           id?: string
           is_crm_lead?: boolean | null
@@ -552,6 +554,7 @@ export type Database = {
           estimated_value?: number | null
           followup_count?: number | null
           funnel_stage?: string | null
+          funnel_stage_changed_at?: string | null
           group_name?: string | null
           id?: string
           is_crm_lead?: boolean | null
