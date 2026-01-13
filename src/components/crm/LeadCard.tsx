@@ -8,7 +8,6 @@ import {
   MoreVertical,
   Tag,
   DollarSign,
-  AlertTriangle,
   Shuffle,
   ArrowRight,
   MapPin,
@@ -94,14 +93,6 @@ export function LeadCard({
     
     const hours = (Date.now() - new Date(conv.last_message_at).getTime()) / 3600000;
     
-    if (conv.ai_handoff_reason) {
-      return (
-        <Badge variant="outline" className="text-[9px] h-4 px-1 border-orange-400 text-orange-600 bg-orange-50 dark:bg-orange-950/30">
-          ⚠️ Ação urgente
-        </Badge>
-      );
-    }
-    
     if (hours < 1) {
       return (
         <Badge variant="outline" className="text-[9px] h-4 px-1 border-green-400 text-green-600 bg-green-50 dark:bg-green-950/30">
@@ -185,8 +176,7 @@ export function LeadCard({
         'cursor-pointer hover:shadow-md transition-all border-l-4 relative group',
         getUrgencyColor(conv.last_message_at),
         isDragging && 'opacity-50 ring-2 ring-primary',
-        isOverdue && 'ring-2 ring-yellow-500/50',
-        conv.ai_handoff_reason && 'ring-1 ring-orange-400/50'
+        isOverdue && 'ring-2 ring-yellow-500/50'
       )}
     >
       <CardContent className="p-2.5 overflow-visible">
@@ -372,15 +362,6 @@ export function LeadCard({
           </div>
         )}
 
-        {/* Row 5: Handoff Reason (if exists) */}
-        {conv.ai_handoff_reason && (
-          <div className="mt-2 p-1.5 rounded text-[10px] bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800">
-            <p className="text-orange-700 dark:text-orange-300 line-clamp-2">
-              <AlertTriangle className="h-3 w-3 inline mr-1" />
-              {conv.ai_handoff_reason}
-            </p>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

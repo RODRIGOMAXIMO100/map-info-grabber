@@ -246,8 +246,6 @@ export default function CRMKanban() {
       result = result.filter(c => !c.ai_paused);
     } else if (aiStatusFilter === 'manual') {
       result = result.filter(c => c.ai_paused);
-    } else if (aiStatusFilter === 'handoff') {
-      result = result.filter(c => c.ai_handoff_reason);
     }
 
     // Urgency filter
