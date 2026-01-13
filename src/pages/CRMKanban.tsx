@@ -301,20 +301,47 @@ export default function CRMKanban() {
 
   const handleDrop = async (targetStage: CRMFunnelStage) => {
     if (!draggedItem) return;
+    await handleStageChange(draggedItem.id, targetStage.id);
+    setDraggedItem(null);
+  };
 
+  const handleStageChange = async (convId: string, newStageId: string) => {
+    const conv = conversations.find(c => c.id === convId);
+    const targetStage = stages.find(s => s.id === newStageId);
+    
+    if (!conv || !targetStage) return;
+    
+    // Detectar se é a etapa "PERDIDO"
+    const isLostStage = targetStage.name.toLowerCase().includes('perdido') ||
+                        targetStage.name.toLowerCase().includes('lost');
+    
+    const updateData: Record<string, unknown> = {
+      funnel_stage: newStageId,
+      updated_at: new Date().toISOString()
+    };
+    
+    // Se for "Perdido", arquivar automaticamente
+    if (isLostStage) {
+      updateData.status = 'archived';
+    }
+    
     try {
       await supabase
         .from('whatsapp_conversations')
-        .update({ 
-          funnel_stage: targetStage.id, 
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', draggedItem.id);
+        .update(updateData)
+        .eq('id', convId);
 
-      toast({
-        title: 'Lead movido',
-        description: `${draggedItem.name || draggedItem.phone} movido para ${targetStage.name}`,
-      });
+      if (isLostStage) {
+        toast({
+          title: 'Lead marcado como perdido',
+          description: `${conv.name || conv.phone} foi arquivado automaticamente.`,
+        });
+      } else {
+        toast({
+          title: 'Lead movido',
+          description: `${conv.name || conv.phone} movido para ${targetStage.name}`,
+        });
+      }
 
       if (selectedFunnelId) loadConversations(selectedFunnelId);
     } catch (error) {
@@ -324,8 +351,6 @@ export default function CRMKanban() {
         description: 'Tente novamente.',
         variant: 'destructive',
       });
-    } finally {
-      setDraggedItem(null);
     }
   };
 
@@ -585,19 +610,21 @@ export default function CRMKanban() {
               </div>
               <ScrollArea className="flex-1">
                 <div className="space-y-2 pr-2">
-                  {unclassified.map((conv) => (
-                    <LeadCard
-                      key={conv.id}
-                      conv={conv}
-                      isDragging={draggedItem?.id === conv.id}
-                      onDragStart={() => handleDragStart(conv)}
-                      onClick={() => { setSelectedLead(conv); setSheetOpen(true); }}
-                      onSetReminder={() => setReminderModal({ open: true, lead: conv })}
-                      onAddTag={() => setTagModal({ open: true, lead: conv })}
-                      onSetValue={() => setValueModal({ open: true, lead: conv })}
-                      bantScore={bantScores[conv.id]}
-                    />
-                  ))}
+                    {unclassified.map((conv) => (
+                      <LeadCard
+                        key={conv.id}
+                        conv={conv}
+                        isDragging={draggedItem?.id === conv.id}
+                        onDragStart={() => handleDragStart(conv)}
+                        onClick={() => { setSelectedLead(conv); setSheetOpen(true); }}
+                        onSetReminder={() => setReminderModal({ open: true, lead: conv })}
+                        onAddTag={() => setTagModal({ open: true, lead: conv })}
+                        onSetValue={() => setValueModal({ open: true, lead: conv })}
+                        bantScore={bantScores[conv.id]}
+                        stages={stages}
+                        onStageChange={(stageId) => handleStageChange(conv.id, stageId)}
+                      />
+                    ))}
                 </div>
               </ScrollArea>
             </div>
@@ -638,17 +665,19 @@ export default function CRMKanban() {
                 <ScrollArea className="flex-1">
                   <div className="space-y-2 pr-2 min-h-[100px]">
                     {stageConversations.map((conv) => (
-                      <LeadCard
-                        key={conv.id}
-                        conv={conv}
-                        isDragging={draggedItem?.id === conv.id}
-                        onDragStart={() => handleDragStart(conv)}
-                        onClick={() => { setSelectedLead(conv); setSheetOpen(true); }}
-                        onSetReminder={() => setReminderModal({ open: true, lead: conv })}
-                        onAddTag={() => setTagModal({ open: true, lead: conv })}
-                        onSetValue={() => setValueModal({ open: true, lead: conv })}
-                        bantScore={bantScores[conv.id]}
-                      />
+                        <LeadCard
+                          key={conv.id}
+                          conv={conv}
+                          isDragging={draggedItem?.id === conv.id}
+                          onDragStart={() => handleDragStart(conv)}
+                          onClick={() => { setSelectedLead(conv); setSheetOpen(true); }}
+                          onSetReminder={() => setReminderModal({ open: true, lead: conv })}
+                          onAddTag={() => setTagModal({ open: true, lead: conv })}
+                          onSetValue={() => setValueModal({ open: true, lead: conv })}
+                          bantScore={bantScores[conv.id]}
+                          stages={stages}
+                          onStageChange={(stageId) => handleStageChange(conv.id, stageId)}
+                        />
                     ))}
 
                     {stageConversations.length === 0 && (
@@ -704,6 +733,8 @@ export default function CRMKanban() {
           onOpenChange={setSheetOpen}
           conversation={selectedLead}
           onUpdate={() => selectedFunnelId && loadConversations(selectedFunnelId)}
+          stages={stages}
+          onStageChange={(stageId) => handleStageChange(selectedLead.id, stageId)}
         />
       )}
     </div>
