@@ -28,6 +28,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { formatPhoneNumber } from '@/lib/phone';
 import type { WhatsAppConversation } from '@/types/whatsapp';
 import { CRM_STAGES } from '@/types/whatsapp';
 
@@ -132,18 +133,6 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
     }
   };
 
-  const formatPhone = (phone: string): string => {
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length >= 10) {
-      const ddd = digits.slice(-11, -9) || digits.slice(0, 2);
-      const rest = digits.slice(-9);
-      if (rest.length === 9) {
-        return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
-      }
-      return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
-    }
-    return phone;
-  };
 
   const formatDate = (date: string | null) => {
     if (!date) return '-';
@@ -296,7 +285,7 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
-            {conversation.name || formatPhone(conversation.phone)}
+            {conversation.name || formatPhoneNumber(conversation.phone)}
           </SheetTitle>
           <SheetDescription id="lead-details-description" className="sr-only">
             Detalhes do lead e histórico de conversa
@@ -309,7 +298,7 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate }:
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm">
                 <Phone className="h-4 w-4 text-muted-foreground" />
-                <span>{formatPhone(conversation.phone)}</span>
+                <span>{formatPhoneNumber(conversation.phone)}</span>
               </div>
               
               <div className="flex items-center gap-2 text-sm">
