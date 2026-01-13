@@ -32,6 +32,7 @@ import {
   GitBranch,
   MapPin,
   Megaphone,
+  DollarSign,
 } from 'lucide-react';
 import { toast as sonnerToast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -328,6 +329,30 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate, s
                 <MessageSquare className="h-4 w-4 text-muted-foreground" />
                 <span>{messageCount} mensagens trocadas</span>
               </div>
+
+              {/* Values section */}
+              {(conversation.estimated_value || (conversation as { closed_value?: number }).closed_value) && (
+                <div className="space-y-1.5 pt-2 border-t">
+                  {conversation.estimated_value && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <DollarSign className="h-4 w-4 text-muted-foreground" />
+                      <span>Valor Estimado:</span>
+                      <span className="font-medium">
+                        R$ {Number(conversation.estimated_value).toLocaleString('pt-BR')}
+                      </span>
+                    </div>
+                  )}
+                  {(conversation as { closed_value?: number }).closed_value && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <DollarSign className="h-4 w-4 text-green-600" />
+                      <span className="text-green-600">Valor Fechado:</span>
+                      <span className="font-medium text-green-600">
+                        R$ {Number((conversation as { closed_value?: number }).closed_value).toLocaleString('pt-BR')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Origin info */}
               {(conversation.lead_city || conversation.broadcast_lists?.name) && (

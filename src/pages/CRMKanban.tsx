@@ -24,6 +24,7 @@ import {
   TagModal,
   ValueModal,
   AddLeadModal,
+  ClosedValueModal,
   type PeriodFilter,
   type AIStatusFilter,
   type UrgencyFilter,
@@ -66,6 +67,11 @@ export default function CRMKanban() {
   const [reminderModal, setReminderModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
   const [tagModal, setTagModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
   const [valueModal, setValueModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
+  const [closedValueModal, setClosedValueModal] = useState<{ 
+    open: boolean; 
+    lead: WhatsAppConversation | null; 
+    targetStageId: string | null 
+  }>({ open: false, lead: null, targetStageId: null });
   const [addLeadModalOpen, setAddLeadModalOpen] = useState(false);
   const [whatsappConfigs, setWhatsappConfigs] = useState<{ id: string; name: string | null }[]>([]);
 
@@ -304,11 +310,24 @@ export default function CRMKanban() {
 
   const handleDrop = async (targetStage: CRMFunnelStage) => {
     if (!draggedItem) return;
+    
+    // Detectar se é a etapa "FECHADO" (venda ganha)
+    const isWonStage = targetStage.name.toLowerCase().includes('fechado') ||
+                       targetStage.name.toLowerCase().includes('ganho') ||
+                       targetStage.name.toLowerCase().includes('won');
+    
+    if (isWonStage && draggedItem.funnel_stage !== targetStage.id) {
+      // Abrir modal para inserir valor fechado
+      setClosedValueModal({ open: true, lead: draggedItem, targetStageId: targetStage.id });
+      setDraggedItem(null);
+      return;
+    }
+    
     await handleStageChange(draggedItem.id, targetStage.id);
     setDraggedItem(null);
   };
 
-  const handleStageChange = async (convId: string, newStageId: string) => {
+  const handleStageChange = async (convId: string, newStageId: string, closedValue?: number | null) => {
     const conv = conversations.find(c => c.id === convId);
     const targetStage = stages.find(s => s.id === newStageId);
     
@@ -318,6 +337,17 @@ export default function CRMKanban() {
     const isLostStage = targetStage.name.toLowerCase().includes('perdido') ||
                         targetStage.name.toLowerCase().includes('lost');
     
+    // Detectar se é a etapa "FECHADO" (venda ganha)
+    const isWonStage = targetStage.name.toLowerCase().includes('fechado') ||
+                       targetStage.name.toLowerCase().includes('ganho') ||
+                       targetStage.name.toLowerCase().includes('won');
+    
+    // Se for estágio de vitória e ainda não abriu o modal, abrir
+    if (isWonStage && closedValue === undefined && conv.funnel_stage !== newStageId) {
+      setClosedValueModal({ open: true, lead: conv, targetStageId: newStageId });
+      return;
+    }
+    
     const updateData: Record<string, unknown> = {
       funnel_stage: newStageId,
       updated_at: new Date().toISOString()
@@ -326,6 +356,11 @@ export default function CRMKanban() {
     // Se for "Perdido", arquivar automaticamente
     if (isLostStage) {
       updateData.status = 'archived';
+    }
+    
+    // Se for "Fechado" e tiver valor, salvar closed_value
+    if (isWonStage && closedValue !== undefined) {
+      updateData.closed_value = closedValue;
     }
     
     try {
@@ -338,6 +373,13 @@ export default function CRMKanban() {
         toast({
           title: 'Lead marcado como perdido',
           description: `${conv.name || conv.phone} foi arquivado automaticamente.`,
+        });
+      } else if (isWonStage) {
+        toast({
+          title: '🎉 Venda fechada!',
+          description: closedValue 
+            ? `${conv.name || conv.phone} - R$ ${closedValue.toLocaleString('pt-BR')}`
+            : `${conv.name || conv.phone} movido para ${targetStage.name}`,
         });
       } else {
         toast({
@@ -355,6 +397,16 @@ export default function CRMKanban() {
         variant: 'destructive',
       });
     }
+  };
+
+  const handleSaveClosedValue = async (closedValue: number | null) => {
+    if (!closedValueModal.lead || !closedValueModal.targetStageId) return;
+    await handleStageChange(closedValueModal.lead.id, closedValueModal.targetStageId, closedValue);
+    setClosedValueModal({ open: false, lead: null, targetStageId: null });
+  };
+
+  const handleCancelClosedValue = () => {
+    setClosedValueModal({ open: false, lead: null, targetStageId: null });
   };
 
   const handleSaveReminder = async (date: Date) => {
@@ -720,6 +772,17 @@ export default function CRMKanban() {
         leadName={valueModal.lead?.name || valueModal.lead?.phone || ''}
         currentValue={valueModal.lead?.estimated_value}
         onSave={handleSaveValue}
+      />
+
+      <ClosedValueModal
+        open={closedValueModal.open}
+        onOpenChange={(open) => {
+          if (!open) handleCancelClosedValue();
+        }}
+        leadName={closedValueModal.lead?.name || closedValueModal.lead?.phone || ''}
+        estimatedValue={closedValueModal.lead?.estimated_value || null}
+        onSave={handleSaveClosedValue}
+        onCancel={handleCancelClosedValue}
       />
 
       <AddLeadModal

@@ -47,7 +47,7 @@ export default function FunnelVelocity({ funnelId, pipelineValue, conversionRate
       // Buscar leads no estágio de ganho
       const { data: wonLeads } = await supabase
         .from('whatsapp_conversations')
-        .select('id, created_at, funnel_stage_changed_at, estimated_value')
+        .select('id, created_at, funnel_stage_changed_at, estimated_value, closed_value')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
         .eq('funnel_stage', wonStage.id)
@@ -68,9 +68,9 @@ export default function FunnelVelocity({ funnelId, pipelineValue, conversionRate
           setAvgCycleDays(Math.max(avgDays, 1));
         }
 
-        // Calcular valor total ganho
+        // Calcular valor total ganho (priorizar closed_value)
         const totalWon = wonLeads.reduce((sum, lead) => 
-          sum + (Number(lead.estimated_value) || 0), 0
+          sum + (Number((lead as { closed_value?: number }).closed_value) || Number(lead.estimated_value) || 0), 0
         );
         setWonValue(totalWon);
       }
