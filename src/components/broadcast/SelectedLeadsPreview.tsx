@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Users, X, ChevronLeft, ChevronRight, MapPin, GitBranch } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -45,6 +46,22 @@ export function SelectedLeadsPreview({
   loading = false,
 }: SelectedLeadsPreviewProps) {
   const [currentPage, setCurrentPage] = useState(0);
+  const [stages, setStages] = useState<Map<string, { name: string; color: string | null }>>(new Map());
+
+  useEffect(() => {
+    async function loadStages() {
+      const { data } = await supabase
+        .from('crm_funnel_stages')
+        .select('id, name, color');
+      
+      if (data) {
+        const stageMap = new Map<string, { name: string; color: string | null }>();
+        data.forEach(s => stageMap.set(s.id, { name: s.name, color: s.color }));
+        setStages(stageMap);
+      }
+    }
+    loadStages();
+  }, []);
 
   const includedLeads = leads.filter(l => !excludedIds.has(l.id));
   const totalPages = Math.ceil(leads.length / PAGE_SIZE);
@@ -143,9 +160,25 @@ export function SelectedLeadsPreview({
                     </TableCell>
                     <TableCell>
                       {lead.funnel_stage ? (
-                        <Badge variant="outline" className="text-xs">
-                          {lead.funnel_stage}
-                        </Badge>
+                        (() => {
+                          const stage = stages.get(lead.funnel_stage);
+                          return stage ? (
+                            <Badge 
+                              variant="outline" 
+                              className="text-xs"
+                              style={{ 
+                                borderColor: stage.color || undefined, 
+                                backgroundColor: stage.color ? `${stage.color}20` : undefined 
+                              }}
+                            >
+                              {stage.name}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">
+                              {lead.funnel_stage.substring(0, 8)}...
+                            </Badge>
+                          );
+                        })()
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}
