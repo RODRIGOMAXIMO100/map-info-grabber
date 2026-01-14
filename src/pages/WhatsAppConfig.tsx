@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, TestTube, Loader2, CheckCircle, XCircle, Copy, Check, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, TestTube, Loader2, CheckCircle, XCircle, Copy, Check, Plus, Trash2, Webhook, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 interface WhatsAppInstance {
   id: string;
@@ -23,6 +24,8 @@ interface WhatsAppInstance {
   warmup_started_at: string | null;
   testResult?: 'success' | 'error' | null;
   testing?: boolean;
+  webhookStatus?: 'checking' | 'configured' | 'misconfigured' | 'not_configured' | 'error';
+  webhookConfiguring?: boolean;
 }
 
 const PRESET_COLORS = [
@@ -322,6 +325,76 @@ export default function WhatsAppConfig() {
     }
   };
 
+  const checkWebhookStatus = async (instance: WhatsAppInstance) => {
+    if (!instance.id) return;
+    
+    setInstances(prev => prev.map(i => 
+      i.id === instance.id ? { ...i, webhookStatus: 'checking' } : i
+    ));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('configure-webhook', {
+        body: { instance_id: instance.id, action: 'check' }
+      });
+
+      if (error) throw error;
+
+      setInstances(prev => prev.map(i => 
+        i.id === instance.id ? { ...i, webhookStatus: data.status } : i
+      ));
+    } catch (error) {
+      console.error('Error checking webhook:', error);
+      setInstances(prev => prev.map(i => 
+        i.id === instance.id ? { ...i, webhookStatus: 'error' } : i
+      ));
+    }
+  };
+
+  const configureWebhook = async (instance: WhatsAppInstance) => {
+    if (!instance.id) return;
+
+    setInstances(prev => prev.map(i => 
+      i.id === instance.id ? { ...i, webhookConfiguring: true } : i
+    ));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('configure-webhook', {
+        body: { instance_id: instance.id, action: 'configure' }
+      });
+
+      if (error) throw error;
+
+      if (data.status === 'success') {
+        toast({
+          title: 'Webhook configurado!',
+          description: 'As mensagens recebidas agora chegarão corretamente.',
+        });
+        setInstances(prev => prev.map(i => 
+          i.id === instance.id ? { ...i, webhookStatus: 'configured', webhookConfiguring: false } : i
+        ));
+      } else {
+        toast({
+          title: 'Falha ao configurar',
+          description: 'Configure manualmente no painel UAZAPI.',
+          variant: 'destructive',
+        });
+        setInstances(prev => prev.map(i => 
+          i.id === instance.id ? { ...i, webhookConfiguring: false } : i
+        ));
+      }
+    } catch (error) {
+      console.error('Error configuring webhook:', error);
+      toast({
+        title: 'Erro ao configurar webhook',
+        description: 'Tente novamente ou configure manualmente.',
+        variant: 'destructive',
+      });
+      setInstances(prev => prev.map(i => 
+        i.id === instance.id ? { ...i, webhookConfiguring: false } : i
+      ));
+    }
+  };
+
   const getWebhookUrl = (instanceId: string) => {
     return `https://vorehtfxwvsbbivnskeq.supabase.co/functions/v1/whatsapp-receive-webhook?instance=${instanceId}`;
   };
@@ -492,8 +565,71 @@ export default function WhatsAppConfig() {
                   </div>
                   
                   <div className="mt-3 pt-3 border-t">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <Webhook className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">Webhook:</span>
+                        {instance.webhookStatus === 'checking' && (
+                          <Badge variant="outline" className="text-xs">
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            Verificando...
+                          </Badge>
+                        )}
+                        {instance.webhookStatus === 'configured' && (
+                          <Badge className="text-xs bg-green-500/20 text-green-600 dark:text-green-400 border-green-500/30">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Configurado
+                          </Badge>
+                        )}
+                        {instance.webhookStatus === 'misconfigured' && (
+                          <Badge variant="destructive" className="text-xs">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            URL incorreta
+                          </Badge>
+                        )}
+                        {instance.webhookStatus === 'not_configured' && (
+                          <Badge variant="destructive" className="text-xs">
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Não configurado
+                          </Badge>
+                        )}
+                        {instance.webhookStatus === 'error' && (
+                          <Badge variant="outline" className="text-xs text-amber-500">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Erro ao verificar
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs gap-1"
+                          onClick={() => checkWebhookStatus(instance)}
+                          disabled={instance.webhookStatus === 'checking'}
+                        >
+                          <RefreshCw className={cn("h-3 w-3", instance.webhookStatus === 'checking' && "animate-spin")} />
+                          Verificar
+                        </Button>
+                        {(instance.webhookStatus === 'misconfigured' || instance.webhookStatus === 'not_configured' || instance.webhookStatus === 'error') && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="h-6 text-xs gap-1"
+                            onClick={() => configureWebhook(instance)}
+                            disabled={instance.webhookConfiguring}
+                          >
+                            {instance.webhookConfiguring ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Webhook className="h-3 w-3" />
+                            )}
+                            Configurar
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Webhook:</span>
                       <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">
                         {getWebhookUrl(instance.id)}
                       </code>
