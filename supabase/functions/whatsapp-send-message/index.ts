@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Instância que mantém conversas arquivadas (não reativa ao enviar mensagem)
+const KEEP_ARCHIVED_CONFIG_ID = 'bdeab298-0ee6-43a6-9673-fe2bc04de737';
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -169,15 +172,33 @@ serve(async (req) => {
       }
     }
 
-    // Update conversation (reactivate if archived)
+    // Update conversation (reactivate if archived, unless it's the keep-archived instance)
     if (conversationId) {
+      // Buscar status atual da conversa para verificar se deve manter arquivado
+      const { data: convData } = await supabase
+        .from('whatsapp_conversations')
+        .select('status, config_id')
+        .eq('id', conversationId)
+        .single();
+      
+      const isKeepArchivedInstance = convData?.config_id === KEEP_ARCHIVED_CONFIG_ID;
+      const isCurrentlyArchived = convData?.status === 'archived';
+      
+      const updateFields: Record<string, unknown> = {
+        last_message_at: new Date().toISOString(),
+        last_message_preview: `Você: ${message?.substring(0, 100) || `[${media_type}]`}`,
+      };
+      
+      // Só reativa se não for instância 8248 com conversa arquivada
+      if (!(isKeepArchivedInstance && isCurrentlyArchived)) {
+        updateFields.status = 'active';
+      } else {
+        console.log(`[Send] Mantendo conversa arquivada para instância 8248: ${conversationId}`);
+      }
+      
       await supabase
         .from('whatsapp_conversations')
-        .update({
-          last_message_at: new Date().toISOString(),
-          last_message_preview: `Você: ${message?.substring(0, 100) || `[${media_type}]`}`,
-          status: 'active'
-        })
+        .update(updateFields)
         .eq('id', conversationId);
 
       // Save message
