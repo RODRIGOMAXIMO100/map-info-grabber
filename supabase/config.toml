@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.correct-text]
 verify_jwt = false
+
+[functions.configure-webhook]
+verify_jwt = false
