@@ -662,9 +662,10 @@ serve(async (req) => {
       
       console.log(`[Conversation] From broadcast: ${fromBroadcast}, will be lead: ${shouldBeLeadValue}, initial_stage: ${INITIAL_STAGE}`);
       
+      // Use upsert to handle potential constraint conflicts gracefully
       const { data: newConv, error: createError } = await supabase
         .from('whatsapp_conversations')
-        .insert({
+        .upsert({
           phone: senderPhone,
           name: senderName || (isGroup ? 'Grupo' : null),
           group_name: isGroup ? (senderName || null) : null,
@@ -682,6 +683,9 @@ serve(async (req) => {
           origin: fromBroadcast ? 'broadcast' : 'random',
           broadcast_list_id: broadcastListId,
           broadcast_sent_at: broadcastSentAt
+        }, {
+          onConflict: 'phone,config_id',
+          ignoreDuplicates: false
         })
         .select()
         .single();
