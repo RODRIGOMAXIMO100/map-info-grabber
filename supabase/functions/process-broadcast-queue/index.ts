@@ -751,6 +751,7 @@ serve(async (req) => {
                 is_crm_lead: true, // MARCA COMO CRM LEAD
                 crm_funnel_id: defaultFunnelId, // ADICIONA AO FUNIL PADRÃO
                 funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
+                origin: 'broadcast', // ORIGEM DO LEAD
                 tags: ['new'],
                 dna_id: dnaId || undefined,
                 // Dados do broadcast para follow-ups automáticos
@@ -775,6 +776,7 @@ serve(async (req) => {
                 is_crm_lead: true, // MARCA COMO CRM LEAD
                 crm_funnel_id: defaultFunnelId, // ADICIONA AO FUNIL PADRÃO
                 funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
+                origin: 'broadcast', // ORIGEM DO LEAD
                 tags: ['new'],
                 dna_id: dnaId,
                 last_message_at: new Date().toISOString(),
