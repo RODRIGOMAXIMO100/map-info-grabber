@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle } from 'lucide-react';
+import { format } from 'date-fns';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Calendar } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AIStatusIcon, 
@@ -26,7 +27,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import type { WhatsAppConversation, WhatsAppMessage, WhatsAppLabel } from '@/types/whatsapp';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DateTimeRangePicker } from '@/components/ui/datetime-range-picker';
 type FilterType = 'all' | 'no_reply' | 'unread' | 'ai_paused' | 'waiting' | 'ai_active' | 'handoff';
 type ConversationType = 'all' | 'contacts' | 'groups';
 type OriginType = 'all' | 'broadcast' | 'random';
@@ -64,6 +66,10 @@ export default function WhatsAppChat() {
   const [originType, setOriginType] = useState<OriginType>('all');
   const [funnelStageFilter, setFunnelStageFilter] = useState<FunnelStageId | 'all'>('all');
   const [viewTab, setViewTab] = useState<'active' | 'archived'>('active');
+  const [dateRange, setDateRange] = useState<{ startDate: Date | null; endDate: Date | null }>({
+    startDate: null,
+    endDate: null,
+  });
   
   // Media state
   const [pendingMedia, setPendingMedia] = useState<{
@@ -557,7 +563,14 @@ export default function WhatsAppChat() {
       const convStage = conv.funnel_stage || 'new';
       const matchesFunnelStage = funnelStageFilter === 'all' || convStage === funnelStageFilter;
       
-      if (!matchesSearch || !matchesInstance || !matchesType || !matchesOrigin || !matchesFunnelStage) return false;
+      // Date range filter
+      const matchesDateRange = !dateRange.startDate || !dateRange.endDate || (
+        conv.last_message_at &&
+        new Date(conv.last_message_at) >= dateRange.startDate &&
+        new Date(conv.last_message_at) <= dateRange.endDate
+      );
+      
+      if (!matchesSearch || !matchesInstance || !matchesType || !matchesOrigin || !matchesFunnelStage || !matchesDateRange) return false;
 
       switch (activeFilter) {
         case 'no_reply':
@@ -579,7 +592,7 @@ export default function WhatsAppChat() {
           return true;
       }
     });
-  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType, originType, funnelStageFilter, viewTab]);
+  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType, originType, funnelStageFilter, viewTab, dateRange]);
 
   // Archive counts
   const activeCount = useMemo(() => conversations.filter(c => c.status !== 'archived').length, [conversations]);
@@ -768,6 +781,34 @@ export default function WhatsAppChat() {
                   <SelectItem value="waiting"><div className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />Aguardando ({filterCounts.waiting})</div></SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Date Range Filter */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button 
+                    variant={dateRange.startDate ? "default" : "outline"} 
+                    size="sm" 
+                    className="h-8 text-xs gap-1"
+                  >
+                    <Calendar className="h-3 w-3" />
+                    {dateRange.startDate && dateRange.endDate ? (
+                      <span>
+                        {format(dateRange.startDate, 'dd/MM HH:mm')} - {format(dateRange.endDate, 'dd/MM HH:mm')}
+                      </span>
+                    ) : (
+                      'Período'
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <DateTimeRangePicker
+                    startDate={dateRange.startDate}
+                    endDate={dateRange.endDate}
+                    onApply={(start, end) => setDateRange({ startDate: start, endDate: end })}
+                    onClear={() => setDateRange({ startDate: null, endDate: null })}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
@@ -1207,6 +1248,34 @@ export default function WhatsAppChat() {
                       </SelectContent>
                     </Select>
                   )}
+
+                  {/* Date Range Filter */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button 
+                        variant={dateRange.startDate ? "default" : "outline"} 
+                        size="sm" 
+                        className="h-8 text-xs gap-1"
+                      >
+                        <Calendar className="h-3 w-3" />
+                        {dateRange.startDate && dateRange.endDate ? (
+                          <span>
+                            {format(dateRange.startDate, 'dd/MM HH:mm')} - {format(dateRange.endDate, 'dd/MM HH:mm')}
+                          </span>
+                        ) : (
+                          'Período'
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <DateTimeRangePicker
+                        startDate={dateRange.startDate}
+                        endDate={dateRange.endDate}
+                        onApply={(start, end) => setDateRange({ startDate: start, endDate: end })}
+                        onClear={() => setDateRange({ startDate: null, endDate: null })}
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 
