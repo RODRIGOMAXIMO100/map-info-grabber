@@ -626,7 +626,22 @@ export default function WhatsAppChat() {
   };
 
   const formatTime = (date: string) => {
-    return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const d = new Date(date);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+    
+    const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    
+    if (isToday) {
+      return time;
+    } else if (isYesterday) {
+      return `Ontem ${time}`;
+    } else {
+      return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + time;
+    }
   };
 
   const formatDate = (date: string) => {
