@@ -80,17 +80,30 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
   const isArchived = conversation.status === 'archived';
   const hasReminder = !!conversation.reminder_at;
 
-  // Load stages when funnel changes
+  // Load stages when funnel changes - fallback to default funnel if not set
   useEffect(() => {
     const loadStages = async () => {
-      if (!currentFunnelId) {
+      let funnelId = currentFunnelId;
+      
+      // Se não tem funil definido, busca o padrão
+      if (!funnelId) {
+        const { data: defaultFunnel } = await supabase
+          .from('crm_funnels')
+          .select('id')
+          .eq('is_default', true)
+          .single();
+        funnelId = defaultFunnel?.id || '';
+      }
+      
+      if (!funnelId) {
         setStages([]);
         return;
       }
+      
       const { data } = await supabase
         .from('crm_funnel_stages')
         .select('id, name, color, stage_order')
-        .eq('funnel_id', currentFunnelId)
+        .eq('funnel_id', funnelId)
         .order('stage_order', { ascending: true });
       setStages(data || []);
     };
@@ -179,9 +192,23 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
   const handleStageChange = async (value: string) => {
     setLoading(true);
     try {
+      // Se não tem funil, define o padrão junto com o estágio
+      let funnelId = conversation.crm_funnel_id;
+      if (!funnelId) {
+        const { data: defaultFunnel } = await supabase
+          .from('crm_funnels')
+          .select('id')
+          .eq('is_default', true)
+          .single();
+        funnelId = defaultFunnel?.id || null;
+      }
+      
       const { error } = await supabase
         .from('whatsapp_conversations')
-        .update({ funnel_stage: value })
+        .update({ 
+          funnel_stage: value,
+          crm_funnel_id: funnelId // Garante que funil está definido
+        })
         .eq('id', conversation.id);
 
       if (error) throw error;
