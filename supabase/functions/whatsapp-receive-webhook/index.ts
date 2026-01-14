@@ -17,6 +17,9 @@ const ALL_HANDOFF_LABELS = [HANDOFF_LABEL_NUMERIC, HANDOFF_LABEL_STRING];
 const INITIAL_STAGE = 'new'; // Lead Novo - usando string como padrão
 const INTEREST_STAGE = 'interest'; // Interesse Confirmado
 
+// Instância que mantém conversas arquivadas (não reativa ao receber mensagem)
+const KEEP_ARCHIVED_CONFIG_ID = 'bdeab298-0ee6-43a6-9673-fe2bc04de737';
+
 // Padrões para detectar mensagens automáticas de bot/WhatsApp Business
 const BOT_MESSAGE_PATTERNS = [
   /^aguarde.*atendimento/i,
@@ -515,7 +518,7 @@ serve(async (req) => {
     if (configId) {
       const { data: specificConv } = await supabase
         .from('whatsapp_conversations')
-        .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead')
+        .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead, status')
         .eq('phone', senderPhone)
         .eq('config_id', configId)
         .order('updated_at', { ascending: false })
@@ -530,7 +533,7 @@ serve(async (req) => {
     if (!existingConv) {
       const { data: orphanConv } = await supabase
         .from('whatsapp_conversations')
-        .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead')
+        .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead, status')
         .eq('phone', senderPhone)
         .is('config_id', null)
         .order('updated_at', { ascending: false })
@@ -566,8 +569,17 @@ serve(async (req) => {
       const updateData: Record<string, unknown> = {
         last_message_at: new Date().toISOString(),
         last_message_preview: isFromMe ? `Você: ${messagePreview}` : messagePreview,
-        status: 'active'
       };
+      
+      // Verifica se deve manter arquivado (instância 8248)
+      const isKeepArchivedInstance = (existingConfigId || configId) === KEEP_ARCHIVED_CONFIG_ID;
+      const isCurrentlyArchived = existingConv.status === 'archived';
+      
+      if (!(isKeepArchivedInstance && isCurrentlyArchived)) {
+        updateData.status = 'active';
+      } else {
+        console.log(`[Archive] Mantendo conversa arquivada para instância 8248: ${conversationId}`);
+      }
 
       if (!existingConfigId && configId) {
         updateData.config_id = configId;
