@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AIStatusIcon, 
@@ -277,20 +277,45 @@ export default function WhatsAppChat() {
   const handleSend = async () => {
     if ((!newMessage.trim() && !pendingMedia) || !selectedConversation) return;
 
-    setSending(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('whatsapp-send-message', {
-        body: {
-          conversation_id: selectedConversation.id,
-          message: newMessage.trim() || undefined,
-          media_url: pendingMedia?.url,
-          media_type: pendingMedia?.type,
-          config_id: selectedConversation.config_id,
-        },
-      });
-
-      // Verificar se é erro de instância desconectada
+    // Capturar valores antes de limpar
+    const messageToSend = newMessage.trim();
+    const mediaToSend = pendingMedia;
+    const tempId = `temp-${Date.now()}`;
+    
+    // Criar mensagem otimista imediatamente
+    const optimisticMessage: WhatsAppMessage = {
+      id: tempId,
+      conversation_id: selectedConversation.id,
+      direction: 'outgoing',
+      message_type: mediaToSend?.type || 'text',
+      content: messageToSend || null,
+      media_url: mediaToSend?.url || null,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    };
+    
+    // Adicionar mensagem à lista IMEDIATAMENTE
+    setMessages(prev => [...prev, optimisticMessage]);
+    
+    // Limpar input IMEDIATAMENTE
+    setNewMessage('');
+    setPendingMedia(null);
+    
+    // Enviar em background (não bloqueia UI)
+    supabase.functions.invoke('whatsapp-send-message', {
+      body: {
+        conversation_id: selectedConversation.id,
+        message: messageToSend || undefined,
+        media_url: mediaToSend?.url,
+        media_type: mediaToSend?.type,
+        config_id: selectedConversation.config_id,
+      },
+    }).then(({ data, error }) => {
       if (data?.disconnected) {
+        // Marcar como falha
+        setMessages(prev => prev.map(m => 
+          m.id === tempId ? { ...m, status: 'failed' } : m
+        ));
         toast({
           title: `WhatsApp Desconectado: ${data.instance_name || 'Instância'}`,
           description: 'Acesse o painel UAZAPI e reconecte esta instância.',
@@ -299,23 +324,34 @@ export default function WhatsAppChat() {
         return;
       }
 
-      if (error) throw error;
-      setNewMessage('');
-      setPendingMedia(null);
-    } catch (error: unknown) {
-      console.error('Error sending message:', error);
+      if (error) {
+        console.error('Error sending message:', error);
+        setMessages(prev => prev.map(m => 
+          m.id === tempId ? { ...m, status: 'failed' } : m
+        ));
+        toast({
+          title: 'Erro ao enviar',
+          description: error.message || 'Não foi possível enviar a mensagem.',
+          variant: 'destructive',
+        });
+        return;
+      }
       
-      // Tentar extrair mensagem de erro mais específica
-      const errorMessage = error instanceof Error ? error.message : 'Não foi possível enviar a mensagem.';
-      
+      // Sucesso - atualizar status para 'sent'
+      setMessages(prev => prev.map(m => 
+        m.id === tempId ? { ...m, status: 'sent' } : m
+      ));
+    }).catch((err) => {
+      console.error('Error sending message:', err);
+      setMessages(prev => prev.map(m => 
+        m.id === tempId ? { ...m, status: 'failed' } : m
+      ));
       toast({
         title: 'Erro ao enviar',
-        description: errorMessage,
+        description: 'Não foi possível enviar a mensagem.',
         variant: 'destructive',
       });
-    } finally {
-      setSending(false);
-    }
+    });
   };
 
   const handleMediaReady = (url: string, type: 'image' | 'video' | 'document' | 'audio', file: File) => {
@@ -901,12 +937,21 @@ export default function WhatsAppChat() {
                           )}>
                             <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                             <span className={cn(
-                              'text-[10px] mt-1 block text-right',
+                              'text-[10px] mt-1 flex items-center justify-end gap-1',
                               msg.direction === 'outgoing' 
                                 ? 'text-primary-foreground/70' 
                                 : 'text-muted-foreground'
                             )}>
                               {formatTime(msg.created_at)}
+                              {msg.direction === 'outgoing' && (
+                                <>
+                                  {msg.status === 'pending' && <Clock className="h-3 w-3 animate-pulse" />}
+                                  {msg.status === 'sent' && <Check className="h-3 w-3" />}
+                                  {msg.status === 'delivered' && <CheckCheck className="h-3 w-3" />}
+                                  {msg.status === 'read' && <CheckCheck className="h-3 w-3 text-blue-400" />}
+                                  {msg.status === 'failed' && <AlertCircle className="h-3 w-3 text-red-400" />}
+                                </>
+                              )}
                             </span>
                           </div>
                         </div>
@@ -1470,12 +1515,21 @@ export default function WhatsAppChat() {
                                   direction={msg.direction as 'incoming' | 'outgoing'}
                                 />
                                 <span className={cn(
-                                  'text-[10px] mt-1 block text-right',
+                                  'text-[10px] mt-1 flex items-center justify-end gap-1',
                                   msg.direction === 'outgoing' 
                                     ? 'text-primary-foreground/70' 
                                     : 'text-muted-foreground'
                                 )}>
                                   {formatTime(msg.created_at)}
+                                  {msg.direction === 'outgoing' && (
+                                    <>
+                                      {msg.status === 'pending' && <Clock className="h-3 w-3 animate-pulse" />}
+                                      {msg.status === 'sent' && <Check className="h-3 w-3" />}
+                                      {msg.status === 'delivered' && <CheckCheck className="h-3 w-3" />}
+                                      {msg.status === 'read' && <CheckCheck className="h-3 w-3 text-blue-400" />}
+                                      {msg.status === 'failed' && <AlertCircle className="h-3 w-3 text-red-400" />}
+                                    </>
+                                  )}
                                 </span>
                               </div>
                             </div>
