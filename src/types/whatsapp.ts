@@ -53,6 +53,10 @@ export interface WhatsAppConversation {
   lead_state?: string;
   broadcast_list_id?: string;
   broadcast_lists?: { name: string } | null;
+  // Assignment fields
+  assigned_to?: string | null;
+  assigned_at?: string | null;
+  transferred_by?: string | null;
 }
 
 export interface WhatsAppMessage {
