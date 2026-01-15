@@ -27,6 +27,7 @@ import {
   AddLeadModal,
   ClosedValueModal,
   UndoSaleModal,
+  AssignUserModal,
   type PeriodFilter,
   type AIStatusFilter,
   type UrgencyFilter,
@@ -79,6 +80,8 @@ export default function CRMKanban() {
   const [whatsappConfigs, setWhatsappConfigs] = useState<{ id: string; name: string | null }[]>([]);
   const [broadcastLists, setBroadcastLists] = useState<{ id: string; name: string; status: string }[]>([]);
   const [undoSaleModal, setUndoSaleModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
+  const [assignUserModal, setAssignUserModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
+  const [assignedUserNames, setAssignedUserNames] = useState<Record<string, string>>({});
 
   // Reminder notifications
   useReminderNotifications({
@@ -235,6 +238,28 @@ export default function CRMKanban() {
           }
         });
         setBantScores(scores);
+
+        // Load assigned user names
+        const assignedUserIds = [...new Set(
+          leadConversations
+            .filter(c => c.assigned_to)
+            .map(c => c.assigned_to as string)
+        )];
+        
+        if (assignedUserIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('user_id, full_name')
+            .in('user_id', assignedUserIds);
+          
+          if (profiles) {
+            const names: Record<string, string> = {};
+            profiles.forEach(p => {
+              names[p.user_id] = p.full_name;
+            });
+            setAssignedUserNames(prev => ({ ...prev, ...names }));
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading conversations:', error);
@@ -767,6 +792,8 @@ export default function CRMKanban() {
                         onUndoSale={() => setUndoSaleModal({ open: true, lead: conv })}
                         onEditClosedValue={() => handleEditClosedValue(conv)}
                         onRemoveClosedValue={() => handleRemoveClosedValue(conv)}
+                        onAssignUser={() => setAssignUserModal({ open: true, lead: conv })}
+                        assignedUserName={conv.assigned_to ? assignedUserNames[conv.assigned_to] : null}
                         bantScore={bantScores[conv.id]}
                         stages={stages}
                         onStageChange={(stageId) => handleStageChange(conv.id, stageId)}
@@ -824,6 +851,8 @@ export default function CRMKanban() {
                           onUndoSale={() => setUndoSaleModal({ open: true, lead: conv })}
                           onEditClosedValue={() => handleEditClosedValue(conv)}
                           onRemoveClosedValue={() => handleRemoveClosedValue(conv)}
+                          onAssignUser={() => setAssignUserModal({ open: true, lead: conv })}
+                          assignedUserName={conv.assigned_to ? assignedUserNames[conv.assigned_to] : null}
                           bantScore={bantScores[conv.id]}
                           stages={stages}
                           onStageChange={(stageId) => handleStageChange(conv.id, stageId)}
@@ -897,6 +926,15 @@ export default function CRMKanban() {
         stages={stages}
         currentStageId={undoSaleModal.lead?.funnel_stage || null}
         onConfirm={handleUndoSale}
+      />
+
+      <AssignUserModal
+        open={assignUserModal.open}
+        onOpenChange={(open) => setAssignUserModal({ open, lead: open ? assignUserModal.lead : null })}
+        leadId={assignUserModal.lead?.id || ''}
+        leadName={assignUserModal.lead?.name || assignUserModal.lead?.phone || ''}
+        currentAssignedTo={assignUserModal.lead?.assigned_to}
+        onSuccess={() => selectedFunnelId && loadConversations(selectedFunnelId)}
       />
 
       {selectedLead && (
