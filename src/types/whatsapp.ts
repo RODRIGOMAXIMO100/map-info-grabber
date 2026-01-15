@@ -63,7 +63,7 @@ export interface WhatsAppMessage {
   content?: string;
   media_url?: string;
   message_id_whatsapp?: string;
-  status: 'sent' | 'delivered' | 'read' | 'failed' | 'received';
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
   edited_at?: string;
   created_at: string;
 }
