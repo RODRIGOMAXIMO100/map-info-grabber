@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle, UserCheck } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AIStatusIcon, 
@@ -8,6 +8,7 @@ import {
   WaitingTimeBadge,
   detectFunnelStage,
   TransferInstanceModal,
+  TransferUserModal,
   type FunnelStageId
 } from '@/components/whatsapp';
 import { LeadControlPanelCompact } from '@/components/whatsapp/LeadControlPanelCompact';
@@ -22,6 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import type { WhatsAppConversation, WhatsAppMessage, WhatsAppLabel } from '@/types/whatsapp';
@@ -46,6 +48,7 @@ interface ConversationWithInstance extends WhatsAppConversation {
 export default function WhatsAppChat() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
+  const { user, isAdmin } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const [conversations, setConversations] = useState<ConversationWithInstance[]>([]);
@@ -71,11 +74,15 @@ export default function WhatsAppChat() {
     file: File;
   } | null>(null);
 
-  // Transfer modal state
+  // Transfer modal states
   const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferUserModalOpen, setTransferUserModalOpen] = useState(false);
   
   // Reminder modal state
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
+  
+  // Cache for assigned user names
+  const [assignedUserNames, setAssignedUserNames] = useState<Record<string, string>>({});
 
   // Helper to detect if a conversation is a group
   const isGroup = (conv: ConversationWithInstance): boolean => {
@@ -212,11 +219,18 @@ export default function WhatsAppChat() {
 
   const loadConversations = async () => {
     try {
-      // Buscar TODAS as conversas (sem filtro de broadcast)
-      const { data: allConversations, error } = await supabase
+      // Build query based on user role
+      let query = supabase
         .from('whatsapp_conversations')
         .select('*')
         .order('last_message_at', { ascending: false });
+
+      // If not admin, filter by assigned_to OR unassigned conversations
+      if (!isAdmin && user?.id) {
+        query = query.or(`assigned_to.eq.${user.id},assigned_to.is.null`);
+      }
+
+      const { data: allConversations, error } = await query;
 
       if (error) throw error;
 
@@ -241,6 +255,28 @@ export default function WhatsAppChat() {
       })) as ConversationWithInstance[];
 
       setConversations(mapped);
+      
+      // Load assigned user names for conversations with assigned_to
+      const assignedUserIds = [...new Set(
+        mapped
+          .filter(c => c.assigned_to)
+          .map(c => c.assigned_to as string)
+      )];
+      
+      if (assignedUserIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .in('user_id', assignedUserIds);
+        
+        if (profiles) {
+          const names: Record<string, string> = {};
+          profiles.forEach(p => {
+            names[p.user_id] = p.full_name;
+          });
+          setAssignedUserNames(prev => ({ ...prev, ...names }));
+        }
+      }
     } catch (error) {
       console.error('Error loading conversations:', error);
     } finally {
@@ -1464,6 +1500,24 @@ export default function WhatsAppChat() {
                           </Button>
                         )}
 
+                        {/* Transfer to User - icon only */}
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setTransferUserModalOpen(true)}
+                          title="Transferir para vendedor"
+                        >
+                          <UserCheck className="h-3.5 w-3.5" />
+                        </Button>
+
+                        {/* Show assigned user badge */}
+                        {selectedConversation.assigned_to && assignedUserNames[selectedConversation.assigned_to] && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                            {assignedUserNames[selectedConversation.assigned_to]}
+                          </Badge>
+                        )}
+
                         {/* Separator */}
                         <div className="w-px h-5 bg-border mx-1" />
 
@@ -1674,6 +1728,35 @@ export default function WhatsAppChat() {
           onRemove={handleRemoveReminder}
           currentReminder={selectedConversation.reminder_at}
           lastContactAt={selectedConversation.last_message_at}
+        />
+      )}
+
+      {/* Transfer User Modal */}
+      {selectedConversation && (
+        <TransferUserModal
+          open={transferUserModalOpen}
+          onOpenChange={setTransferUserModalOpen}
+          conversationId={selectedConversation.id}
+          conversationName={selectedConversation.name || selectedConversation.phone}
+          currentAssignedTo={selectedConversation.assigned_to || null}
+          onTransferComplete={() => {
+            loadConversations();
+            // Refresh selected conversation
+            supabase
+              .from('whatsapp_conversations')
+              .select('*')
+              .eq('id', selectedConversation.id)
+              .single()
+              .then(({ data }) => {
+                if (data) {
+                  const instance = instances.find(i => i.id === data.config_id);
+                  setSelectedConversation({
+                    ...data,
+                    instance
+                  } as ConversationWithInstance);
+                }
+              });
+          }}
         />
       )}
     </div>

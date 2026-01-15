@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { LeadDetailsSheet } from '@/components/LeadDetailsSheet';
@@ -43,6 +44,7 @@ interface BANTScore {
 
 export default function CRMKanban() {
   const { toast } = useToast();
+  const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [bantScores, setBantScores] = useState<Record<string, BANTScore>>({});
@@ -194,7 +196,8 @@ export default function CRMKanban() {
 
   const loadConversations = async (funnelId: string) => {
     try {
-      const { data: leadConversations, error } = await supabase
+      // Build query with role-based filtering
+      let query = supabase
         .from('whatsapp_conversations')
         .select(`
           *,
@@ -205,6 +208,13 @@ export default function CRMKanban() {
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
         .order('last_message_at', { ascending: false });
+
+      // If not admin, filter by assigned_to OR unassigned conversations
+      if (!isAdmin && user?.id) {
+        query = query.or(`assigned_to.eq.${user.id},assigned_to.is.null`);
+      }
+
+      const { data: leadConversations, error } = await query;
 
       if (error) throw error;
 
