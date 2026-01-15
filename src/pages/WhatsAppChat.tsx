@@ -112,7 +112,37 @@ export default function WhatsAppChat() {
           table: 'whatsapp_messages',
           filter: `conversation_id=eq.${selectedConversation.id}`
         }, (payload) => {
-          setMessages(prev => [...prev, payload.new as WhatsAppMessage]);
+          const newMsg = payload.new as WhatsAppMessage;
+          
+          setMessages(prev => {
+            // Check if there's a pending optimistic message with similar content
+            const hasPendingDuplicate = prev.some(m => 
+              m.id.startsWith('temp-') && 
+              m.direction === 'outgoing' &&
+              m.content === newMsg.content &&
+              m.conversation_id === newMsg.conversation_id
+            );
+            
+            if (hasPendingDuplicate) {
+              // Replace the optimistic message with the real one from database
+              return prev.map(m => 
+                m.id.startsWith('temp-') && 
+                m.direction === 'outgoing' &&
+                m.content === newMsg.content &&
+                m.conversation_id === newMsg.conversation_id
+                  ? newMsg
+                  : m
+              );
+            }
+            
+            // If no pending duplicate, it's a new message (e.g., received)
+            // But check if it already exists with the same real ID
+            if (prev.some(m => m.id === newMsg.id)) {
+              return prev; // Already exists, don't add
+            }
+            
+            return [...prev, newMsg];
+          });
         })
         .subscribe();
 
