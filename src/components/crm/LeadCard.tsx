@@ -15,6 +15,7 @@ import {
   Undo2,
   Pencil,
   Trash2,
+  UserCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -54,6 +55,8 @@ interface LeadCardProps {
   onUndoSale?: () => void;
   onEditClosedValue?: () => void;
   onRemoveClosedValue?: () => void;
+  onAssignUser?: () => void;
+  assignedUserName?: string | null;
   bantScore?: { budget?: boolean; authority?: boolean; need?: boolean; timing?: boolean } | null;
   stages?: CRMFunnelStage[];
   onStageChange?: (stageId: string) => void;
@@ -70,6 +73,8 @@ export function LeadCard({
   onUndoSale,
   onEditClosedValue,
   onRemoveClosedValue,
+  onAssignUser,
+  assignedUserName,
   bantScore,
   stages,
   onStageChange,
@@ -280,6 +285,12 @@ export function LeadCard({
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                 )}
+                {onAssignUser && (
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAssignUser(); }}>
+                    <UserCheck className="h-4 w-4 mr-2" />
+                    Atribuir vendedor
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddTag(); }}>
                   <Tag className="h-4 w-4 mr-2" />
                   Adicionar tag
@@ -367,9 +378,27 @@ export function LeadCard({
           </div>
         )}
 
-        {/* Row 3: Status badges */}
+        {/* Row 3: Assigned User + Status badges */}
         <div className="flex items-center justify-between mt-1.5 gap-1">
           <div className="flex items-center gap-1 flex-wrap">
+            {assignedUserName && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge 
+                      variant="outline" 
+                      className="text-[9px] h-4 px-1 border-purple-400 text-purple-600 bg-purple-50 dark:bg-purple-950/30 gap-0.5 max-w-[80px] truncate"
+                    >
+                      <UserCheck className="h-2.5 w-2.5 flex-shrink-0" />
+                      {assignedUserName}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Atribuído para {assignedUserName}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             <Badge 
               variant={conv.ai_paused ? "outline" : "secondary"} 
               className="text-[9px] h-4 px-1"
