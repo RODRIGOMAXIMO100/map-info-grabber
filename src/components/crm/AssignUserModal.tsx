@@ -78,8 +78,9 @@ export function AssignUserModal({
 
       if (profilesError) throw profilesError;
 
-      // Combine data
+      // Combine data - filter out admins (they should not receive leads)
       const usersWithRoles: UserWithRole[] = (roles || [])
+        .filter(role => role.role !== 'admin')
         .map(role => {
           const profile = profiles?.find(p => p.user_id === role.user_id);
           return {
@@ -89,7 +90,7 @@ export function AssignUserModal({
           };
         })
         .sort((a, b) => {
-          // Sort: SDR first, then Closer, then Admin
+          // Sort: SDR first, then Closer
           const order = { sdr: 1, closer: 2, admin: 3 };
           return order[a.role] - order[b.role];
         });
