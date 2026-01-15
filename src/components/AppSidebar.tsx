@@ -13,9 +13,13 @@ import {
   Shield,
   Layers,
   GitBranch,
+  LogOut,
+  ShieldCheck,
+  User,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar,
   SidebarContent,
@@ -30,6 +34,16 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -53,6 +67,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const { profile, role, signOut, isAdmin } = useAuth();
   const [handoffCount, setHandoffCount] = useState(0);
   const [reminderCount, setReminderCount] = useState(0);
   const [aiActive, setAiActive] = useState(false);
@@ -109,6 +124,32 @@ export function AppSidebar() {
     if (path === "/" && location.pathname === "/") return true;
     if (path !== "/" && location.pathname.startsWith(path)) return true;
     return false;
+  };
+
+  const getRoleBadge = () => {
+    switch (role) {
+      case 'admin':
+        return <Badge className="bg-red-500 hover:bg-red-600 text-xs">Admin</Badge>;
+      case 'sdr':
+        return <Badge className="bg-blue-500 hover:bg-blue-600 text-xs">SDR</Badge>;
+      case 'closer':
+        return <Badge className="bg-green-500 hover:bg-green-600 text-xs">Closer</Badge>;
+      default:
+        return <Badge variant="secondary" className="text-xs">Sem papel</Badge>;
+    }
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
   };
 
   return (
@@ -168,6 +209,24 @@ export function AppSidebar() {
           <SidebarGroupLabel>Configurações</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive("/admin")}
+                    tooltip="Administração"
+                  >
+                    <NavLink
+                      to="/admin"
+                      className="flex items-center gap-2"
+                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      {!collapsed && <span>Administração</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               {configItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
@@ -191,7 +250,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm">
           <div
             className={`h-2 w-2 rounded-full ${
@@ -204,6 +263,46 @@ export function AppSidebar() {
             </span>
           )}
         </div>
+
+        {profile && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className={`w-full justify-start gap-2 ${collapsed ? 'px-2' : ''}`}
+              >
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback className="text-xs">
+                    {getInitials(profile.full_name)}
+                  </AvatarFallback>
+                </Avatar>
+                {!collapsed && (
+                  <div className="flex flex-col items-start text-left flex-1 min-w-0">
+                    <span className="text-sm font-medium truncate w-full">
+                      {profile.full_name}
+                    </span>
+                    <div className="mt-0.5">
+                      {getRoleBadge()}
+                    </div>
+                  </div>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex flex-col">
+                  <span>{profile.full_name}</span>
+                  {getRoleBadge()}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
+                <LogOut className="h-4 w-4 mr-2" />
+                Sair
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </SidebarFooter>
     </Sidebar>
   );

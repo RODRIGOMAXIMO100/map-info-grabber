@@ -263,6 +263,30 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          full_name: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          full_name: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          full_name?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       search_cache: {
         Row: {
           cache_key: string
@@ -299,6 +323,27 @@ export type Database = {
           results?: Json
           search_type?: string
           state?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
         }
         Relationships: []
       }
@@ -498,6 +543,8 @@ export type Database = {
           ai_handoff_reason: string | null
           ai_paused: boolean | null
           ai_pending_at: string | null
+          assigned_at: string | null
+          assigned_to: string | null
           avatar_url: string | null
           broadcast_list_id: string | null
           broadcast_sent_at: string | null
@@ -536,6 +583,7 @@ export type Database = {
           status: string
           summary_updated_at: string | null
           tags: string[] | null
+          transferred_by: string | null
           unread_count: number | null
           updated_at: string | null
           value_delivery_status: Json | null
@@ -545,6 +593,8 @@ export type Database = {
           ai_handoff_reason?: string | null
           ai_paused?: boolean | null
           ai_pending_at?: string | null
+          assigned_at?: string | null
+          assigned_to?: string | null
           avatar_url?: string | null
           broadcast_list_id?: string | null
           broadcast_sent_at?: string | null
@@ -583,6 +633,7 @@ export type Database = {
           status?: string
           summary_updated_at?: string | null
           tags?: string[] | null
+          transferred_by?: string | null
           unread_count?: number | null
           updated_at?: string | null
           value_delivery_status?: Json | null
@@ -592,6 +643,8 @@ export type Database = {
           ai_handoff_reason?: string | null
           ai_paused?: boolean | null
           ai_pending_at?: string | null
+          assigned_at?: string | null
+          assigned_to?: string | null
           avatar_url?: string | null
           broadcast_list_id?: string | null
           broadcast_sent_at?: string | null
@@ -630,6 +683,7 @@ export type Database = {
           status?: string
           summary_updated_at?: string | null
           tags?: string[] | null
+          transferred_by?: string | null
           unread_count?: number | null
           updated_at?: string | null
           value_delivery_status?: Json | null
@@ -1031,9 +1085,20 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_user_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "sdr" | "closer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1160,6 +1225,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "sdr", "closer"],
+    },
   },
 } as const
