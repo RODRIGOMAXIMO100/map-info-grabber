@@ -28,37 +28,37 @@ export default function SalesFunnelMetrics({ funnelId, startDate, endDate }: Sal
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadMetrics();
-  }, [funnelId, startDate, endDate]);
+    if (startDate && endDate) {
+      loadMetrics();
+    }
+  }, [funnelId, startDate?.getTime(), endDate?.getTime()]);
 
   const loadMetrics = async () => {
+    if (!startDate || !endDate) return;
+    
     try {
       setLoading(true);
-      const start = startDate?.toISOString();
-      const end = endDate?.toISOString();
+      const start = startDate.toISOString();
+      const end = endDate.toISOString();
+
+      console.log('[SalesFunnelMetrics] Query range:', { start, end, funnelId });
 
       // 1. Disparos (broadcasts enviados no período)
-      let disparosQuery = supabase
+      const { count: disparosCount } = await supabase
         .from('whatsapp_queue')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'sent');
-      
-      if (start) disparosQuery = disparosQuery.gte('created_at', start);
-      if (end) disparosQuery = disparosQuery.lte('created_at', end);
-      
-      const { count: disparosCount } = await disparosQuery;
+        .eq('status', 'sent')
+        .gte('created_at', start)
+        .lte('created_at', end);
 
       // 2. Oportunidades (leads CRM criados no período)
-      let oportunidadesQuery = supabase
+      const { count: oportunidadesCount } = await supabase
         .from('whatsapp_conversations')
         .select('*', { count: 'exact', head: true })
         .eq('is_crm_lead', true)
-        .eq('crm_funnel_id', funnelId);
-      
-      if (start) oportunidadesQuery = oportunidadesQuery.gte('created_at', start);
-      if (end) oportunidadesQuery = oportunidadesQuery.lte('created_at', end);
-      
-      const { count: oportunidadesCount } = await oportunidadesQuery;
+        .eq('crm_funnel_id', funnelId)
+        .gte('created_at', start)
+        .lte('created_at', end);
 
       // 3. Fechamentos (leads que foram para o estágio FECHADO no período)
       // Primeiro, buscar o ID do estágio "FECHADO" ou similar
@@ -75,17 +75,14 @@ export default function SalesFunnelMetrics({ funnelId, startDate, endDate }: Sal
       let valorFechado = 0;
 
       if (closedStageId) {
-        let fechamentosQuery = supabase
+        const { data: closedLeads } = await supabase
           .from('whatsapp_conversations')
           .select('id, closed_value')
           .eq('is_crm_lead', true)
           .eq('crm_funnel_id', funnelId)
-          .eq('funnel_stage', closedStageId);
-        
-        if (start) fechamentosQuery = fechamentosQuery.gte('funnel_stage_changed_at', start);
-        if (end) fechamentosQuery = fechamentosQuery.lte('funnel_stage_changed_at', end);
-        
-        const { data: closedLeads } = await fechamentosQuery;
+          .eq('funnel_stage', closedStageId)
+          .gte('funnel_stage_changed_at', start)
+          .lte('funnel_stage_changed_at', end);
         
         fechamentosCount = closedLeads?.length || 0;
         valorFechado = closedLeads?.reduce((sum, lead) => sum + (lead.closed_value || 0), 0) || 0;
