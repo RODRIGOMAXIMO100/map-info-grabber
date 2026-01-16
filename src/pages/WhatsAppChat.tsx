@@ -1741,14 +1741,24 @@ export default function WhatsAppChat() {
           currentAssignedTo={selectedConversation.assigned_to || null}
           onTransferComplete={() => {
             loadConversations();
-            // Refresh selected conversation
+            // Tentar atualizar a conversa selecionada
+            // Se falhar (usuário perdeu acesso após transferir), desselecionar graciosamente
             supabase
               .from('whatsapp_conversations')
               .select('*')
               .eq('id', selectedConversation.id)
-              .single()
-              .then(({ data }) => {
-                if (data) {
+              .maybeSingle()
+              .then(({ data, error }) => {
+                if (error || !data) {
+                  // Usuário não tem mais acesso a esta conversa (transferiu para outro)
+                  // Desselecionar e informar
+                  setSelectedConversation(null);
+                  toast({
+                    title: 'Conversa transferida',
+                    description: 'A conversa saiu da sua fila de atendimento.',
+                  });
+                } else {
+                  // Ainda tem acesso (admin ou conversa continua visível)
                   const instance = instances.find(i => i.id === data.config_id);
                   setSelectedConversation({
                     ...data,
