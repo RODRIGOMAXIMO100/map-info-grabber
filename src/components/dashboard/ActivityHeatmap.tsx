@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CalendarDays } from "lucide-react";
-import { format, subDays, eachDayOfInterval, startOfDay } from "date-fns";
+import { format, eachDayOfInterval, startOfDay, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 interface DayActivity {
@@ -14,25 +14,29 @@ interface DayActivity {
 
 interface ActivityHeatmapProps {
   funnelId: string;
+  startDate?: Date | null;
+  endDate?: Date | null;
 }
 
-export default function ActivityHeatmap({ funnelId }: ActivityHeatmapProps) {
+export default function ActivityHeatmap({ funnelId, startDate, endDate }: ActivityHeatmapProps) {
   const [days, setDays] = useState<DayActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [maxCount, setMaxCount] = useState(1);
 
   useEffect(() => {
     loadActivity();
-  }, [funnelId]);
+  }, [funnelId, startDate, endDate]);
 
   const loadActivity = async () => {
     try {
       setLoading(true);
 
-      const endDate = new Date();
-      const startDate = subDays(endDate, 29); // Last 30 days
+      // Use provided dates or default to last 30 days
+      const heatmapEndDate = endDate || new Date();
+      const heatmapStartDate = startDate || new Date(heatmapEndDate.getTime() - 29 * 24 * 60 * 60 * 1000);
       
-      const daysInRange = eachDayOfInterval({ start: startDate, end: endDate });
+      const daysInRange = eachDayOfInterval({ start: heatmapStartDate, end: heatmapEndDate });
+      const periodDays = differenceInDays(heatmapEndDate, heatmapStartDate) + 1;
 
       // Get conversations for this funnel
       const { data: conversations } = await supabase
@@ -58,8 +62,8 @@ export default function ActivityHeatmap({ funnelId }: ActivityHeatmapProps) {
         .from('whatsapp_messages')
         .select('created_at')
         .in('conversation_id', conversationIds)
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString());
+        .gte('created_at', heatmapStartDate.toISOString())
+        .lte('created_at', heatmapEndDate.toISOString());
 
       // Count messages per day
       const countsByDay: Record<string, number> = {};
@@ -94,6 +98,13 @@ export default function ActivityHeatmap({ funnelId }: ActivityHeatmapProps) {
     return 'bg-primary/90';
   };
 
+  // Calculate period description
+  const getPeriodDescription = () => {
+    if (!startDate && !endDate) return 'Últimos 30 dias';
+    const periodDays = days.length;
+    return `${periodDays} dias`;
+  };
+
   if (loading) {
     return (
       <Card>
@@ -112,7 +123,7 @@ export default function ActivityHeatmap({ funnelId }: ActivityHeatmapProps) {
     );
   }
 
-  // Split into weeks (5 rows of ~6 days each for display)
+  // Split into weeks (7 days each for display)
   const weeks: DayActivity[][] = [];
   for (let i = 0; i < days.length; i += 7) {
     weeks.push(days.slice(i, i + 7));
@@ -123,7 +134,7 @@ export default function ActivityHeatmap({ funnelId }: ActivityHeatmapProps) {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <CalendarDays className="h-5 w-5" />
-          Atividade - 30 dias
+          Atividade - {getPeriodDescription()}
         </CardTitle>
         <CardDescription className="text-xs">
           Mensagens enviadas/recebidas por dia

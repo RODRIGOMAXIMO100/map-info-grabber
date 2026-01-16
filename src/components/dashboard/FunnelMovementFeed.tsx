@@ -29,9 +29,10 @@ interface Movement {
 interface FunnelMovementFeedProps {
   funnelId: string;
   startDate: Date | null;
+  endDate?: Date | null;
 }
 
-export default function FunnelMovementFeed({ funnelId, startDate }: FunnelMovementFeedProps) {
+export default function FunnelMovementFeed({ funnelId, startDate, endDate }: FunnelMovementFeedProps) {
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,6 +64,10 @@ export default function FunnelMovementFeed({ funnelId, startDate }: FunnelMoveme
 
       if (startDate) {
         query = query.gte('changed_at', startDate.toISOString());
+      }
+      
+      if (endDate) {
+        query = query.lte('changed_at', endDate.toISOString());
       }
 
       const { data: historyData } = await query;
@@ -118,7 +123,7 @@ export default function FunnelMovementFeed({ funnelId, startDate }: FunnelMoveme
 
   useEffect(() => {
     loadMovements();
-  }, [funnelId, startDate]);
+  }, [funnelId, startDate, endDate]);
 
   // Realtime para novas movimentações
   useEffect(() => {
@@ -136,7 +141,7 @@ export default function FunnelMovementFeed({ funnelId, startDate }: FunnelMoveme
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [funnelId, startDate]);
+  }, [funnelId, startDate, endDate]);
 
   const getDirectionIcon = (fromStage: StageInfo | null, toStage: StageInfo | null) => {
     if (!fromStage) {

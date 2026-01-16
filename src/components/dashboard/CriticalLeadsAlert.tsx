@@ -19,16 +19,18 @@ interface CriticalLead {
 
 interface CriticalLeadsAlertProps {
   funnelId: string;
+  startDate?: Date | null;
+  endDate?: Date | null;
 }
 
-export default function CriticalLeadsAlert({ funnelId }: CriticalLeadsAlertProps) {
+export default function CriticalLeadsAlert({ funnelId, startDate, endDate }: CriticalLeadsAlertProps) {
   const [leads, setLeads] = useState<CriticalLead[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     loadCriticalLeads();
-  }, [funnelId]);
+  }, [funnelId, startDate, endDate]);
 
   const loadCriticalLeads = async () => {
     try {
@@ -36,9 +38,20 @@ export default function CriticalLeadsAlert({ funnelId }: CriticalLeadsAlertProps
       const criticalLeads: CriticalLead[] = [];
       const now = new Date();
 
+      // Base query builder with optional date filters
+      const buildQuery = (query: any) => {
+        if (startDate) {
+          query = query.gte('last_message_at', startDate.toISOString());
+        }
+        if (endDate) {
+          query = query.lte('last_message_at', endDate.toISOString());
+        }
+        return query;
+      };
+
       // 1. Cold leads (no response > 48h)
       const coldThreshold = new Date(now.getTime() - 48 * 60 * 60 * 1000);
-      const { data: coldLeads } = await supabase
+      let coldQuery = supabase
         .from('whatsapp_conversations')
         .select('id, name, phone, last_lead_message_at, last_message_at')
         .eq('is_crm_lead', true)
@@ -47,6 +60,9 @@ export default function CriticalLeadsAlert({ funnelId }: CriticalLeadsAlertProps
         .lt('last_lead_message_at', coldThreshold.toISOString())
         .order('last_lead_message_at', { ascending: true })
         .limit(5);
+
+      coldQuery = buildQuery(coldQuery);
+      const { data: coldLeads } = await coldQuery;
 
       (coldLeads || []).forEach(lead => {
         const hours = differenceInHours(now, new Date(lead.last_lead_message_at!));
@@ -61,15 +77,18 @@ export default function CriticalLeadsAlert({ funnelId }: CriticalLeadsAlertProps
       });
 
       // 2. Overdue reminders
-      const { data: reminderLeads } = await supabase
+      let reminderQuery = supabase
         .from('whatsapp_conversations')
-        .select('id, name, phone, reminder_at')
+        .select('id, name, phone, reminder_at, last_message_at')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
         .not('reminder_at', 'is', null)
         .lt('reminder_at', now.toISOString())
         .order('reminder_at', { ascending: true })
         .limit(5);
+
+      reminderQuery = buildQuery(reminderQuery);
+      const { data: reminderLeads } = await reminderQuery;
 
       (reminderLeads || []).forEach(lead => {
         criticalLeads.push({
@@ -84,15 +103,18 @@ export default function CriticalLeadsAlert({ funnelId }: CriticalLeadsAlertProps
 
       // 3. High value stalled leads (> R$ 1000, parado > 3 dias)
       const stalledThreshold = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-      const { data: highValueLeads } = await supabase
+      let highValueQuery = supabase
         .from('whatsapp_conversations')
-        .select('id, name, phone, estimated_value, funnel_stage_changed_at')
+        .select('id, name, phone, estimated_value, funnel_stage_changed_at, last_message_at')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
         .gt('estimated_value', 1000)
         .lt('funnel_stage_changed_at', stalledThreshold.toISOString())
         .order('estimated_value', { ascending: false })
         .limit(5);
+
+      highValueQuery = buildQuery(highValueQuery);
+      const { data: highValueLeads } = await highValueQuery;
 
       (highValueLeads || []).forEach(lead => {
         criticalLeads.push({
@@ -106,14 +128,17 @@ export default function CriticalLeadsAlert({ funnelId }: CriticalLeadsAlertProps
       });
 
       // 4. AI paused leads
-      const { data: aiPausedLeads } = await supabase
+      let aiPausedQuery = supabase
         .from('whatsapp_conversations')
-        .select('id, name, phone, ai_handoff_reason')
+        .select('id, name, phone, ai_handoff_reason, last_message_at')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
         .eq('ai_paused', true)
         .order('last_message_at', { ascending: false })
         .limit(5);
+
+      aiPausedQuery = buildQuery(aiPausedQuery);
+      const { data: aiPausedLeads } = await aiPausedQuery;
 
       (aiPausedLeads || []).forEach(lead => {
         criticalLeads.push({

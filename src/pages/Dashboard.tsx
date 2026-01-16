@@ -585,6 +585,7 @@ export default function Dashboard() {
         <FunnelEvolutionChart 
           funnelId={selectedFunnelId}
           startDate={getStartDate()}
+          endDate={getEndDate()}
         />
       )}
 
@@ -669,6 +670,8 @@ export default function Dashboard() {
           <div className="lg:col-span-2">
             <PeriodComparison 
               funnelId={selectedFunnelId}
+              startDate={getStartDate()}
+              endDate={getEndDate()}
               periodDays={getPeriodDays()}
             />
           </div>
@@ -679,7 +682,11 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Leads Críticos */}
         {selectedFunnelId && (
-          <CriticalLeadsAlert funnelId={selectedFunnelId} />
+          <CriticalLeadsAlert 
+            funnelId={selectedFunnelId}
+            startDate={getStartDate()}
+            endDate={getEndDate()}
+          />
         )}
 
         {/* Handoffs Recentes */}
@@ -727,6 +734,8 @@ export default function Dashboard() {
         {selectedFunnelId && (
           <AIMetricsCard 
             funnelId={selectedFunnelId}
+            startDate={getStartDate()}
+            endDate={getEndDate()}
             periodDays={getPeriodDays()}
           />
         )}
@@ -739,14 +748,19 @@ export default function Dashboard() {
           {selectedFunnelId && (
             <FunnelMovementFeed 
               funnelId={selectedFunnelId} 
-              startDate={getStartDate()} 
+              startDate={getStartDate()}
+              endDate={getEndDate()}
             />
           )}
         </div>
 
         {/* Activity Heatmap */}
         {selectedFunnelId && (
-          <ActivityHeatmap funnelId={selectedFunnelId} />
+          <ActivityHeatmap 
+            funnelId={selectedFunnelId}
+            startDate={getStartDate()}
+            endDate={getEndDate()}
+          />
         )}
       </div>
 
