@@ -17,7 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { format, subDays, startOfDay, endOfDay } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CalendarIcon, Users, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -26,8 +26,11 @@ import {
   TopPerformersCards,
   PerformanceChart,
   VendorDetailSheet,
+  DailyActivityCard,
+  InactivityAlerts,
 } from '@/components/team';
 import { VendorMetrics } from '@/components/team/TeamMetricsTable';
+import { DailyActivity } from '@/components/team/DailyActivityCard';
 
 type PeriodType = '7d' | '30d' | '90d' | 'custom';
 
@@ -162,14 +165,20 @@ export default function TeamPerformance() {
       });
 
       // Métricas de atividade HOJE
-      const todayActivityByVendor: Record<string, { count: number; first: string | null; last: string | null }> = {};
+      const todayActivityByVendor: Record<string, { 
+        count: number; 
+        first: string | null; 
+        last: string | null;
+        conversationIds: Set<string>;
+      }> = {};
       todayMessages?.forEach(m => {
         const userId = m.sent_by_user_id || conversationToAssigned.get(m.conversation_id);
         if (userId) {
           if (!todayActivityByVendor[userId]) {
-            todayActivityByVendor[userId] = { count: 0, first: null, last: null };
+            todayActivityByVendor[userId] = { count: 0, first: null, last: null, conversationIds: new Set() };
           }
           todayActivityByVendor[userId].count++;
+          todayActivityByVendor[userId].conversationIds.add(m.conversation_id);
           const msgTime = m.created_at;
           if (!todayActivityByVendor[userId].first || msgTime < todayActivityByVendor[userId].first!) {
             todayActivityByVendor[userId].first = msgTime;
@@ -235,7 +244,14 @@ export default function TeamPerformance() {
         const avgTicket = leadsConverted > 0 ? closedValue / leadsConverted : 0;
 
         // Atividade de hoje
-        const todayActivity = todayActivityByVendor[user.user_id] || { count: 0, first: null, last: null };
+        const todayActivity = todayActivityByVendor[user.user_id] || { 
+          count: 0, first: null, last: null, conversationIds: new Set() 
+        };
+        
+        // Calcular tempo ativo em minutos
+        const activeTimeMinutes = todayActivity.first && todayActivity.last
+          ? differenceInMinutes(new Date(todayActivity.last), new Date(todayActivity.first))
+          : 0;
 
         return {
           user_id: user.user_id,
@@ -253,6 +269,8 @@ export default function TeamPerformance() {
           first_activity_today: todayActivity.first,
           last_activity_today: todayActivity.last,
           leads_without_contact: leadsWithoutContactByVendor[user.user_id] || 0,
+          conversations_today: todayActivity.conversationIds.size,
+          active_time_minutes: activeTimeMinutes,
         };
       });
 
@@ -351,6 +369,34 @@ export default function TeamPerformance() {
 
       {/* Top Performers */}
       <TopPerformersCards data={metrics} />
+
+      {/* Cards de Atividade e Alertas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <DailyActivityCard 
+          data={metrics.map(m => ({
+            user_id: m.user_id,
+            full_name: m.full_name,
+            role: m.role,
+            messages_today: m.messages_today,
+            first_activity: m.first_activity_today,
+            last_activity: m.last_activity_today,
+            leads_without_contact: m.leads_without_contact,
+          }))}
+          loading={loading}
+        />
+        <InactivityAlerts
+          inactiveUsers={metrics
+            .filter(m => m.messages_today === 0)
+            .map(m => ({
+              user_id: m.user_id,
+              full_name: m.full_name,
+              last_activity: m.last_activity_today,
+              leads_pending: m.leads_without_contact,
+            }))}
+          pendingLeads={[]}
+          loading={loading}
+        />
+      </div>
 
       {/* Grid: Tabela + Gráfico */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

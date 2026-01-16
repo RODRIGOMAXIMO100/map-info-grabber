@@ -25,11 +25,14 @@ export interface VendorMetrics {
   avg_ticket: number;
   messages_sent: number;
   funnel_movements: number;
-  // Novas métricas de atividade
+  // Métricas de atividade
   messages_today: number;
   first_activity_today: string | null;
   last_activity_today: string | null;
   leads_without_contact: number;
+  // Novas métricas
+  conversations_today: number;
+  active_time_minutes: number;
 }
 
 interface TeamMetricsTableProps {
@@ -98,6 +101,16 @@ export default function TeamMetricsTable({ data, onSelectVendor, loading }: Team
     return format(new Date(dateStr), 'HH:mm');
   };
 
+  const formatActiveTime = (minutes: number) => {
+    if (minutes === 0) return '-';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+  };
+
   const SortableHeader = ({ label, sortKeyName }: { label: string; sortKeyName: SortKey }) => (
     <Button
       variant="ghost"
@@ -133,12 +146,15 @@ export default function TeamMetricsTable({ data, onSelectVendor, loading }: Team
           <TableRow className="bg-muted/50">
             <TableHead className="w-[180px]">Vendedor</TableHead>
             <TableHead className="text-center">
-              <SortableHeader label="Hoje" sortKeyName="messages_today" />
+              <SortableHeader label="Conversas" sortKeyName="conversations_today" />
             </TableHead>
-            <TableHead className="text-center">Última Ativ.</TableHead>
             <TableHead className="text-center">
-              <SortableHeader label="Leads" sortKeyName="leads_assigned" />
+              <SortableHeader label="Msgs" sortKeyName="messages_today" />
             </TableHead>
+            <TableHead className="text-center">
+              <SortableHeader label="Tempo" sortKeyName="active_time_minutes" />
+            </TableHead>
+            <TableHead className="text-center">Horário</TableHead>
             <TableHead className="text-center">
               <SortableHeader label="Conv." sortKeyName="leads_converted" />
             </TableHead>
@@ -181,6 +197,13 @@ export default function TeamMetricsTable({ data, onSelectVendor, loading }: Team
                 <TableCell className="text-center">
                   <span className={cn(
                     "font-bold",
+                    vendor.conversations_today > 0 ? "text-foreground" : "text-muted-foreground"
+                  )}>
+                    {vendor.conversations_today}
+                  </span>
+                </TableCell>
+                <TableCell className="text-center">
+                  <span className={cn(
                     vendor.messages_today > 0 ? "text-foreground" : "text-muted-foreground"
                   )}>
                     {vendor.messages_today}
@@ -188,16 +211,23 @@ export default function TeamMetricsTable({ data, onSelectVendor, loading }: Team
                 </TableCell>
                 <TableCell className="text-center">
                   <span className={cn(
-                    "text-sm",
+                    "font-medium",
+                    vendor.active_time_minutes > 240 && "text-green-600",
+                    vendor.active_time_minutes > 0 && vendor.active_time_minutes <= 240 && "text-yellow-600",
+                    vendor.active_time_minutes === 0 && "text-muted-foreground"
+                  )}>
+                    {formatActiveTime(vendor.active_time_minutes)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-center">
+                  <span className={cn(
+                    "text-xs",
                     activityStatus === 'active' && "text-green-600 font-medium",
                     activityStatus === 'recent' && "text-yellow-600",
                     activityStatus === 'inactive' && "text-muted-foreground"
                   )}>
-                    {formatTimeOnly(vendor.last_activity_today)}
+                    {formatTimeOnly(vendor.first_activity_today)} - {formatTimeOnly(vendor.last_activity_today)}
                   </span>
-                </TableCell>
-                <TableCell className="text-center font-medium">
-                  {vendor.leads_assigned}
                 </TableCell>
                 <TableCell className="text-center">
                   <span className="font-bold text-green-600">{vendor.leads_converted}</span>
