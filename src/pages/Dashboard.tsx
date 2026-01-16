@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -62,8 +62,9 @@ export default function Dashboard() {
     from: subDays(new Date(), 30),
     to: new Date()
   });
-  const [dateRangeKey, setDateRangeKey] = useState(0); // Force re-render on date change
+  const [dateRangeKey, setDateRangeKey] = useState(0);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [activePreset, setActivePreset] = useState<string | null>('30days');
   const [stageCounts, setStageCounts] = useState<StageCount[]>([]);
   const [recentHandoffs, setRecentHandoffs] = useState<RecentHandoff[]>([]);
   const [aiActive, setAiActive] = useState(false);
@@ -78,11 +79,6 @@ export default function Dashboard() {
     aiResponses: 0,
     pipelineValue: 0,
   });
-
-  // Refs para detectar duplo-clique no calendário
-  const lastClickedDayRef = useRef<Date | null>(null);
-  const lastClickTsRef = useRef<number>(0);
-  const ignoreNextSelectRef = useRef<boolean>(false);
 
   // Helper functions for date handling
   const getStartDate = (): Date | null => {
@@ -138,9 +134,10 @@ export default function Dashboard() {
         return;
     }
     
+    setActivePreset(preset);
     setDateRange(newRange);
-    setDateRangeKey(prev => prev + 1); // Force useEffect to trigger
-    setIsDatePickerOpen(false); // Close popover
+    setDateRangeKey(prev => prev + 1);
+    setIsDatePickerOpen(false);
   };
 
   // Carregar funis na inicialização
@@ -468,7 +465,7 @@ export default function Dashboard() {
                   {/* Presets */}
                   <div className="flex flex-col border-r p-2 gap-1 min-w-[120px]">
                     <Button 
-                      variant="ghost" 
+                      variant={activePreset === 'today' ? 'secondary' : 'ghost'} 
                       size="sm" 
                       className="justify-start"
                       onClick={() => applyPreset('today')}
@@ -476,7 +473,7 @@ export default function Dashboard() {
                       Hoje
                     </Button>
                     <Button 
-                      variant="ghost" 
+                      variant={activePreset === 'yesterday' ? 'secondary' : 'ghost'} 
                       size="sm" 
                       className="justify-start"
                       onClick={() => applyPreset('yesterday')}
@@ -484,7 +481,7 @@ export default function Dashboard() {
                       Ontem
                     </Button>
                     <Button 
-                      variant="ghost" 
+                      variant={activePreset === '7days' ? 'secondary' : 'ghost'} 
                       size="sm" 
                       className="justify-start"
                       onClick={() => applyPreset('7days')}
@@ -492,7 +489,7 @@ export default function Dashboard() {
                       Últimos 7 dias
                     </Button>
                     <Button 
-                      variant="ghost" 
+                      variant={activePreset === '30days' ? 'secondary' : 'ghost'} 
                       size="sm" 
                       className="justify-start"
                       onClick={() => applyPreset('30days')}
@@ -500,7 +497,7 @@ export default function Dashboard() {
                       Últimos 30 dias
                     </Button>
                     <Button 
-                      variant="ghost" 
+                      variant={activePreset === 'all' ? 'secondary' : 'ghost'} 
                       size="sm" 
                       className="justify-start"
                       onClick={() => applyPreset('all')}
@@ -513,45 +510,17 @@ export default function Dashboard() {
                   <CalendarComponent
                     mode="range"
                     selected={dateRange}
-                    onDayClick={(day) => {
-                      // Detectar duplo-clique no mesmo dia
-                      const now = Date.now();
-                      const isSameDay = lastClickedDayRef.current && 
-                        day.getFullYear() === lastClickedDayRef.current.getFullYear() &&
-                        day.getMonth() === lastClickedDayRef.current.getMonth() &&
-                        day.getDate() === lastClickedDayRef.current.getDate();
-                      
-                      if (isSameDay && (now - lastClickTsRef.current) < 500) {
-                        // Duplo-clique detectado - forçar dia único
-                        setDateRange({ from: day, to: day });
-                        ignoreNextSelectRef.current = true;
-                        lastClickedDayRef.current = null;
-                        lastClickTsRef.current = 0;
-                      } else {
-                        // Primeiro clique - guardar referência
-                        lastClickedDayRef.current = day;
-                        lastClickTsRef.current = now;
-                      }
-                    }}
                     onSelect={(range) => {
-                      // Se acabamos de tratar um duplo-clique, ignorar este onSelect
-                      if (ignoreNextSelectRef.current) {
-                        ignoreNextSelectRef.current = false;
-                        return;
-                      }
-                      
-                      // Ignorar se range for undefined (navegação entre meses)
                       if (!range) return;
                       
-                      // Se tem from e to, usar normalmente (seleção de intervalo completa)
-                      if (range.from && range.to) {
-                        setDateRange(range);
-                        return;
-                      }
+                      // Limpar preset quando usuário seleciona manualmente
+                      setActivePreset(null);
+                      setDateRange(range);
                       
-                      // Se só tem from - primeiro clique de um novo range
-                      if (range.from && !range.to) {
-                        setDateRange({ from: range.from, to: undefined });
+                      // Fechar popover e atualizar quando range completo
+                      if (range.from && range.to) {
+                        setDateRangeKey(prev => prev + 1);
+                        setIsDatePickerOpen(false);
                       }
                     }}
                     numberOfMonths={2}
@@ -561,14 +530,37 @@ export default function Dashboard() {
                   />
                 </div>
                 
-                {/* Period indicator */}
-                {dateRange.from && dateRange.to && (
-                  <div className="border-t p-2 text-center">
+                {/* Footer with actions */}
+                <div className="border-t p-2 flex justify-between items-center">
+                  {dateRange.from && dateRange.to && (
                     <Badge variant="secondary">
                       {getPeriodDays()} dias selecionados
                     </Badge>
+                  )}
+                  <div className="flex gap-2 ml-auto">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setIsDatePickerOpen(false)}
+                    >
+                      Fechar
+                    </Button>
+                    {dateRange.from && !dateRange.to && (
+                      <Button 
+                        size="sm"
+                        onClick={() => {
+                          if (dateRange.from) {
+                            setDateRange({ from: dateRange.from, to: dateRange.from });
+                            setDateRangeKey(prev => prev + 1);
+                            setIsDatePickerOpen(false);
+                          }
+                        }}
+                      >
+                        Usar dia único
+                      </Button>
+                    )}
                   </div>
-                )}
+                </div>
               </PopoverContent>
             </Popover>
           </div>
