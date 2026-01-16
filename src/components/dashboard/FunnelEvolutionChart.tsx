@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { TrendingUp } from "lucide-react";
-import { format, subDays, eachDayOfInterval, startOfDay } from "date-fns";
+import { format, eachDayOfInterval, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 interface StageInfo {
@@ -22,16 +22,17 @@ interface DailyData {
 interface FunnelEvolutionChartProps {
   funnelId: string;
   startDate: Date | null;
+  endDate?: Date | null;
 }
 
-export default function FunnelEvolutionChart({ funnelId, startDate }: FunnelEvolutionChartProps) {
+export default function FunnelEvolutionChart({ funnelId, startDate, endDate }: FunnelEvolutionChartProps) {
   const [data, setData] = useState<DailyData[]>([]);
   const [stages, setStages] = useState<StageInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadChartData();
-  }, [funnelId, startDate]);
+  }, [funnelId, startDate, endDate]);
 
   const loadChartData = async () => {
     try {
@@ -53,18 +54,24 @@ export default function FunnelEvolutionChart({ funnelId, startDate }: FunnelEvol
         return;
       }
 
-      // Determine date range (last 14 days or from startDate)
-      const endDate = new Date();
-      const chartStartDate = startDate || subDays(endDate, 13);
+      // Determine date range from props
+      const chartEndDate = endDate || new Date();
+      const chartStartDate = startDate || new Date(chartEndDate.getTime() - 13 * 24 * 60 * 60 * 1000);
       
-      const days = eachDayOfInterval({ start: chartStartDate, end: endDate });
+      const days = eachDayOfInterval({ start: chartStartDate, end: chartEndDate });
 
       // Load stage history
-      const { data: historyData } = await supabase
+      let historyQuery = supabase
         .from('funnel_stage_history')
         .select('to_stage_id, changed_at')
         .gte('changed_at', chartStartDate.toISOString())
         .order('changed_at', { ascending: true });
+
+      if (endDate) {
+        historyQuery = historyQuery.lte('changed_at', endDate.toISOString());
+      }
+
+      const { data: historyData } = await historyQuery;
 
       // Load current conversations for baseline
       const { data: conversationsData } = await supabase
@@ -75,7 +82,6 @@ export default function FunnelEvolutionChart({ funnelId, startDate }: FunnelEvol
 
       // Calculate daily counts
       const dailyData: DailyData[] = days.map(day => {
-        const dayStart = startOfDay(day);
         const dayKey = format(day, 'yyyy-MM-dd');
         
         // Count conversations by stage at end of each day

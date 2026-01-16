@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Bot, MessageSquare, Clock, AlertCircle, Zap } from "lucide-react";
+import { Bot, MessageSquare, AlertCircle, Zap } from "lucide-react";
 
 interface AIMetrics {
   totalResponses: number;
@@ -16,22 +16,26 @@ interface AIMetrics {
 
 interface AIMetricsCardProps {
   funnelId: string;
+  startDate?: Date | null;
+  endDate?: Date | null;
   periodDays: number;
 }
 
-export default function AIMetricsCard({ funnelId, periodDays }: AIMetricsCardProps) {
+export default function AIMetricsCard({ funnelId, startDate, endDate, periodDays }: AIMetricsCardProps) {
   const [metrics, setMetrics] = useState<AIMetrics | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadAIMetrics();
-  }, [funnelId, periodDays]);
+  }, [funnelId, startDate, endDate, periodDays]);
 
   const loadAIMetrics = async () => {
     try {
       setLoading(true);
       
-      const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+      // Use provided dates or calculate from periodDays
+      const queryEndDate = endDate || new Date();
+      const queryStartDate = startDate || new Date(queryEndDate.getTime() - periodDays * 24 * 60 * 60 * 1000);
 
       // Get conversations from this funnel
       const { data: conversations } = await supabase
@@ -56,11 +60,17 @@ export default function AIMetricsCard({ funnelId, periodDays }: AIMetricsCardPro
       }
 
       // AI logs for this period
-      const { data: aiLogs } = await supabase
+      let aiLogsQuery = supabase
         .from('whatsapp_ai_logs')
         .select('ai_response, detected_intent, needs_human')
         .in('conversation_id', conversationIds)
-        .gte('created_at', startDate.toISOString());
+        .gte('created_at', queryStartDate.toISOString());
+
+      if (endDate) {
+        aiLogsQuery = aiLogsQuery.lte('created_at', endDate.toISOString());
+      }
+
+      const { data: aiLogs } = await aiLogsQuery;
 
       const logs = aiLogs || [];
       const totalResponses = logs.length;
@@ -143,7 +153,7 @@ export default function AIMetricsCard({ funnelId, periodDays }: AIMetricsCardPro
           </div>
         </CardTitle>
         <CardDescription className="text-xs">
-          Últimos {periodDays} dias
+          Período selecionado
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-0 space-y-4">

@@ -13,41 +13,51 @@ interface ComparisonMetric {
 
 interface PeriodComparisonProps {
   funnelId: string;
+  startDate?: Date | null;
+  endDate?: Date | null;
   periodDays: number;
 }
 
-export default function PeriodComparison({ funnelId, periodDays }: PeriodComparisonProps) {
+export default function PeriodComparison({ funnelId, startDate, endDate, periodDays }: PeriodComparisonProps) {
   const [metrics, setMetrics] = useState<ComparisonMetric[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadComparison();
-  }, [funnelId, periodDays]);
+  }, [funnelId, startDate, endDate, periodDays]);
 
   const loadComparison = async () => {
     try {
       setLoading(true);
       
-      const now = new Date();
-      const currentStart = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
-      const previousStart = new Date(currentStart.getTime() - periodDays * 24 * 60 * 60 * 1000);
+      // Current period: startDate to endDate (or use periodDays if no dates)
+      const currentEnd = endDate || new Date();
+      const currentStart = startDate || new Date(currentEnd.getTime() - periodDays * 24 * 60 * 60 * 1000);
+      
+      // Calculate actual period length
+      const actualPeriodMs = currentEnd.getTime() - currentStart.getTime();
+      
+      // Previous period: same duration before currentStart
+      const previousEnd = new Date(currentStart.getTime() - 1); // 1ms before current start
+      const previousStart = new Date(previousEnd.getTime() - actualPeriodMs);
 
-      // Current period
+      // Current period data
       const { data: currentData } = await supabase
         .from('whatsapp_conversations')
         .select('id, estimated_value, converted_at, created_at')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
-        .gte('created_at', currentStart.toISOString());
+        .gte('created_at', currentStart.toISOString())
+        .lte('created_at', currentEnd.toISOString());
 
-      // Previous period
+      // Previous period data
       const { data: previousData } = await supabase
         .from('whatsapp_conversations')
         .select('id, estimated_value, converted_at, created_at')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
         .gte('created_at', previousStart.toISOString())
-        .lt('created_at', currentStart.toISOString());
+        .lte('created_at', previousEnd.toISOString());
 
       // Calculate metrics
       const currentLeads = currentData?.length || 0;
@@ -63,13 +73,14 @@ export default function PeriodComparison({ funnelId, periodDays }: PeriodCompari
       const { count: currentAI } = await supabase
         .from('whatsapp_ai_logs')
         .select('*', { count: 'exact', head: true })
-        .gte('created_at', currentStart.toISOString());
+        .gte('created_at', currentStart.toISOString())
+        .lte('created_at', currentEnd.toISOString());
 
       const { count: previousAI } = await supabase
         .from('whatsapp_ai_logs')
         .select('*', { count: 'exact', head: true })
         .gte('created_at', previousStart.toISOString())
-        .lt('created_at', currentStart.toISOString());
+        .lte('created_at', previousEnd.toISOString());
 
       setMetrics([
         { label: 'Novos Leads', current: currentLeads, previous: previousLeads, format: 'number' },
