@@ -494,26 +494,34 @@ export default function Dashboard() {
                     mode="range"
                     selected={dateRange}
                     onSelect={(range) => {
-                      if (range) {
-                        // Se clicou no mesmo dia (from definido, to undefined), 
-                        // e esse dia é igual ao from atual, fixar como dia único
-                        if (range.from && !range.to) {
-                          // Verifica se está clicando no mesmo dia que já está selecionado
-                          if (dateRange.from && 
-                              range.from.getTime() === dateRange.from.getTime()) {
-                            // Duplo-clique no mesmo dia = fixar como período de 1 dia
-                            setDateRange({ from: range.from, to: range.from });
-                            return;
-                          }
+                      // Ignorar se range for undefined (navegação entre meses)
+                      if (!range) return;
+                      
+                      // Se clicou no mesmo dia que já está selecionado como from,
+                      // e to está undefined, fixar como dia único
+                      if (range.from && !range.to) {
+                        if (dateRange.from && 
+                            range.from.getTime() === dateRange.from.getTime()) {
+                          // Duplo-clique no mesmo dia = fixar como período de 1 dia
+                          setDateRange({ from: range.from, to: range.from });
+                          return;
                         }
                         
-                        // Se tem from e to, usar normalmente
-                        if (range.from && range.to) {
-                          setDateRange(range);
-                        } else if (range.from) {
-                          // Primeiro clique - aguardar segundo clique
+                        // Se já temos um range completo selecionado, 
+                        // iniciar nova seleção apenas se clicou em dia diferente
+                        if (dateRange.from && dateRange.to) {
                           setDateRange({ from: range.from, to: undefined });
+                          return;
                         }
+                        
+                        // Primeiro clique - definir from
+                        setDateRange({ from: range.from, to: undefined });
+                        return;
+                      }
+                      
+                      // Se tem from e to, usar normalmente (seleção de intervalo)
+                      if (range.from && range.to) {
+                        setDateRange(range);
                       }
                     }}
                     numberOfMonths={2}
