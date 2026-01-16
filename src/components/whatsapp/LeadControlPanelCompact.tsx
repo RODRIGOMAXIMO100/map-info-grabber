@@ -203,12 +203,24 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
         funnelId = defaultFunnel?.id || null;
       }
       
+      // Verificar se o estágio alvo é "Perdido" para arquivar automaticamente
+      const targetStage = stages.find(s => s.id === value);
+      const isLostStage = targetStage?.name.toLowerCase().includes('perdido') ||
+                          targetStage?.name.toLowerCase().includes('lost');
+      
+      const updateData: Record<string, unknown> = {
+        funnel_stage: value,
+        crm_funnel_id: funnelId
+      };
+      
+      // Se for "Perdido", arquivar automaticamente
+      if (isLostStage) {
+        updateData.status = 'archived';
+      }
+      
       const { error } = await supabase
         .from('whatsapp_conversations')
-        .update({ 
-          funnel_stage: value,
-          crm_funnel_id: funnelId // Garante que funil está definido
-        })
+        .update(updateData)
         .eq('id', conversation.id);
 
       if (error) throw error;

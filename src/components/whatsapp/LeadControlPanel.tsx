@@ -263,14 +263,28 @@ export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadContr
   const handleStageChange = async (value: string) => {
     setLoading(true);
     try {
+      // Verificar se o estágio alvo é "Perdido" para arquivar automaticamente
+      const targetStage = stages.find(s => s.id === value);
+      const isLostStage = targetStage?.name.toLowerCase().includes('perdido') ||
+                          targetStage?.name.toLowerCase().includes('lost');
+      
+      const updateData: Record<string, unknown> = {
+        funnel_stage: value
+      };
+      
+      // Se for "Perdido", arquivar automaticamente
+      if (isLostStage) {
+        updateData.status = 'archived';
+      }
+      
       const { error } = await supabase
         .from('whatsapp_conversations')
-        .update({ funnel_stage: value })
+        .update(updateData)
         .eq('id', conversation.id);
 
       if (error) throw error;
 
-      toast({ title: 'Etapa atualizada' });
+      toast({ title: isLostStage ? 'Lead arquivado' : 'Etapa atualizada' });
       onUpdate?.();
     } catch (error) {
       console.error('Error updating stage:', error);
