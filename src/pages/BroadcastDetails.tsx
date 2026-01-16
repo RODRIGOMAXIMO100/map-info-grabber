@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Send, Pause, Play, Trash2, Users, Clock, 
   RefreshCw, CheckCircle2, XCircle, Loader2, AlertCircle, MessageSquare,
-  Image as ImageIcon, ShieldCheck, Phone, PhoneOff
+  Image as ImageIcon, ShieldCheck, Phone, PhoneOff, UserCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -134,10 +134,16 @@ export default function BroadcastDetails() {
   const [showValidationDialog, setShowValidationDialog] = useState(false);
   const [validatedPhones, setValidatedPhones] = useState<Set<string>>(new Set());
   const [invalidPhones, setInvalidPhones] = useState<Set<string>>(new Set());
+  
+  // User assignment state
+  const [users, setUsers] = useState<Array<{ user_id: string; name: string; role: string }>>([]);
+  const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   useEffect(() => {
     if (id) {
       loadData();
+      loadUsers();
       // Set up realtime subscription for queue updates
       const channel = supabase
         .channel('queue-updates')
@@ -152,6 +158,41 @@ export default function BroadcastDetails() {
       };
     }
   }, [id]);
+
+  const loadUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      // Load users with their roles
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('user_id, full_name');
+      
+      if (error) throw error;
+      
+      // Get roles for each user
+      const usersWithRoles = await Promise.all(
+        (profiles || []).map(async (profile) => {
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', profile.user_id)
+            .maybeSingle();
+          
+          return {
+            user_id: profile.user_id,
+            name: profile.full_name || 'Sem nome',
+            role: roleData?.role || 'user'
+          };
+        })
+      );
+      
+      setUsers(usersWithRoles);
+    } catch (error) {
+      console.error('Error loading users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -184,6 +225,7 @@ export default function BroadcastDetails() {
     setList(typedData);
     setEditedMessage(data.message_template || DEFAULT_MESSAGE);
     setEditedImageUrl(data.image_url || '');
+    setSelectedAssignee((data as any).assigned_to || null);
   };
 
   const loadQueue = async () => {
@@ -213,13 +255,14 @@ export default function BroadcastDetails() {
         .update({ 
           message_template: editedMessage,
           image_url: editedImageUrl || null,
+          assigned_to: selectedAssignee || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', list.id);
 
       if (error) throw error;
 
-      toast({ title: 'Mensagem salva!' });
+      toast({ title: 'Configurações salvas!' });
       loadList();
     } catch (error) {
       console.error('Error saving message:', error);
@@ -858,10 +901,46 @@ export default function BroadcastDetails() {
                   </div>
                 )}
 
+                {/* User Assignment Selector */}
+                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-3">
+                  <Label className="flex items-center gap-2 text-sm font-medium">
+                    <UserCheck className="h-4 w-4 text-primary" />
+                    Atribuir leads para
+                  </Label>
+                  <Select
+                    value={selectedAssignee || "none"}
+                    onValueChange={(value) => setSelectedAssignee(value === "none" ? null : value)}
+                    disabled={list.status === 'sending' || loadingUsers}
+                  >
+                    <SelectTrigger className="w-full md:w-72">
+                      <SelectValue placeholder="Selecione um usuário..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        <span className="text-muted-foreground">Não atribuir (aparece para todos)</span>
+                      </SelectItem>
+                      {users.map((user) => (
+                        <SelectItem key={user.user_id} value={user.user_id}>
+                          <div className="flex items-center gap-2">
+                            <span>{user.name}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {user.role === 'admin' ? 'Admin' : user.role === 'sdr' ? 'SDR' : 'Closer'}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Os leads gerados por este disparo serão atribuídos automaticamente ao usuário selecionado.
+                    Se não atribuir, os chats aparecerão para todos os usuários.
+                  </p>
+                </div>
+
                 {list.status !== 'sending' && (
                   <Button onClick={saveMessage} disabled={saving} className="gap-2">
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Salvar Mensagem
+                    Salvar Configurações
                   </Button>
                 )}
               </CardContent>

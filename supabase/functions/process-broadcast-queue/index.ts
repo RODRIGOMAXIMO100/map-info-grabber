@@ -722,15 +722,17 @@ serve(async (req) => {
           let conversationId: string;
           const leadData = queueItem.lead_data as Record<string, unknown> | null;
 
-          // Buscar o dna_id da broadcast list se existir
+          // Buscar o dna_id e assigned_to da broadcast list se existir
           let dnaId: string | null = null;
+          let assignedTo: string | null = null;
           if (queueItem.broadcast_list_id) {
             const { data: broadcastList } = await supabase
               .from('broadcast_lists')
-              .select('dna_id')
+              .select('dna_id, assigned_to')
               .eq('id', queueItem.broadcast_list_id)
               .maybeSingle();
             dnaId = broadcastList?.dna_id || null;
+            assignedTo = broadcastList?.assigned_to || null;
           }
 
           if (existingConv) {
@@ -754,6 +756,7 @@ serve(async (req) => {
                 origin: 'broadcast', // ORIGEM DO LEAD
                 tags: ['new'],
                 dna_id: dnaId || undefined,
+                assigned_to: assignedTo || undefined, // ATRIBUIR AO USUÁRIO SELECIONADO
                 // Dados do broadcast para follow-ups automáticos
                 broadcast_list_id: queueItem.broadcast_list_id,
                 broadcast_sent_at: new Date().toISOString(),
@@ -779,6 +782,7 @@ serve(async (req) => {
                 origin: 'broadcast', // ORIGEM DO LEAD
                 tags: ['new'],
                 dna_id: dnaId,
+                assigned_to: assignedTo, // ATRIBUIR AO USUÁRIO SELECIONADO
                 last_message_at: new Date().toISOString(),
                 last_message_preview: processedMessage.substring(0, 100),
                 status: 'active',
