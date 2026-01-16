@@ -83,8 +83,9 @@ export const TransferUserModal = ({
 
       if (profilesError) throw profilesError;
 
-      // Combine data, excluding current user and current assignee
+      // Combine data, excluding current user, current assignee e ADMIN
       const usersWithRoles: UserWithRole[] = (roles || [])
+        .filter(r => r.role !== 'admin')
         .filter(r => r.user_id !== user?.id && r.user_id !== currentAssignedTo)
         .map(role => {
           const profile = profiles?.find(p => p.user_id === role.user_id);
