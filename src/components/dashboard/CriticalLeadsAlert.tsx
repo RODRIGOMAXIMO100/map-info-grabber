@@ -38,13 +38,13 @@ export default function CriticalLeadsAlert({ funnelId, startDate, endDate }: Cri
       const criticalLeads: CriticalLead[] = [];
       const now = new Date();
 
-      // Base query builder with optional date filters
+      // Base query builder with optional date filters (filter by created_at)
       const buildQuery = (query: any) => {
         if (startDate) {
-          query = query.gte('last_message_at', startDate.toISOString());
+          query = query.gte('created_at', startDate.toISOString());
         }
         if (endDate) {
-          query = query.lte('last_message_at', endDate.toISOString());
+          query = query.lte('created_at', endDate.toISOString());
         }
         return query;
       };
