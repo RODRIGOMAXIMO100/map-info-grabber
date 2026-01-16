@@ -51,14 +51,28 @@ export default function SalesFunnelMetrics({ funnelId, startDate, endDate }: Sal
         .gte('created_at', start)
         .lte('created_at', end);
 
-      // 2. Oportunidades (leads CRM criados no período)
-      const { count: oportunidadesCount } = await supabase
-        .from('whatsapp_conversations')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_crm_lead', true)
-        .eq('crm_funnel_id', funnelId)
-        .gte('created_at', start)
-        .lte('created_at', end);
+      // 2. Oportunidades (leads que entraram no estágio "CALL DE VENDA/OPORTUNIDADE" - stage_order 3)
+      // Primeiro, buscar o ID do estágio de oportunidade
+      const { data: opportunityStage } = await supabase
+        .from('crm_funnel_stages')
+        .select('id')
+        .eq('funnel_id', funnelId)
+        .eq('stage_order', 3)
+        .single();
+      
+      const opportunityStageId = opportunityStage?.id;
+      
+      let oportunidadesCount = 0;
+      if (opportunityStageId) {
+        const { count } = await supabase
+          .from('funnel_stage_history')
+          .select('*', { count: 'exact', head: true })
+          .eq('to_stage_id', opportunityStageId)
+          .gte('changed_at', start)
+          .lte('changed_at', end);
+        
+        oportunidadesCount = count || 0;
+      }
 
       // 3. Fechamentos (leads que foram para o estágio FECHADO no período)
       // Primeiro, buscar o ID do estágio "FECHADO" ou similar
