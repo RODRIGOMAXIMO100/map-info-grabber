@@ -32,7 +32,8 @@ import {
   AIMetricsCard,
   FunnelVelocity,
   ActivityHeatmap,
-  StageTimeMetrics
+  StageTimeMetrics,
+  SalesFunnelMetrics
 } from "@/components/dashboard";
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
 
@@ -293,11 +294,20 @@ export default function Dashboard() {
         todayMessagesCount = count || 0;
       }
 
-      // Broadcasts enviados
-      const { count: broadcastsSentCount } = await supabase
+      // Broadcasts enviados (filtrado pelo período selecionado)
+      let broadcastsQuery = supabase
         .from('whatsapp_queue')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'sent');
+      
+      if (startDate) {
+        broadcastsQuery = broadcastsQuery.gte('created_at', startDate.toISOString());
+      }
+      if (endDateValue) {
+        broadcastsQuery = broadcastsQuery.lte('created_at', endDateValue.toISOString());
+      }
+      
+      const { count: broadcastsSentCount } = await broadcastsQuery;
 
       // Respostas da IA
       let aiResponsesCount = 0;
@@ -501,6 +511,15 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Sales Funnel Metrics - Disparos → Oportunidades → Fechamentos */}
+      {selectedFunnelId && (
+        <SalesFunnelMetrics 
+          funnelId={selectedFunnelId}
+          startDate={getStartDate()}
+          endDate={getEndDate()}
+        />
+      )}
 
       {/* Funnel Velocity Card */}
       {selectedFunnelId && (
