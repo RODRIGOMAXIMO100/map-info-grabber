@@ -6,3 +6,4 @@ export { default as AIMetricsCard } from './AIMetricsCard';
 export { default as FunnelVelocity } from './FunnelVelocity';
 export { default as ActivityHeatmap } from './ActivityHeatmap';
 export { default as StageTimeMetrics } from './StageTimeMetrics';
+export { default as SalesFunnelMetrics } from './SalesFunnelMetrics';
