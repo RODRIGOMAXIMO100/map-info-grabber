@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Star, Trash2, Edit, Loader2, GitBranch } from 'lucide-react';
+import { Plus, Star, Trash2, Edit, Loader2, GitBranch, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,7 +27,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import type { CRMFunnel, CRMFunnelStage } from '@/types/crm';
+import { AssignFunnelUsersModal } from '@/components/crm/AssignFunnelUsersModal';
+import type { CRMFunnel } from '@/types/crm';
 
 export default function FunnelManager() {
   const navigate = useNavigate();
@@ -35,9 +36,12 @@ export default function FunnelManager() {
   const [funnels, setFunnels] = useState<CRMFunnel[]>([]);
   const [stagesCounts, setStagesCounts] = useState<Record<string, number>>({});
   const [leadsCounts, setLeadsCounts] = useState<Record<string, number>>({});
+  const [assignedUsersCounts, setAssignedUsersCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [assignUsersOpen, setAssignUsersOpen] = useState(false);
+  const [selectedFunnel, setSelectedFunnel] = useState<CRMFunnel | null>(null);
   const [funnelToDelete, setFunnelToDelete] = useState<CRMFunnel | null>(null);
   const [newFunnel, setNewFunnel] = useState({ name: '', description: '' });
   const [saving, setSaving] = useState(false);
@@ -81,6 +85,17 @@ export default function FunnelManager() {
         }
       });
       setLeadsCounts(leadCounts);
+
+      // Load assigned users count per funnel
+      const { data: assignmentsData } = await supabase
+        .from('crm_funnel_users')
+        .select('funnel_id');
+
+      const assignmentCounts: Record<string, number> = {};
+      assignmentsData?.forEach(a => {
+        assignmentCounts[a.funnel_id] = (assignmentCounts[a.funnel_id] || 0) + 1;
+      });
+      setAssignedUsersCounts(assignmentCounts);
     } catch (error) {
       console.error('Error loading funnels:', error);
       toast({ title: 'Erro ao carregar funis', variant: 'destructive' });
@@ -228,6 +243,17 @@ export default function FunnelManager() {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={() => {
+                      setSelectedFunnel(funnel);
+                      setAssignUsersOpen(true);
+                    }}
+                    title="Atribuir usuários"
+                  >
+                    <Users className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => navigate(`/crm/funnels/${funnel.id}/edit`)}
                   >
                     <Edit className="h-4 w-4" />
@@ -252,6 +278,10 @@ export default function FunnelManager() {
                 </div>
                 <div>
                   {leadsCounts[funnel.id] || 0} leads
+                </div>
+                <div className="flex items-center gap-1">
+                  <Users className="h-4 w-4" />
+                  {assignedUsersCounts[funnel.id] || 0} usuários
                 </div>
               </div>
             </CardContent>
@@ -324,6 +354,17 @@ export default function FunnelManager() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Assign Users Modal */}
+      {selectedFunnel && (
+        <AssignFunnelUsersModal
+          open={assignUsersOpen}
+          onOpenChange={setAssignUsersOpen}
+          funnelId={selectedFunnel.id}
+          funnelName={selectedFunnel.name}
+          onSaved={loadFunnels}
+        />
+      )}
     </div>
   );
 }

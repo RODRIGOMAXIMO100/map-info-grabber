@@ -18,3 +18,10 @@ export interface CRMFunnelStage {
   is_ai_controlled: boolean;
   created_at: string;
 }
+
+export interface CRMFunnelUser {
+  id: string;
+  funnel_id: string;
+  user_id: string;
+  created_at: string;
+}
