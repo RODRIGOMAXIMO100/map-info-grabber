@@ -24,6 +24,7 @@ import FunnelStageEditor from "./pages/FunnelStageEditor";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import AdminPanel from "./pages/AdminPanel";
+import TeamPerformance from "./pages/TeamPerformance";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,7 @@ const App = () => (
                       <Route path="/anti-block" element={<AntiBlockConfig />} />
                       <Route path="/funnel-stages" element={<FunnelStagesManager />} />
                       <Route path="/admin" element={<AdminPanel />} />
+                      <Route path="/team-performance" element={<TeamPerformance />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </AppLayout>
