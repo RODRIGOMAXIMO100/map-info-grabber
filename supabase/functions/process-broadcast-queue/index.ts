@@ -744,7 +744,9 @@ serve(async (req) => {
             const existingInstances = (existingConv.contacted_by_instances || []) as string[];
             const updatedInstances = Array.from(new Set([...existingInstances, selectedConfig.id]));
             
-            await supabase
+            console.log(`[Broadcast] Atualizando conversa existente ${conversationId} para ${formattedPhone}`);
+            
+            const { error: updateError } = await supabase
               .from('whatsapp_conversations')
               .update({
                 last_message_at: new Date().toISOString(),
@@ -768,37 +770,102 @@ serve(async (req) => {
                 updated_at: new Date().toISOString()
               })
               .eq('id', conversationId);
+            
+            if (updateError) {
+              console.error(`[Broadcast] ❌ ERRO ao atualizar conversa ${conversationId}:`, updateError.message);
+            } else {
+              console.log(`[Broadcast] ✓ Conversa ${conversationId} atualizada como lead`);
+            }
           } else {
             // Nova conversa do broadcast = é CRM lead
-            const { data: newConv } = await supabase
+            console.log(`[Broadcast] Criando nova conversa para ${formattedPhone}`);
+            
+            const conversationData = {
+              phone: formattedPhone,
+              name: leadData?.name ? String(leadData.name) : null,
+              config_id: selectedConfig.id,
+              is_crm_lead: true, // MARCA COMO CRM LEAD
+              crm_funnel_id: defaultFunnelId, // ADICIONA AO FUNIL PADRÃO
+              funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
+              origin: 'broadcast', // ORIGEM DO LEAD
+              tags: ['new'],
+              dna_id: dnaId,
+              assigned_to: assignedTo, // ATRIBUIR AO USUÁRIO SELECIONADO
+              last_message_at: new Date().toISOString(),
+              last_message_preview: processedMessage.substring(0, 100),
+              status: 'active',
+              // Dados do broadcast para follow-ups automáticos
+              broadcast_list_id: queueItem.broadcast_list_id,
+              broadcast_sent_at: new Date().toISOString(),
+              followup_count: 0,
+              contacted_by_instances: [selectedConfig.id],
+              // Dados de origem do lead
+              lead_city: leadData?.city ? String(leadData.city) : null,
+              lead_state: leadData?.state ? String(leadData.state) : null
+            };
+            
+            const { data: newConv, error: insertError } = await supabase
               .from('whatsapp_conversations')
-              .insert({
-                phone: formattedPhone,
-                name: leadData?.name ? String(leadData.name) : null,
-                config_id: selectedConfig.id,
-                is_crm_lead: true, // MARCA COMO CRM LEAD
-                crm_funnel_id: defaultFunnelId, // ADICIONA AO FUNIL PADRÃO
-                funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
-                origin: 'broadcast', // ORIGEM DO LEAD
-                tags: ['new'],
-                dna_id: dnaId,
-                assigned_to: assignedTo, // ATRIBUIR AO USUÁRIO SELECIONADO
-                last_message_at: new Date().toISOString(),
-                last_message_preview: processedMessage.substring(0, 100),
-                status: 'active',
-                // Dados do broadcast para follow-ups automáticos
-                broadcast_list_id: queueItem.broadcast_list_id,
-                broadcast_sent_at: new Date().toISOString(),
-                followup_count: 0,
-                contacted_by_instances: [selectedConfig.id],
-                // Dados de origem do lead
-                lead_city: leadData?.city ? String(leadData.city) : null,
-                lead_state: leadData?.state ? String(leadData.state) : null
-              })
+              .insert(conversationData)
               .select('id')
               .single();
             
-            if (newConv) conversationId = newConv.id;
+            if (insertError) {
+              console.error(`[Broadcast] ❌ ERRO ao criar conversa para ${formattedPhone}:`, insertError.message, insertError.code);
+              
+              // Se for erro de duplicata (race condition com webhook), buscar e atualizar
+              if (insertError.code === '23505') {
+                console.log(`[Broadcast] Conversa já existe (race condition), buscando e atualizando...`);
+                const { data: existingByPhone } = await supabase
+                  .from('whatsapp_conversations')
+                  .select('id')
+                  .eq('phone', formattedPhone)
+                  .eq('config_id', selectedConfig.id)
+                  .single();
+                
+                if (existingByPhone) {
+                  conversationId = existingByPhone.id;
+                  console.log(`[Broadcast] Conversa encontrada: ${conversationId}, atualizando como lead...`);
+                  
+                  const { error: fallbackUpdateError } = await supabase
+                    .from('whatsapp_conversations')
+                    .update({
+                      is_crm_lead: true,
+                      crm_funnel_id: defaultFunnelId,
+                      funnel_stage: defaultStageId || 'new',
+                      origin: 'broadcast',
+                      broadcast_list_id: queueItem.broadcast_list_id,
+                      broadcast_sent_at: new Date().toISOString(),
+                      followup_count: 0
+                    })
+                    .eq('id', conversationId);
+                  
+                  if (fallbackUpdateError) {
+                    console.error(`[Broadcast] ❌ Fallback update falhou:`, fallbackUpdateError.message);
+                  } else {
+                    console.log(`[Broadcast] ✓ Fallback: Conversa ${conversationId} atualizada como lead`);
+                  }
+                }
+              } else {
+                // Tentar novamente uma vez para outros erros
+                console.log(`[Broadcast] Tentando criar conversa novamente...`);
+                const { data: retryConv, error: retryError } = await supabase
+                  .from('whatsapp_conversations')
+                  .insert(conversationData)
+                  .select('id')
+                  .single();
+                
+                if (retryError) {
+                  console.error(`[Broadcast] ❌ RETRY FALHOU para ${formattedPhone}:`, retryError.message);
+                } else if (retryConv) {
+                  conversationId = retryConv.id;
+                  console.log(`[Broadcast] ✓ RETRY OK - Conversa criada: ${retryConv.id}`);
+                }
+              }
+            } else if (newConv) {
+              conversationId = newConv.id;
+              console.log(`[Broadcast] ✓ Nova conversa criada: ${newConv.id} para ${formattedPhone}`);
+            }
           }
 
           // Register message in chat history
