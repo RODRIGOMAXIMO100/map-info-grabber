@@ -506,29 +506,42 @@ serve(async (req) => {
         continue;
       }
 
-      // ============= DUPLICATE CHECK =============
-      // Check if this phone already received a message from this broadcast in the last 24 hours
+      // ============= GLOBAL DUPLICATE CHECK =============
+      // Check if this phone EVER received ANY broadcast message
+      // This prevents the same number from receiving multiple broadcasts
       if (queueItem.broadcast_list_id) {
+        const normalizedPhone = queueItem.phone.replace(/\D/g, '');
+        
+        // Get all sent broadcast messages to check for duplicates
         const { data: existingSent } = await supabase
           .from('whatsapp_queue')
-          .select('id')
-          .eq('phone', queueItem.phone)
-          .eq('broadcast_list_id', queueItem.broadcast_list_id)
+          .select('id, broadcast_list_id, phone')
           .eq('status', 'sent')
           .neq('id', queueItem.id)
-          .limit(1)
-          .maybeSingle();
+          .not('broadcast_list_id', 'is', null)
+          .limit(500);
 
-        if (existingSent) {
-          console.log(`[Broadcast] Skipping duplicate: phone ${queueItem.phone} already received message from broadcast ${queueItem.broadcast_list_id}`);
+        // Check if any sent message matches this phone (normalized comparison)
+        const alreadySent = existingSent?.find(item => {
+          const existingPhone = (item.phone || '').replace(/\D/g, '');
+          return existingPhone === normalizedPhone || 
+                 existingPhone.endsWith(normalizedPhone) || 
+                 normalizedPhone.endsWith(existingPhone);
+        });
+
+        if (alreadySent) {
+          console.log(`[Broadcast] ⛔ GLOBAL DUPLICATE: phone ${queueItem.phone} already received broadcast ${alreadySent.broadcast_list_id}`);
           await supabase
             .from('whatsapp_queue')
-            .update({ status: 'failed', error_message: 'Duplicata: já enviado para este número neste broadcast' })
+            .update({ 
+              status: 'failed', 
+              error_message: `Duplicata global: já recebeu broadcast anterior (${alreadySent.broadcast_list_id?.slice(0, 8)})` 
+            })
             .eq('id', queueItem.id);
           continue;
         }
       }
-      // ============= END DUPLICATE CHECK =============
+      // ============= END GLOBAL DUPLICATE CHECK =============
 
       // ============= INSTANCE SELECTION WITH FALLBACK =============
       // Try to use the original assigned instance, but fallback to any available active instance
