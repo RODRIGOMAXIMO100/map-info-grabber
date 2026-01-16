@@ -41,8 +41,6 @@ export default function SalesFunnelMetrics({ funnelId, startDate, endDate }: Sal
       const start = startDate.toISOString();
       const end = endDate.toISOString();
 
-      console.log('[SalesFunnelMetrics] Query range:', { start, end, funnelId });
-
       // 1. Disparos (broadcasts enviados no período)
       const { count: disparosCount } = await supabase
         .from('whatsapp_queue')
@@ -58,7 +56,7 @@ export default function SalesFunnelMetrics({ funnelId, startDate, endDate }: Sal
         .select('id')
         .eq('funnel_id', funnelId)
         .eq('stage_order', 3)
-        .single();
+        .maybeSingle();
       
       const opportunityStageId = opportunityStage?.id;
       
