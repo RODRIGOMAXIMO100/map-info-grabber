@@ -16,10 +16,10 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
-interface UserWithRole {
+interface UserInfo {
   user_id: string;
   full_name: string;
-  role: 'admin' | 'sdr' | 'closer';
+  role?: 'admin' | 'sdr' | 'closer' | null;
 }
 
 interface AssignUserModalProps {
@@ -41,7 +41,7 @@ export function AssignUserModal({
 }: AssignUserModalProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [users, setUsers] = useState<UserWithRole[]>([]);
+  const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -56,46 +56,39 @@ export function AssignUserModal({
   const loadUsers = async () => {
     setLoading(true);
     try {
-      // Fetch all users with roles
-      const { data: roles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('user_id, role');
+      // Busca TODOS os perfis cadastrados
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('user_id, full_name');
 
-      if (rolesError) throw rolesError;
+      if (profilesError) throw profilesError;
 
-      if (!roles || roles.length === 0) {
+      if (!profiles || profiles.length === 0) {
         setUsers([]);
         setLoading(false);
         return;
       }
 
-      // Get profile info for users with roles
-      const userIds = roles.map(r => r.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('user_id, full_name')
-        .in('user_id', userIds);
+      // Busca roles opcionalmente para exibir badge
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id, role');
 
-      if (profilesError) throw profilesError;
+      // Monta lista de usuários com role opcional
+      const userList: UserInfo[] = profiles.map(profile => {
+        const roleInfo = roles?.find(r => r.user_id === profile.user_id);
+        return {
+          user_id: profile.user_id,
+          full_name: profile.full_name || 'Usuário',
+          role: roleInfo?.role as 'admin' | 'sdr' | 'closer' | null,
+        };
+      }).sort((a, b) => {
+        // Sort: SDR first, then Closer, then others
+        const order: Record<string, number> = { sdr: 1, closer: 2, admin: 3 };
+        return (order[a.role || ''] || 4) - (order[b.role || ''] || 4);
+      });
 
-      // Combine data - filter out admins (they should not receive leads)
-      const usersWithRoles: UserWithRole[] = (roles || [])
-        .filter(role => role.role !== 'admin')
-        .map(role => {
-          const profile = profiles?.find(p => p.user_id === role.user_id);
-          return {
-            user_id: role.user_id,
-            full_name: profile?.full_name || 'Usuário',
-            role: role.role as 'admin' | 'sdr' | 'closer',
-          };
-        })
-        .sort((a, b) => {
-          // Sort: SDR first, then Closer
-          const order = { sdr: 1, closer: 2, admin: 3 };
-          return order[a.role] - order[b.role];
-        });
-
-      setUsers(usersWithRoles);
+      setUsers(userList);
     } catch (error) {
       console.error('Error loading users:', error);
       toast({
@@ -112,6 +105,9 @@ export function AssignUserModal({
 
     setAssigning(true);
     try {
+      // Força refresh da sessão antes de qualquer operação
+      await supabase.auth.refreshSession();
+      
       const { error } = await supabase
         .from('whatsapp_conversations')
         .update({
@@ -146,6 +142,9 @@ export function AssignUserModal({
   const handleUnassign = async () => {
     setAssigning(true);
     try {
+      // Força refresh da sessão antes de qualquer operação
+      await supabase.auth.refreshSession();
+      
       const { error } = await supabase
         .from('whatsapp_conversations')
         .update({
