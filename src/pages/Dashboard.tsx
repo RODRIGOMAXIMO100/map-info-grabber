@@ -213,16 +213,16 @@ export default function Dashboard() {
         .select('*')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', selectedFunnelId)
-        .order('last_message_at', { ascending: false });
+        .order('created_at', { ascending: false });
       
-      // Filtrar por atividade recente (última mensagem ou movimentação)
+      // Filtrar por data de criação do lead no período
       if (startDate) {
-        conversationsQuery = conversationsQuery.gte('last_message_at', startDate.toISOString());
+        conversationsQuery = conversationsQuery.gte('created_at', startDate.toISOString());
       }
       
       // Aplicar data final
       if (endDateValue) {
-        conversationsQuery = conversationsQuery.lte('last_message_at', endDateValue.toISOString());
+        conversationsQuery = conversationsQuery.lte('created_at', endDateValue.toISOString());
       }
 
       const { data: conversations } = await conversationsQuery;
@@ -289,22 +289,19 @@ export default function Dashboard() {
             }))
         : [];
 
-      // IDs das conversas
-      const conversationIds = filteredConversations.map(c => c.id);
-
-      // Mensagens de hoje
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Mensagens no período selecionado
+      let messagesQuery = supabase
+        .from('whatsapp_messages')
+        .select('*', { count: 'exact', head: true });
       
-      let todayMessagesCount = 0;
-      if (conversationIds.length > 0) {
-        const { count } = await supabase
-          .from('whatsapp_messages')
-          .select('*', { count: 'exact', head: true })
-          .in('conversation_id', conversationIds)
-          .gte('created_at', today.toISOString());
-        todayMessagesCount = count || 0;
+      if (startDate) {
+        messagesQuery = messagesQuery.gte('created_at', startDate.toISOString());
       }
+      if (endDateValue) {
+        messagesQuery = messagesQuery.lte('created_at', endDateValue.toISOString());
+      }
+      
+      const { count: periodMessagesCount } = await messagesQuery;
 
       // Broadcasts enviados (filtrado pelo período selecionado)
       let broadcastsQuery = supabase
@@ -321,15 +318,19 @@ export default function Dashboard() {
       
       const { count: broadcastsSentCount } = await broadcastsQuery;
 
-      // Respostas da IA
-      let aiResponsesCount = 0;
-      if (conversationIds.length > 0) {
-        const { count } = await supabase
-          .from('whatsapp_ai_logs')
-          .select('*', { count: 'exact', head: true })
-          .in('conversation_id', conversationIds);
-        aiResponsesCount = count || 0;
+      // Respostas da IA no período
+      let aiLogsQuery = supabase
+        .from('whatsapp_ai_logs')
+        .select('*', { count: 'exact', head: true });
+      
+      if (startDate) {
+        aiLogsQuery = aiLogsQuery.gte('created_at', startDate.toISOString());
       }
+      if (endDateValue) {
+        aiLogsQuery = aiLogsQuery.lte('created_at', endDateValue.toISOString());
+      }
+      
+      const { count: aiResponsesCount } = await aiLogsQuery;
 
       // Status da IA
       const { data: aiConfig } = await supabase
@@ -343,7 +344,7 @@ export default function Dashboard() {
       setAiActive(aiConfig?.is_active || false);
       setMetrics({
         totalLeads: filteredConversations.length,
-        todayMessages: todayMessagesCount || 0,
+        todayMessages: periodMessagesCount || 0,
         broadcastsSent: broadcastsSentCount || 0,
         aiResponses: aiResponsesCount || 0,
         pipelineValue,
@@ -628,11 +629,12 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Mensagens Hoje</CardTitle>
+            <CardTitle className="text-sm font-medium">Mensagens</CardTitle>
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{metrics.todayMessages}</div>
+            <p className="text-xs text-muted-foreground">No período selecionado</p>
           </CardContent>
         </Card>
 
@@ -643,6 +645,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{metrics.aiResponses}</div>
+            <p className="text-xs text-muted-foreground">No período selecionado</p>
           </CardContent>
         </Card>
       </div>
