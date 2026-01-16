@@ -164,6 +164,55 @@ export default function TeamPerformance() {
         }
       });
 
+      // Função para calcular tempo ativo baseado em sessões reais
+      const calculateActiveTime = (messages: { created_at: string }[]): { 
+        totalMinutes: number; 
+        sessionsCount: number 
+      } => {
+        const GAP_THRESHOLD = 30; // minutos - gap maior que isso indica nova sessão
+        
+        if (messages.length === 0) return { totalMinutes: 0, sessionsCount: 0 };
+        
+        const sorted = [...messages].sort((a, b) => 
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        
+        let totalMinutes = 0;
+        let sessionsCount = 1;
+        let sessionStart = sorted[0].created_at;
+        let lastActivity = sessionStart;
+        
+        for (const msg of sorted.slice(1)) {
+          const gap = differenceInMinutes(new Date(msg.created_at), new Date(lastActivity));
+          
+          if (gap > GAP_THRESHOLD) {
+            // Fecha sessão anterior e inicia nova
+            totalMinutes += differenceInMinutes(new Date(lastActivity), new Date(sessionStart));
+            sessionStart = msg.created_at;
+            sessionsCount++;
+          }
+          
+          lastActivity = msg.created_at;
+        }
+        
+        // Adiciona última sessão
+        totalMinutes += differenceInMinutes(new Date(lastActivity), new Date(sessionStart));
+        
+        return { totalMinutes, sessionsCount };
+      };
+
+      // Agrupar mensagens de hoje por vendedor
+      const todayMessagesByVendor: Record<string, { created_at: string }[]> = {};
+      todayMessages?.forEach(m => {
+        const userId = m.sent_by_user_id || conversationToAssigned.get(m.conversation_id);
+        if (userId) {
+          if (!todayMessagesByVendor[userId]) {
+            todayMessagesByVendor[userId] = [];
+          }
+          todayMessagesByVendor[userId].push({ created_at: m.created_at });
+        }
+      });
+
       // Métricas de atividade HOJE
       const todayActivityByVendor: Record<string, { 
         count: number; 
@@ -248,10 +297,9 @@ export default function TeamPerformance() {
           count: 0, first: null, last: null, conversationIds: new Set() 
         };
         
-        // Calcular tempo ativo em minutos
-        const activeTimeMinutes = todayActivity.first && todayActivity.last
-          ? differenceInMinutes(new Date(todayActivity.last), new Date(todayActivity.first))
-          : 0;
+        // Calcular tempo ativo baseado em sessões reais
+        const userTodayMessages = todayMessagesByVendor[user.user_id] || [];
+        const { totalMinutes: activeTimeMinutes, sessionsCount } = calculateActiveTime(userTodayMessages);
 
         return {
           user_id: user.user_id,
@@ -271,6 +319,7 @@ export default function TeamPerformance() {
           leads_without_contact: leadsWithoutContactByVendor[user.user_id] || 0,
           conversations_today: todayActivity.conversationIds.size,
           active_time_minutes: activeTimeMinutes,
+          sessions_count: sessionsCount,
         };
       });
 
