@@ -113,34 +113,71 @@ export const TransferUserModal = ({
     try {
       setTransferring(true);
 
+      // IMPORTANTE: Buscar phone/config_id ANTES do update (enquanto ainda temos permissão)
+      let conversationData: { phone: string; config_id: string | null } | null = null;
+      if (sendNotification) {
+        const { data, error: fetchError } = await supabase
+          .from('whatsapp_conversations')
+          .select('phone, config_id')
+          .eq('id', conversationId)
+          .single();
+
+        if (fetchError) {
+          console.error('Error fetching conversation for notification:', fetchError);
+          toast.error('Erro ao buscar dados da conversa para notificação');
+          setTransferring(false);
+          return;
+        }
+        conversationData = data;
+      }
+
       // Update conversation assignment
-      const { error } = await supabase
+      const { data: updateResult, error: updateError } = await supabase
         .from('whatsapp_conversations')
         .update({
           assigned_to: selectedUserId,
           assigned_at: new Date().toISOString(),
           transferred_by: user?.id,
         })
-        .eq('id', conversationId);
+        .eq('id', conversationId)
+        .select('id')
+        .maybeSingle();
 
-      if (error) throw error;
+      if (updateError) {
+        console.error('Error transferring conversation:', updateError);
+        const errorDetails = [
+          updateError.message,
+          updateError.code && `Código: ${updateError.code}`,
+          updateError.details && `Detalhes: ${updateError.details}`,
+          updateError.hint && `Dica: ${updateError.hint}`,
+        ].filter(Boolean).join(' | ');
+        
+        toast.error(`Erro ao transferir: ${errorDetails}`);
+        setTransferring(false);
+        return;
+      }
 
-      // Send notification if enabled
-      if (sendNotification) {
-        const { data: conversation } = await supabase
-          .from('whatsapp_conversations')
-          .select('phone, config_id')
-          .eq('id', conversationId)
-          .single();
+      // Verificar se a atualização afetou alguma linha
+      if (!updateResult) {
+        toast.error('Você não tem permissão para transferir esta conversa ou ela não está mais atribuída a você');
+        setTransferring(false);
+        return;
+      }
 
-        if (conversation?.config_id) {
+      // Send notification if enabled (usando dados pré-buscados)
+      if (sendNotification && conversationData?.config_id) {
+        try {
           await supabase.functions.invoke('whatsapp-send-message', {
             body: {
-              configId: conversation.config_id,
-              phone: conversation.phone,
+              configId: conversationData.config_id,
+              phone: conversationData.phone,
               message: notificationMessage,
             },
           });
+        } catch (notifyError) {
+          console.error('Error sending notification:', notifyError);
+          // Não bloquear a transferência por causa da notificação
+          toast.warning('Conversa transferida, mas não foi possível enviar a notificação');
         }
       }
 
@@ -148,9 +185,17 @@ export const TransferUserModal = ({
       toast.success(`Conversa transferida para ${selectedUser?.full_name}`);
       onTransferComplete();
       onOpenChange(false);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error transferring conversation:', error);
-      toast.error('Erro ao transferir conversa');
+      const supabaseError = error as { message?: string; code?: string; details?: string; hint?: string };
+      const errorDetails = [
+        supabaseError.message || 'Erro desconhecido',
+        supabaseError.code && `Código: ${supabaseError.code}`,
+        supabaseError.details && `Detalhes: ${supabaseError.details}`,
+        supabaseError.hint && `Dica: ${supabaseError.hint}`,
+      ].filter(Boolean).join(' | ');
+      
+      toast.error(`Erro ao transferir: ${errorDetails}`);
     } finally {
       setTransferring(false);
     }
