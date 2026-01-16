@@ -158,16 +158,16 @@ export const TransferUserModal = ({
       }
 
       // Update conversation assignment
-      const { data: updateResult, error: updateError } = await supabase
+      // IMPORTANTE: não fazemos `select()` aqui porque após transferir o usuário pode perder
+      // permissão de SELECT (e o PostgREST pode falhar ao tentar retornar a linha atualizada).
+      const { error: updateError } = await supabase
         .from('whatsapp_conversations')
         .update({
           assigned_to: selectedUserId,
           assigned_at: new Date().toISOString(),
           transferred_by: user.id,
         })
-        .eq('id', conversationId)
-        .select('id')
-        .maybeSingle();
+        .eq('id', conversationId);
 
       if (updateError) {
         console.error('Error transferring conversation:', updateError);
@@ -187,13 +187,6 @@ export const TransferUserModal = ({
           toast.error(`Erro ao transferir: ${errorDetails}`);
         }
 
-        setTransferring(false);
-        return;
-      }
-
-      // Verificar se a atualização afetou alguma linha
-      if (!updateResult) {
-        toast.error('Não foi possível transferir (sem acesso ou conversa inexistente).');
         setTransferring(false);
         return;
       }
