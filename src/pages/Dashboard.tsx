@@ -85,6 +85,10 @@ export default function Dashboard() {
     if (dateRange.to) {
       return endOfDay(dateRange.to);
     }
+    // Fallback: se from existe mas to não, usar from como end também
+    if (dateRange.from) {
+      return endOfDay(dateRange.from);
+    }
     return null;
   };
 
@@ -491,7 +495,25 @@ export default function Dashboard() {
                     selected={dateRange}
                     onSelect={(range) => {
                       if (range) {
-                        setDateRange(range);
+                        // Se clicou no mesmo dia (from definido, to undefined), 
+                        // e esse dia é igual ao from atual, fixar como dia único
+                        if (range.from && !range.to) {
+                          // Verifica se está clicando no mesmo dia que já está selecionado
+                          if (dateRange.from && 
+                              range.from.getTime() === dateRange.from.getTime()) {
+                            // Duplo-clique no mesmo dia = fixar como período de 1 dia
+                            setDateRange({ from: range.from, to: range.from });
+                            return;
+                          }
+                        }
+                        
+                        // Se tem from e to, usar normalmente
+                        if (range.from && range.to) {
+                          setDateRange(range);
+                        } else if (range.from) {
+                          // Primeiro clique - aguardar segundo clique
+                          setDateRange({ from: range.from, to: undefined });
+                        }
                       }
                     }}
                     numberOfMonths={2}
