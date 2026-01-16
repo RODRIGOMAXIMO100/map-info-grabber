@@ -53,7 +53,12 @@ interface RecentLog {
   instanceColor: string;
 }
 
-export default function InstanceMonitor() {
+interface InstanceMonitorProps {
+  startDate?: Date;
+  endDate?: Date;
+}
+
+export default function InstanceMonitor({ startDate, endDate }: InstanceMonitorProps) {
   const [instanceStats, setInstanceStats] = useState<InstanceStats[]>([]);
   const [pieData, setPieData] = useState<{ name: string; value: number; color: string }[]>([]);
   const [hourlyData, setHourlyData] = useState<HourlyData[]>([]);
@@ -73,17 +78,23 @@ export default function InstanceMonitor() {
         return;
       }
 
-      // Data de hoje (meia-noite)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayISO = today.toISOString();
+      // Usar período selecionado ou padrão para hoje
+      const queryStartDate = startDate || (() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return today;
+      })();
+      const queryEndDate = endDate || new Date();
 
-      // Buscar logs de hoje
-      const { data: logsToday } = await supabase
+      // Buscar logs do período
+      let logsQuery = supabase
         .from('whatsapp_logs')
         .select('*')
-        .gte('sent_at', todayISO)
+        .gte('sent_at', queryStartDate.toISOString())
+        .lte('sent_at', queryEndDate.toISOString())
         .order('sent_at', { ascending: false });
+
+      const { data: logsInPeriod } = await logsQuery;
 
       // Buscar mensagens pendentes na fila por config_id
       const { data: pendingQueue } = await supabase
@@ -93,7 +104,7 @@ export default function InstanceMonitor() {
 
       // Processar estatísticas por instância
       const stats: InstanceStats[] = configs.map(config => {
-        const configLogs = logsToday?.filter(log => log.config_id === config.id) || [];
+        const configLogs = logsInPeriod?.filter(log => log.config_id === config.id) || [];
         const sentCount = configLogs.filter(log => log.status === 'sent').length;
         const failedCount = configLogs.filter(log => log.status === 'failed').length;
         const pendingCount = pendingQueue?.filter(q => q.config_id === config.id).length || 0;
@@ -137,7 +148,7 @@ export default function InstanceMonitor() {
         });
       }
 
-      logsToday?.forEach(log => {
+      logsInPeriod?.forEach(log => {
         if (log.sent_at && log.config_id && log.status === 'sent') {
           const hour = new Date(log.sent_at).getHours().toString().padStart(2, '0');
           if (hourlyStats[hour] && log.config_id in hourlyStats[hour]) {
@@ -158,7 +169,7 @@ export default function InstanceMonitor() {
 
       // Logs recentes (últimos 10)
       const configMap = new Map(configs.map(c => [c.id, { name: c.name, color: c.color }]));
-      const recent: RecentLog[] = (logsToday || []).slice(0, 10).map(log => {
+      const recent: RecentLog[] = (logsInPeriod || []).slice(0, 10).map(log => {
         const configInfo = log.config_id ? configMap.get(log.config_id) : null;
         return {
           id: log.id,
@@ -204,7 +215,7 @@ export default function InstanceMonitor() {
       supabase.removeChannel(channel);
       clearInterval(interval);
     };
-  }, []);
+  }, [startDate, endDate]);
 
   if (loading) {
     return (
@@ -312,7 +323,7 @@ export default function InstanceMonitor() {
         {/* Gráfico de Pizza */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Distribuição de Envios (Hoje)</CardTitle>
+            <CardTitle className="text-sm">Distribuição de Envios</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
@@ -341,7 +352,7 @@ export default function InstanceMonitor() {
         {/* Gráfico de Barras por Hora */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Envios por Hora (Hoje)</CardTitle>
+            <CardTitle className="text-sm">Envios por Hora</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
@@ -377,7 +388,7 @@ export default function InstanceMonitor() {
           {recentLogs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
               <Send className="h-8 w-8 mb-2" />
-              <p>Nenhum envio registrado hoje</p>
+              <p>Nenhum envio no período</p>
             </div>
           ) : (
             <Table>
