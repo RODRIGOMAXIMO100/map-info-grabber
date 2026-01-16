@@ -94,6 +94,7 @@ export type Database = {
       }
       broadcast_lists: {
         Row: {
+          assigned_to: string | null
           created_at: string | null
           description: string | null
           failed_count: number | null
@@ -112,6 +113,7 @@ export type Database = {
           validated_at: string | null
         }
         Insert: {
+          assigned_to?: string | null
           created_at?: string | null
           description?: string | null
           failed_count?: number | null
@@ -130,6 +132,7 @@ export type Database = {
           validated_at?: string | null
         }
         Update: {
+          assigned_to?: string | null
           created_at?: string | null
           description?: string | null
           failed_count?: number | null
@@ -147,7 +150,15 @@ export type Database = {
           valid_count?: number | null
           validated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_lists_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       crm_funnel_stages: {
         Row: {
