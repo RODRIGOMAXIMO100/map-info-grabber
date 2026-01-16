@@ -835,7 +835,10 @@ export default function Dashboard() {
       </div>
 
       {/* Monitor de Instâncias WhatsApp */}
-      <InstanceMonitor />
+      <InstanceMonitor 
+        startDate={getStartDate()}
+        endDate={getEndDate()}
+      />
     </div>
   );
 }
