@@ -18,10 +18,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { Loader2, UserCheck, Send } from 'lucide-react';
 
-interface UserWithRole {
+interface UserInfo {
   user_id: string;
   full_name: string;
-  role: 'admin' | 'sdr' | 'closer';
+  role?: 'admin' | 'sdr' | 'closer' | null;
 }
 
 interface TransferUserModalProps {
@@ -42,7 +42,7 @@ export const TransferUserModal = ({
   onTransferComplete,
 }: TransferUserModalProps) => {
   const { user, session, loading: authLoading } = useAuth();
-  const [users, setUsers] = useState<UserWithRole[]>([]);
+  const [users, setUsers] = useState<UserInfo[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [transferring, setTransferring] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -61,42 +61,37 @@ export const TransferUserModal = ({
     try {
       setLoading(true);
 
-      // Fetch profiles with roles (only users with roles)
-      const { data: roles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('user_id, role');
+      // Busca TODOS os perfis cadastrados (não depende de user_roles)
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('user_id, full_name');
 
-      if (rolesError) throw rolesError;
+      if (profilesError) throw profilesError;
 
-      if (!roles || roles.length === 0) {
+      if (!profiles || profiles.length === 0) {
         setUsers([]);
         setLoading(false);
         return;
       }
 
-      // Get profile info for users with roles
-      const userIds = roles.map(r => r.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('user_id, full_name')
-        .in('user_id', userIds);
+      // Busca roles opcionalmente para exibir badge
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id, role');
 
-      if (profilesError) throw profilesError;
-
-      // Combine data, excluding current user, current assignee e ADMIN
-      const usersWithRoles: UserWithRole[] = (roles || [])
-        .filter(r => r.role !== 'admin')
-        .filter(r => r.user_id !== user?.id && r.user_id !== currentAssignedTo)
-        .map(role => {
-          const profile = profiles?.find(p => p.user_id === role.user_id);
+      // Monta lista excluindo usuário logado e o atualmente atribuído
+      const userList: UserInfo[] = profiles
+        .filter(p => p.user_id !== user?.id && p.user_id !== currentAssignedTo)
+        .map(profile => {
+          const roleInfo = roles?.find(r => r.user_id === profile.user_id);
           return {
-            user_id: role.user_id,
-            full_name: profile?.full_name || 'Usuário',
-            role: role.role as 'admin' | 'sdr' | 'closer',
+            user_id: profile.user_id,
+            full_name: profile.full_name || 'Usuário',
+            role: roleInfo?.role as 'admin' | 'sdr' | 'closer' | null,
           };
         });
 
-      setUsers(usersWithRoles);
+      setUsers(userList);
     } catch (error) {
       console.error('Error loading users:', error);
       toast.error('Erro ao carregar usuários');
@@ -121,7 +116,8 @@ export const TransferUserModal = ({
       return;
     }
 
-    // Confirma que existe sessão válida no momento do UPDATE (evita chamadas como anon)
+    // Força refresh da sessão antes de qualquer operação (evita token expirado)
+    await supabase.auth.refreshSession();
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     const hasSession = !!sessionData?.session;
 
