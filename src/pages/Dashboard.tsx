@@ -3,14 +3,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, subDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import type { DateRange } from "react-day-picker";
 
 import { 
   Users, 
@@ -20,7 +20,6 @@ import {
   TrendingUp,
   Bot,
   Clock,
-  Calendar,
   DollarSign,
   CalendarRange
 } from "lucide-react";
@@ -36,8 +35,6 @@ import {
   StageTimeMetrics
 } from "@/components/dashboard";
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
-
-type DateFilter = 'today' | '7days' | '30days' | 'all' | 'custom';
 
 interface StageCount {
   id: string;
@@ -55,12 +52,11 @@ interface RecentHandoff {
   time: string;
 }
 
-// Moved to component to access custom dates
-
 export default function Dashboard() {
-  const [dateFilter, setDateFilter] = useState<DateFilter>('30days');
-  const [customStartDate, setCustomStartDate] = useState<Date | undefined>();
-  const [customEndDate, setCustomEndDate] = useState<Date | undefined>();
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: subDays(new Date(), 30),
+    to: new Date()
+  });
   const [stageCounts, setStageCounts] = useState<StageCount[]>([]);
   const [recentHandoffs, setRecentHandoffs] = useState<RecentHandoff[]>([]);
   const [aiActive, setAiActive] = useState(false);
@@ -77,43 +73,46 @@ export default function Dashboard() {
   });
 
   // Helper functions for date handling
-  const getStartDate = (filter: DateFilter): Date | null => {
-    if (filter === 'custom') {
-      return customStartDate || null;
-    }
-    const now = new Date();
-    switch (filter) {
-      case 'today':
-        now.setHours(0, 0, 0, 0);
-        return now;
-      case '7days':
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      case '30days':
-        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      default:
-        return null;
-    }
+  const getStartDate = (): Date | null => {
+    return dateRange.from || null;
   };
 
   const getEndDate = (): Date | null => {
-    if (dateFilter === 'custom' && customEndDate) {
-      // Set to end of day
-      const endOfDay = new Date(customEndDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      return endOfDay;
+    if (dateRange.to) {
+      return endOfDay(dateRange.to);
     }
     return null;
   };
 
-  const getPeriodDays = (filter: DateFilter): number => {
-    if (filter === 'custom' && customStartDate && customEndDate) {
-      return Math.max(1, differenceInDays(customEndDate, customStartDate) + 1);
+  const getPeriodDays = (): number => {
+    if (dateRange.from && dateRange.to) {
+      return Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1);
     }
-    switch (filter) {
-      case 'today': return 1;
-      case '7days': return 7;
-      case '30days': return 30;
-      default: return 30;
+    return 30;
+  };
+
+  // Apply preset date ranges
+  const applyPreset = (preset: string) => {
+    const now = new Date();
+    const today = startOfDay(now);
+    
+    switch (preset) {
+      case 'today':
+        setDateRange({ from: today, to: now });
+        break;
+      case 'yesterday':
+        const yesterday = subDays(today, 1);
+        setDateRange({ from: yesterday, to: yesterday });
+        break;
+      case '7days':
+        setDateRange({ from: subDays(now, 7), to: now });
+        break;
+      case '30days':
+        setDateRange({ from: subDays(now, 30), to: now });
+        break;
+      case 'all':
+        setDateRange({ from: new Date(2020, 0, 1), to: now });
+        break;
     }
   };
 
@@ -131,17 +130,10 @@ export default function Dashboard() {
 
   // Carregar dados do dashboard quando estágios ou filtro mudarem
   useEffect(() => {
-    if (stages.length > 0 && selectedFunnelId) {
-      // Para filtro custom, só recarregar se tiver datas definidas
-      if (dateFilter === 'custom') {
-        if (customStartDate && customEndDate) {
-          loadDashboardData();
-        }
-      } else {
-        loadDashboardData();
-      }
+    if (stages.length > 0 && selectedFunnelId && dateRange.from) {
+      loadDashboardData();
     }
-  }, [stages, dateFilter, selectedFunnelId, customStartDate, customEndDate]);
+  }, [stages, selectedFunnelId, dateRange]);
 
   // Configurar realtime
   useEffect(() => {
@@ -199,7 +191,8 @@ export default function Dashboard() {
 
   const loadDashboardData = async () => {
     try {
-      const startDate = getStartDate(dateFilter);
+      const startDate = getStartDate();
+      const endDateValue = getEndDate();
 
       // Buscar conversas CRM com filtro de período e funil
       let conversationsQuery = supabase
@@ -214,10 +207,9 @@ export default function Dashboard() {
         conversationsQuery = conversationsQuery.gte('last_message_at', startDate.toISOString());
       }
       
-      // Aplicar data final se for período personalizado
-      const endDate = getEndDate();
-      if (endDate) {
-        conversationsQuery = conversationsQuery.lte('last_message_at', endDate.toISOString());
+      // Aplicar data final
+      if (endDateValue) {
+        conversationsQuery = conversationsQuery.lte('last_message_at', endDateValue.toISOString());
       }
 
       const { data: conversations } = await conversationsQuery;
@@ -368,6 +360,15 @@ export default function Dashboard() {
     return Math.max(...stageCounts.map(s => s.count), 1);
   }, [stageCounts]);
 
+  // Format display for date range
+  const getDateRangeDisplay = () => {
+    if (!dateRange.from) return "Selecione período";
+    if (!dateRange.to || dateRange.from.getTime() === dateRange.to.getTime()) {
+      return format(dateRange.from, "dd/MM/yyyy", { locale: ptBR });
+    }
+    return `${format(dateRange.from, "dd/MM/yyyy", { locale: ptBR })} - ${format(dateRange.to, "dd/MM/yyyy", { locale: ptBR })}`;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -411,95 +412,94 @@ export default function Dashboard() {
               </Select>
             )}
             
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <ToggleGroup 
-                type="single" 
-                value={dateFilter} 
-                onValueChange={(value) => value && setDateFilter(value as DateFilter)}
-                className="bg-muted rounded-lg p-1"
-              >
-                <ToggleGroupItem value="today" className="text-xs px-3">Hoje</ToggleGroupItem>
-                <ToggleGroupItem value="7days" className="text-xs px-3">7 dias</ToggleGroupItem>
-                <ToggleGroupItem value="30days" className="text-xs px-3">30 dias</ToggleGroupItem>
-                <ToggleGroupItem value="all" className="text-xs px-3">Tudo</ToggleGroupItem>
-                <ToggleGroupItem value="custom" className="text-xs px-3 flex items-center gap-1">
-                  <CalendarRange className="h-3 w-3" />
-                  Personalizado
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
+            {/* Unified Date Range Picker */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "min-w-[200px] justify-start text-left font-normal",
+                    !dateRange.from && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarRange className="mr-2 h-4 w-4" />
+                  {getDateRangeDisplay()}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <div className="flex">
+                  {/* Presets */}
+                  <div className="flex flex-col border-r p-2 gap-1 min-w-[120px]">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="justify-start"
+                      onClick={() => applyPreset('today')}
+                    >
+                      Hoje
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="justify-start"
+                      onClick={() => applyPreset('yesterday')}
+                    >
+                      Ontem
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="justify-start"
+                      onClick={() => applyPreset('7days')}
+                    >
+                      Últimos 7 dias
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="justify-start"
+                      onClick={() => applyPreset('30days')}
+                    >
+                      Últimos 30 dias
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="justify-start"
+                      onClick={() => applyPreset('all')}
+                    >
+                      Todo período
+                    </Button>
+                  </div>
+                  
+                  {/* Calendar */}
+                  <CalendarComponent
+                    mode="range"
+                    selected={dateRange}
+                    onSelect={(range) => {
+                      if (range) {
+                        setDateRange(range);
+                      }
+                    }}
+                    numberOfMonths={2}
+                    disabled={(date) => date > new Date()}
+                    locale={ptBR}
+                    className="pointer-events-auto"
+                  />
+                </div>
+                
+                {/* Period indicator */}
+                {dateRange.from && dateRange.to && (
+                  <div className="border-t p-2 text-center">
+                    <Badge variant="secondary">
+                      {getPeriodDays()} dias selecionados
+                    </Badge>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
-
-        {/* Custom Date Range Picker */}
-        {dateFilter === 'custom' && (
-          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
-            <span className="text-sm text-muted-foreground">Período:</span>
-            
-            {/* Start Date */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-[160px] justify-start text-left font-normal",
-                    !customStartDate && "text-muted-foreground"
-                  )}
-                >
-                  <Calendar className="mr-2 h-4 w-4" />
-                  {customStartDate ? format(customStartDate, "dd/MM/yyyy", { locale: ptBR }) : "Data início"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  mode="single"
-                  selected={customStartDate}
-                  onSelect={setCustomStartDate}
-                  disabled={(date) => date > new Date() || (customEndDate ? date > customEndDate : false)}
-                  initialFocus
-                  className="pointer-events-auto"
-                  locale={ptBR}
-                />
-              </PopoverContent>
-            </Popover>
-
-            <span className="text-sm text-muted-foreground">até</span>
-
-            {/* End Date */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-[160px] justify-start text-left font-normal",
-                    !customEndDate && "text-muted-foreground"
-                  )}
-                >
-                  <Calendar className="mr-2 h-4 w-4" />
-                  {customEndDate ? format(customEndDate, "dd/MM/yyyy", { locale: ptBR }) : "Data fim"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  mode="single"
-                  selected={customEndDate}
-                  onSelect={setCustomEndDate}
-                  disabled={(date) => date > new Date() || (customStartDate ? date < customStartDate : false)}
-                  initialFocus
-                  className="pointer-events-auto"
-                  locale={ptBR}
-                />
-              </PopoverContent>
-            </Popover>
-
-            {customStartDate && customEndDate && (
-              <Badge variant="secondary" className="ml-2">
-                {getPeriodDays(dateFilter)} dias
-              </Badge>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Funnel Velocity Card */}
@@ -584,7 +584,7 @@ export default function Dashboard() {
       {selectedFunnelId && (
         <FunnelEvolutionChart 
           funnelId={selectedFunnelId}
-          startDate={getStartDate(dateFilter)}
+          startDate={getStartDate()}
         />
       )}
 
@@ -669,7 +669,7 @@ export default function Dashboard() {
           <div className="lg:col-span-2">
             <PeriodComparison 
               funnelId={selectedFunnelId}
-              periodDays={getPeriodDays(dateFilter)}
+              periodDays={getPeriodDays()}
             />
           </div>
         )}
@@ -727,7 +727,7 @@ export default function Dashboard() {
         {selectedFunnelId && (
           <AIMetricsCard 
             funnelId={selectedFunnelId}
-            periodDays={getPeriodDays(dateFilter)}
+            periodDays={getPeriodDays()}
           />
         )}
       </div>
@@ -739,7 +739,7 @@ export default function Dashboard() {
           {selectedFunnelId && (
             <FunnelMovementFeed 
               funnelId={selectedFunnelId} 
-              startDate={getStartDate(dateFilter)} 
+              startDate={getStartDate()} 
             />
           )}
         </div>
