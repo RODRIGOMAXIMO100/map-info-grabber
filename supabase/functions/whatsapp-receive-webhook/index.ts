@@ -674,6 +674,38 @@ serve(async (req) => {
       
       console.log(`[Conversation] From broadcast: ${fromBroadcast}, will be lead: ${shouldBeLeadValue}, initial_stage: ${INITIAL_STAGE}`);
       
+      // Buscar funil padrão e primeiro estágio para leads
+      let defaultFunnelId: string | null = null;
+      let defaultStageId: string | null = null;
+      
+      if (shouldBeLeadValue) {
+        const { data: defaultFunnel } = await supabase
+          .from('crm_funnels')
+          .select('id')
+          .eq('is_default', true)
+          .maybeSingle();
+        
+        if (defaultFunnel?.id) {
+          defaultFunnelId = defaultFunnel.id;
+          
+          const { data: firstStage } = await supabase
+            .from('crm_funnel_stages')
+            .select('id')
+            .eq('funnel_id', defaultFunnelId)
+            .order('stage_order', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          
+          if (firstStage?.id) {
+            defaultStageId = firstStage.id;
+          }
+          
+          console.log(`[Funnel] Default funnel found: ${defaultFunnelId}, first stage: ${defaultStageId}`);
+        } else {
+          console.log('[Funnel] No default funnel found!');
+        }
+      }
+      
       // Use upsert to handle potential constraint conflicts gracefully
       const { data: newConv, error: createError } = await supabase
         .from('whatsapp_conversations')
@@ -685,6 +717,8 @@ serve(async (req) => {
           is_group: isGroup,
           tags: conversationTags,
           is_crm_lead: shouldBeLeadValue, // Só é lead se veio do broadcast
+          crm_funnel_id: shouldBeLeadValue ? defaultFunnelId : null, // Atribuir funil padrão
+          funnel_stage: shouldBeLeadValue ? defaultStageId : null,   // Atribuir primeiro estágio
           last_message_at: new Date().toISOString(),
           last_message_preview: isFromMe ? `Você: ${messagePreview}` : messagePreview,
           last_lead_message_at: isFromMe ? null : new Date().toISOString(),
@@ -706,7 +740,7 @@ serve(async (req) => {
       conversationId = newConv.id;
       existingConfigId = configId;
       
-      console.log(`[Conversation] Created: ${conversationId}, is_crm_lead=${shouldBeLeadValue}, origin=${fromBroadcast ? 'broadcast' : 'random'}, tags=${conversationTags}`);
+      console.log(`[Conversation] Created: ${conversationId}, is_crm_lead=${shouldBeLeadValue}, crm_funnel_id=${defaultFunnelId}, funnel_stage=${defaultStageId}`);
     }
 
     // === AUTO BLACKLIST: Detect opt-out phrases ===

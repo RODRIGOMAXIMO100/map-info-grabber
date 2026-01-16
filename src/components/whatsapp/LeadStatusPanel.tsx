@@ -190,13 +190,34 @@ export function LeadStatusPanel({ conversation, onUpdate }: LeadStatusPanelProps
   const handleActivateAsLead = async () => {
     setLoading(true);
     try {
+      // Buscar funil padrão e primeiro estágio
+      const { data: defaultFunnel } = await supabase
+        .from('crm_funnels')
+        .select('id')
+        .eq('is_default', true)
+        .maybeSingle();
+
+      let defaultStageId: string | null = null;
+      if (defaultFunnel?.id) {
+        const { data: firstStage } = await supabase
+          .from('crm_funnel_stages')
+          .select('id')
+          .eq('funnel_id', defaultFunnel.id)
+          .order('stage_order', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        defaultStageId = firstStage?.id || null;
+      }
+
       const { error } = await supabase
         .from('whatsapp_conversations')
         .update({ 
           is_crm_lead: true,
           tags: ['16'], // Lead Novo
           ai_paused: false,
-          ai_handoff_reason: null
+          ai_handoff_reason: null,
+          crm_funnel_id: defaultFunnel?.id || null,
+          funnel_stage: defaultStageId
         })
         .eq('id', conversation.id);
 

@@ -167,6 +167,25 @@ export default function FunnelTester() {
     setCurrentStage('STAGE_1');
     
     try {
+      // Buscar funil padrão e primeiro estágio
+      const { data: defaultFunnel } = await supabase
+        .from('crm_funnels')
+        .select('id')
+        .eq('is_default', true)
+        .maybeSingle();
+
+      let defaultStageId: string | null = null;
+      if (defaultFunnel?.id) {
+        const { data: firstStage } = await supabase
+          .from('crm_funnel_stages')
+          .select('id')
+          .eq('funnel_id', defaultFunnel.id)
+          .order('stage_order', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        defaultStageId = firstStage?.id || null;
+      }
+
       // Criar conversa de teste temporária
       const testPhone = `TEST_${Date.now()}`;
       
@@ -175,10 +194,11 @@ export default function FunnelTester() {
         .insert({
           phone: testPhone,
           name: '🧪 Teste de Funil',
-          funnel_stage: 'new',
+          funnel_stage: defaultStageId || 'new',
           status: 'active',
           origin: 'test',
           is_crm_lead: true,
+          crm_funnel_id: defaultFunnel?.id || null,
         })
         .select()
         .single();
@@ -188,12 +208,12 @@ export default function FunnelTester() {
       setTestConversation({
         id: data.id,
         phone: testPhone,
-        funnel_stage: 'new',
+        funnel_stage: defaultStageId || 'new',
         messages_in_current_stage: 0,
       });
 
       setDebugInfo({
-        stage: 'new',
+        stage: defaultStageId || 'new',
         objective: stages.find(s => s.stage_id === 'STAGE_1')?.objective || '',
         messagesInStage: 0,
       });
