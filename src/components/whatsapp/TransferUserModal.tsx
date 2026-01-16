@@ -41,7 +41,7 @@ export const TransferUserModal = ({
   currentAssignedTo,
   onTransferComplete,
 }: TransferUserModalProps) => {
-  const { user } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [transferring, setTransferring] = useState(false);
@@ -106,8 +106,37 @@ export const TransferUserModal = ({
   };
 
   const handleTransfer = async () => {
+    if (authLoading) {
+      toast.error('Carregando sua sessão… tente novamente em alguns segundos.');
+      return;
+    }
+
+    if (!user) {
+      toast.error('Você precisa estar logado para transferir.');
+      return;
+    }
+
     if (!selectedUserId) {
       toast.error('Selecione um usuário');
+      return;
+    }
+
+    // Confirma que existe sessão válida no momento do UPDATE (evita chamadas como anon)
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    const hasSession = !!sessionData?.session;
+
+    console.debug('[TransferUserModal] preflight', {
+      conversationId,
+      selectedUserId,
+      userId: user.id,
+      authLoading,
+      contextSession: !!session,
+      hasSession,
+      sessionError: sessionError?.message,
+    });
+
+    if (!hasSession) {
+      toast.error('Sessão expirada. Atualize a página e faça login novamente.');
       return;
     }
 
@@ -138,7 +167,7 @@ export const TransferUserModal = ({
         .update({
           assigned_to: selectedUserId,
           assigned_at: new Date().toISOString(),
-          transferred_by: user?.id,
+          transferred_by: user.id,
         })
         .eq('id', conversationId)
         .select('id')
@@ -146,21 +175,29 @@ export const TransferUserModal = ({
 
       if (updateError) {
         console.error('Error transferring conversation:', updateError);
-        const errorDetails = [
-          updateError.message,
-          updateError.code && `Código: ${updateError.code}`,
-          updateError.details && `Detalhes: ${updateError.details}`,
-          updateError.hint && `Dica: ${updateError.hint}`,
-        ].filter(Boolean).join(' | ');
-        
-        toast.error(`Erro ao transferir: ${errorDetails}`);
+
+        if (updateError.code === '42501') {
+          toast.error('Sem permissão/sessão para transferir. Atualize a página e faça login novamente.');
+        } else {
+          const errorDetails = [
+            updateError.message,
+            updateError.code && `Código: ${updateError.code}`,
+            updateError.details && `Detalhes: ${updateError.details}`,
+            updateError.hint && `Dica: ${updateError.hint}`,
+          ]
+            .filter(Boolean)
+            .join(' | ');
+
+          toast.error(`Erro ao transferir: ${errorDetails}`);
+        }
+
         setTransferring(false);
         return;
       }
 
       // Verificar se a atualização afetou alguma linha
       if (!updateResult) {
-        toast.error('Você não tem permissão para transferir esta conversa ou ela não está mais atribuída a você');
+        toast.error('Não foi possível transferir (sem acesso ou conversa inexistente).');
         setTransferring(false);
         return;
       }
@@ -194,8 +231,10 @@ export const TransferUserModal = ({
         supabaseError.code && `Código: ${supabaseError.code}`,
         supabaseError.details && `Detalhes: ${supabaseError.details}`,
         supabaseError.hint && `Dica: ${supabaseError.hint}`,
-      ].filter(Boolean).join(' | ');
-      
+      ]
+        .filter(Boolean)
+        .join(' | ');
+
       toast.error(`Erro ao transferir: ${errorDetails}`);
     } finally {
       setTransferring(false);
@@ -295,7 +334,8 @@ export const TransferUserModal = ({
           </Button>
           <Button
             onClick={handleTransfer}
-            disabled={!selectedUserId || transferring || users.length === 0}
+            disabled={authLoading || !user || !selectedUserId || transferring || users.length === 0}
+            title={!user ? 'Faça login para transferir' : undefined}
           >
             {transferring ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />

@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneNumber } from '@/lib/phone';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface WhatsAppInstance {
   id: string;
@@ -39,6 +40,8 @@ export function TransferInstanceModal({
   onTransferComplete,
 }: TransferInstanceModalProps) {
   const { toast } = useToast();
+  const { user, session, loading: authLoading } = useAuth();
+
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
   const [sendNotification, setSendNotification] = useState(true);
@@ -67,13 +70,15 @@ export function TransferInstanceModal({
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setInstances((data || []).map(d => ({
-        id: d.id,
-        name: d.name || 'Principal',
-        color: d.color || '#10B981',
-        instance_phone: d.instance_phone || '',
-        is_active: d.is_active ?? true,
-      })));
+      setInstances(
+        (data || []).map(d => ({
+          id: d.id,
+          name: d.name || 'Principal',
+          color: d.color || '#10B981',
+          instance_phone: d.instance_phone || '',
+          is_active: d.is_active ?? true,
+        }))
+      );
     } catch (error) {
       console.error('Error loading instances:', error);
       toast({
@@ -86,12 +91,51 @@ export function TransferInstanceModal({
     }
   };
 
-
   const handleTransfer = async () => {
+    if (authLoading) {
+      toast({
+        title: 'Carregando sessão…',
+        description: 'Tente novamente em alguns segundos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!user) {
+      toast({
+        title: 'Você precisa estar logado',
+        description: 'Faça login para transferir a conversa.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!selectedInstanceId) {
       toast({
         title: 'Selecione uma instância',
         description: 'Escolha a instância para onde deseja transferir a conversa.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    const hasSession = !!sessionData?.session;
+
+    console.debug('[TransferInstanceModal] preflight', {
+      conversationId,
+      selectedInstanceId,
+      userId: user.id,
+      authLoading,
+      contextSession: !!session,
+      hasSession,
+      sessionError: sessionError?.message,
+    });
+
+    if (!hasSession) {
+      toast({
+        title: 'Sessão expirada',
+        description: 'Atualize a página e faça login novamente.',
         variant: 'destructive',
       });
       return;
@@ -105,7 +149,18 @@ export function TransferInstanceModal({
         .update({ config_id: selectedInstanceId })
         .eq('id', conversationId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Error transferring conversation:', updateError);
+        if (updateError.code === '42501') {
+          toast({
+            title: 'Sem permissão/sessão',
+            description: 'Atualize a página e faça login novamente.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw updateError;
+      }
 
       // Optionally send notification message
       if (sendNotification && selectedInstance) {
@@ -281,9 +336,10 @@ export function TransferInstanceModal({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={transferring}>
             Cancelar
           </Button>
-          <Button 
-            onClick={handleTransfer} 
-            disabled={!selectedInstanceId || transferring || availableInstances.length === 0}
+          <Button
+            onClick={handleTransfer}
+            disabled={authLoading || !user || !selectedInstanceId || transferring || availableInstances.length === 0}
+            title={!user ? 'Faça login para transferir' : undefined}
           >
             {transferring ? (
               <>
