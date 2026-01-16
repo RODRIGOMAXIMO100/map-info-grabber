@@ -166,7 +166,7 @@ export function CRMFilters({
             <SelectItem value="unassigned">Não atribuídos</SelectItem>
             {availableUsers.map(user => (
               <SelectItem key={user.user_id} value={user.user_id}>
-                {user.role === 'sdr' ? '🎯' : '💰'} {user.full_name}
+                {user.role === 'sdr' ? 'SDR' : 'Closer'} - {user.full_name}
               </SelectItem>
             ))}
           </SelectContent>
