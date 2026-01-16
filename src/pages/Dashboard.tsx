@@ -62,6 +62,8 @@ export default function Dashboard() {
     from: subDays(new Date(), 30),
     to: new Date()
   });
+  const [dateRangeKey, setDateRangeKey] = useState(0); // Force re-render on date change
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [stageCounts, setStageCounts] = useState<StageCount[]>([]);
   const [recentHandoffs, setRecentHandoffs] = useState<RecentHandoff[]>([]);
   const [aiActive, setAiActive] = useState(false);
@@ -113,24 +115,32 @@ export default function Dashboard() {
     const now = new Date();
     const today = startOfDay(now);
     
+    let newRange: DateRange;
+    
     switch (preset) {
       case 'today':
-        setDateRange({ from: today, to: now });
+        newRange = { from: today, to: now };
         break;
       case 'yesterday':
         const yesterday = subDays(today, 1);
-        setDateRange({ from: yesterday, to: yesterday });
+        newRange = { from: yesterday, to: yesterday };
         break;
       case '7days':
-        setDateRange({ from: subDays(now, 7), to: now });
+        newRange = { from: subDays(now, 7), to: now };
         break;
       case '30days':
-        setDateRange({ from: subDays(now, 30), to: now });
+        newRange = { from: subDays(now, 30), to: now };
         break;
       case 'all':
-        setDateRange({ from: new Date(2020, 0, 1), to: now });
+        newRange = { from: new Date(2020, 0, 1), to: now };
         break;
+      default:
+        return;
     }
+    
+    setDateRange(newRange);
+    setDateRangeKey(prev => prev + 1); // Force useEffect to trigger
+    setIsDatePickerOpen(false); // Close popover
   };
 
   // Carregar funis na inicialização
@@ -150,7 +160,7 @@ export default function Dashboard() {
     if (stages.length > 0 && selectedFunnelId && dateRange.from) {
       loadDashboardData();
     }
-  }, [stages, selectedFunnelId, dateRange]);
+  }, [stages, selectedFunnelId, dateRangeKey]);
 
   // Configurar realtime
   useEffect(() => {
@@ -440,7 +450,7 @@ export default function Dashboard() {
             )}
             
             {/* Unified Date Range Picker */}
-            <Popover>
+            <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
