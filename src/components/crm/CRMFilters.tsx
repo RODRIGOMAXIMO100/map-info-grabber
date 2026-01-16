@@ -1,4 +1,4 @@
-import { Filter, Clock, Bot, Flame, Search, Bell } from 'lucide-react';
+import { Filter, Clock, Bot, Flame, Search, Bell, UserCheck } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +15,12 @@ export type AIStatusFilter = 'all' | 'ai_active' | 'manual';
 export type UrgencyFilter = 'all' | 'hot' | 'warm' | 'cold';
 export type SortOption = 'recent' | 'oldest' | 'bant' | 'value';
 
+interface AvailableUser {
+  user_id: string;
+  full_name: string;
+  role: string;
+}
+
 interface CRMFiltersProps {
   searchQuery: string;
   onSearchChange: (value: string) => void;
@@ -29,6 +35,11 @@ interface CRMFiltersProps {
   showRemindersOnly?: boolean;
   onRemindersFilterChange?: (value: boolean) => void;
   pendingRemindersCount?: number;
+  // Admin-only filter
+  isAdmin?: boolean;
+  availableUsers?: AvailableUser[];
+  assignedToFilter?: string;
+  onAssignedToChange?: (value: string) => void;
 }
 
 export function CRMFilters({
@@ -45,6 +56,10 @@ export function CRMFilters({
   showRemindersOnly = false,
   onRemindersFilterChange,
   pendingRemindersCount = 0,
+  isAdmin = false,
+  availableUsers = [],
+  assignedToFilter = 'all',
+  onAssignedToChange,
 }: CRMFiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -138,6 +153,25 @@ export function CRMFilters({
           <SelectItem value="value">Maior valor</SelectItem>
         </SelectContent>
       </Select>
+
+      {/* Assigned To Filter (Admin only) */}
+      {isAdmin && onAssignedToChange && (
+        <Select value={assignedToFilter} onValueChange={onAssignedToChange}>
+          <SelectTrigger className="h-8 w-auto min-w-[140px] text-xs">
+            <UserCheck className="h-3.5 w-3.5 mr-1" />
+            <SelectValue placeholder="Vendedor" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos vendedores</SelectItem>
+            <SelectItem value="unassigned">Não atribuídos</SelectItem>
+            {availableUsers.map(user => (
+              <SelectItem key={user.user_id} value={user.user_id}>
+                {user.role === 'sdr' ? '🎯' : '💰'} {user.full_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
     </div>
   );
 }

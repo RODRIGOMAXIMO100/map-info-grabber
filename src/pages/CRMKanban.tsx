@@ -66,6 +66,8 @@ export default function CRMKanban() {
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter>('all');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [showRemindersOnly, setShowRemindersOnly] = useState(false);
+  const [assignedToFilter, setAssignedToFilter] = useState<string>('all');
+  const [availableUsers, setAvailableUsers] = useState<{ user_id: string; full_name: string; role: string }[]>([]);
 
   // Modal states
   const [reminderModal, setReminderModal] = useState<{ open: boolean; lead: WhatsAppConversation | null }>({ open: false, lead: null });
@@ -106,7 +108,54 @@ export default function CRMKanban() {
     loadFunnels();
     loadWhatsAppConfigs();
     loadBroadcastLists();
-  }, []);
+    if (isAdmin) {
+      loadAvailableUsers();
+    }
+  }, [isAdmin]);
+
+  const loadAvailableUsers = async () => {
+    try {
+      // Load roles (SDR and Closer only)
+      const { data: roles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id, role')
+        .in('role', ['sdr', 'closer']);
+
+      if (rolesError) throw rolesError;
+
+      // Load profiles for those users
+      const userIds = (roles || []).map(r => r.user_id);
+      if (userIds.length === 0) {
+        setAvailableUsers([]);
+        return;
+      }
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIds);
+
+      if (profilesError) throw profilesError;
+
+      // Combine data
+      const users = (roles || []).map(role => {
+        const profile = profiles?.find(p => p.user_id === role.user_id);
+        return {
+          user_id: role.user_id,
+          full_name: profile?.full_name || 'Usuário',
+          role: role.role,
+        };
+      }).sort((a, b) => {
+        // SDR first, then Closer
+        const order: Record<string, number> = { sdr: 1, closer: 2 };
+        return (order[a.role] || 99) - (order[b.role] || 99);
+      });
+
+      setAvailableUsers(users);
+    } catch (error) {
+      console.error('Error loading available users:', error);
+    }
+  };
 
   const loadWhatsAppConfigs = async () => {
     try {
@@ -328,6 +377,15 @@ export default function CRMKanban() {
       });
     }
 
+    // Assigned to filter (admin only)
+    if (assignedToFilter !== 'all') {
+      if (assignedToFilter === 'unassigned') {
+        result = result.filter(c => !c.assigned_to);
+      } else {
+        result = result.filter(c => c.assigned_to === assignedToFilter);
+      }
+    }
+
     // Sorting
     if (sortOption === 'oldest') {
       result.sort((a, b) => new Date(a.last_message_at || 0).getTime() - new Date(b.last_message_at || 0).getTime());
@@ -338,7 +396,7 @@ export default function CRMKanban() {
     }
 
     return result;
-  }, [conversations, searchQuery, periodFilter, aiStatusFilter, urgencyFilter, sortOption, showRemindersOnly]);
+  }, [conversations, searchQuery, periodFilter, aiStatusFilter, urgencyFilter, sortOption, showRemindersOnly, assignedToFilter]);
 
   const getConversationsForStage = (stage: CRMFunnelStage) => {
     return filteredConversations.filter(conv => 
@@ -764,6 +822,10 @@ export default function CRMKanban() {
           showRemindersOnly={showRemindersOnly}
           onRemindersFilterChange={setShowRemindersOnly}
           pendingRemindersCount={pendingRemindersCount}
+          isAdmin={isAdmin}
+          availableUsers={availableUsers}
+          assignedToFilter={assignedToFilter}
+          onAssignedToChange={setAssignedToFilter}
         />
       </div>
 
