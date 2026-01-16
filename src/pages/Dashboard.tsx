@@ -75,7 +75,10 @@ export default function Dashboard() {
 
   // Helper functions for date handling
   const getStartDate = (): Date | null => {
-    return dateRange.from || null;
+    if (dateRange.from) {
+      return startOfDay(dateRange.from);
+    }
+    return null;
   };
 
   const getEndDate = (): Date | null => {
