@@ -198,6 +198,35 @@ export type Database = {
           },
         ]
       }
+      crm_funnel_users: {
+        Row: {
+          created_at: string | null
+          funnel_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          funnel_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          funnel_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_funnel_users_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_funnels: {
         Row: {
           created_at: string | null
