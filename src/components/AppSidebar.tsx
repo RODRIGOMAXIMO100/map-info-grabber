@@ -16,6 +16,7 @@ import {
   LogOut,
   ShieldCheck,
   User,
+  BarChart3,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,6 +53,7 @@ const menuItems = [
   { title: "Chat", url: "/whatsapp/chat", icon: MessageSquare },
   { title: "CRM", url: "/crm", icon: Users },
   { title: "Lembretes", url: "/lembretes", icon: Bell },
+  { title: "Equipe", url: "/team-performance", icon: BarChart3, adminOnly: true },
 ];
 
 const configItems = [
@@ -172,35 +174,41 @@ export function AppSidebar() {
           <SidebarGroupLabel>Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(item.url)}
-                    tooltip={item.title}
-                  >
-                    <NavLink
-                      to={item.url}
-                      end={item.url === "/"}
-                      className="flex items-center gap-2"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+              {menuItems.map((item) => {
+                // Skip admin-only items for non-admins
+                if ('adminOnly' in item && item.adminOnly && !isAdmin) {
+                  return null;
+                }
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive(item.url)}
+                      tooltip={item.title}
                     >
-                      <item.icon className="h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
-                      {!collapsed && item.url === "/crm" && handoffCount > 0 && (
-                        <Badge variant="destructive" className="ml-auto text-xs">
-                          {handoffCount}
-                        </Badge>
-                      )}
-                      {!collapsed && item.url === "/lembretes" && reminderCount > 0 && (
-                        <Badge variant="outline" className="ml-auto text-xs border-yellow-500 text-yellow-600">
-                          {reminderCount}
-                        </Badge>
-                      )}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+                      <NavLink
+                        to={item.url}
+                        end={item.url === "/"}
+                        className="flex items-center gap-2"
+                        activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {!collapsed && <span>{item.title}</span>}
+                        {!collapsed && item.url === "/crm" && handoffCount > 0 && (
+                          <Badge variant="destructive" className="ml-auto text-xs">
+                            {handoffCount}
+                          </Badge>
+                        )}
+                        {!collapsed && item.url === "/lembretes" && reminderCount > 0 && (
+                          <Badge variant="outline" className="ml-auto text-xs border-yellow-500 text-yellow-600">
+                            {reminderCount}
+                          </Badge>
+                        )}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

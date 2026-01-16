@@ -1,0 +1,338 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { format, subDays, startOfDay, endOfDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { CalendarIcon, Users, RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  TeamMetricsTable,
+  TopPerformersCards,
+  PerformanceChart,
+  VendorDetailSheet,
+} from '@/components/team';
+import { VendorMetrics } from '@/components/team/TeamMetricsTable';
+
+type PeriodType = '7d' | '30d' | '90d' | 'custom';
+
+interface Funnel {
+  id: string;
+  name: string;
+}
+
+export default function TeamPerformance() {
+  const { isAdmin } = useAuth();
+  const navigate = useNavigate();
+  
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState<VendorMetrics[]>([]);
+  const [funnels, setFunnels] = useState<Funnel[]>([]);
+  const [selectedFunnel, setSelectedFunnel] = useState<string>('all');
+  const [period, setPeriod] = useState<PeriodType>('30d');
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
+    from: subDays(new Date(), 30),
+    to: new Date(),
+  });
+  const [selectedVendor, setSelectedVendor] = useState<VendorMetrics | null>(null);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      navigate('/dashboard');
+      return;
+    }
+    loadFunnels();
+  }, [isAdmin, navigate]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadMetrics();
+    }
+  }, [dateRange, selectedFunnel, isAdmin]);
+
+  useEffect(() => {
+    const now = new Date();
+    switch (period) {
+      case '7d':
+        setDateRange({ from: subDays(now, 7), to: now });
+        break;
+      case '30d':
+        setDateRange({ from: subDays(now, 30), to: now });
+        break;
+      case '90d':
+        setDateRange({ from: subDays(now, 90), to: now });
+        break;
+      // 'custom' mantém o range atual
+    }
+  }, [period]);
+
+  const loadFunnels = async () => {
+    const { data } = await supabase
+      .from('crm_funnels')
+      .select('id, name')
+      .order('name');
+    setFunnels(data || []);
+  };
+
+  const loadMetrics = async () => {
+    setLoading(true);
+    try {
+      const startDate = startOfDay(dateRange.from).toISOString();
+      const endDate = endOfDay(dateRange.to).toISOString();
+
+      // Buscar todos os vendedores (SDR e Closer)
+      const { data: users } = await supabase
+        .from('profiles')
+        .select('user_id, full_name');
+
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id, role')
+        .in('role', ['sdr', 'closer']);
+
+      const userRoleMap = new Map(roles?.map(r => [r.user_id, r.role]) || []);
+      const vendorUsers = users?.filter(u => userRoleMap.has(u.user_id)) || [];
+
+      if (vendorUsers.length === 0) {
+        setMetrics([]);
+        setLoading(false);
+        return;
+      }
+
+      // Query base para conversas
+      let conversationsQuery = supabase
+        .from('whatsapp_conversations')
+        .select('id, assigned_to, converted_at, closed_value, funnel_stage')
+        .eq('is_crm_lead', true)
+        .not('assigned_to', 'is', null);
+
+      if (selectedFunnel !== 'all') {
+        conversationsQuery = conversationsQuery.eq('crm_funnel_id', selectedFunnel);
+      }
+
+      const { data: conversations } = await conversationsQuery;
+
+      // Query para mensagens enviadas no período
+      const { data: messages } = await supabase
+        .from('whatsapp_messages')
+        .select('conversation_id')
+        .eq('direction', 'out')
+        .gte('created_at', startDate)
+        .lte('created_at', endDate);
+
+      // Mapear conversation_id para assigned_to
+      const conversationToAssigned = new Map(
+        conversations?.map(c => [c.id, c.assigned_to]) || []
+      );
+
+      // Contar mensagens por vendedor
+      const messagesByVendor: Record<string, number> = {};
+      messages?.forEach(m => {
+        const assignedTo = conversationToAssigned.get(m.conversation_id);
+        if (assignedTo) {
+          messagesByVendor[assignedTo] = (messagesByVendor[assignedTo] || 0) + 1;
+        }
+      });
+
+      // Query para movimentações no funil
+      const { data: movements } = await supabase
+        .from('funnel_stage_history')
+        .select('changed_by')
+        .gte('changed_at', startDate)
+        .lte('changed_at', endDate)
+        .not('changed_by', 'is', null);
+
+      const movementsByVendor: Record<string, number> = {};
+      movements?.forEach(m => {
+        if (m.changed_by) {
+          movementsByVendor[m.changed_by] = (movementsByVendor[m.changed_by] || 0) + 1;
+        }
+      });
+
+      // Calcular métricas por vendedor
+      const vendorMetrics: VendorMetrics[] = vendorUsers.map(user => {
+        const userConversations = conversations?.filter(c => c.assigned_to === user.user_id) || [];
+        
+        // Leads atribuídos (total)
+        const leadsAssigned = userConversations.length;
+
+        // Leads convertidos no período
+        const convertedInPeriod = userConversations.filter(c => 
+          c.converted_at && 
+          new Date(c.converted_at) >= dateRange.from && 
+          new Date(c.converted_at) <= dateRange.to
+        );
+        const leadsConverted = convertedInPeriod.length;
+
+        // Leads ativos (não convertidos)
+        const leadsActive = userConversations.filter(c => !c.converted_at).length;
+
+        // Valor fechado no período
+        const closedValue = convertedInPeriod.reduce((sum, c) => sum + (c.closed_value || 0), 0);
+
+        // Taxa de conversão
+        const conversionRate = leadsAssigned > 0 ? (leadsConverted / leadsAssigned) * 100 : 0;
+
+        // Ticket médio
+        const avgTicket = leadsConverted > 0 ? closedValue / leadsConverted : 0;
+
+        return {
+          user_id: user.user_id,
+          full_name: user.full_name,
+          role: userRoleMap.get(user.user_id) || 'unknown',
+          leads_assigned: leadsAssigned,
+          leads_active: leadsActive,
+          leads_converted: leadsConverted,
+          conversion_rate: conversionRate,
+          closed_value: closedValue,
+          avg_ticket: avgTicket,
+          messages_sent: messagesByVendor[user.user_id] || 0,
+          funnel_movements: movementsByVendor[user.user_id] || 0,
+        };
+      });
+
+      // Ordenar por conversões
+      vendorMetrics.sort((a, b) => b.leads_converted - a.leads_converted);
+      setMetrics(vendorMetrics);
+    } catch (error) {
+      console.error('Error loading metrics:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVendorSelect = (vendor: VendorMetrics) => {
+    setSelectedVendor(vendor);
+    setDetailSheetOpen(true);
+  };
+
+  if (!isAdmin) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Users className="h-6 w-6" />
+            Desempenho da Equipe
+          </h1>
+          <p className="text-muted-foreground">
+            Acompanhe as métricas de cada vendedor
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {/* Seletor de Período */}
+          <Select value={period} onValueChange={(v) => setPeriod(v as PeriodType)}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Período" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7d">Últimos 7 dias</SelectItem>
+              <SelectItem value="30d">Últimos 30 dias</SelectItem>
+              <SelectItem value="90d">Últimos 90 dias</SelectItem>
+              <SelectItem value="custom">Personalizado</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Date Picker para período customizado */}
+          {period === 'custom' && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-[240px] justify-start text-left font-normal">
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {format(dateRange.from, 'dd/MM/yy', { locale: ptBR })} - {format(dateRange.to, 'dd/MM/yy', { locale: ptBR })}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="range"
+                  selected={{ from: dateRange.from, to: dateRange.to }}
+                  onSelect={(range) => {
+                    if (range?.from && range?.to) {
+                      setDateRange({ from: range.from, to: range.to });
+                    }
+                  }}
+                  locale={ptBR}
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {/* Seletor de Funil */}
+          <Select value={selectedFunnel} onValueChange={setSelectedFunnel}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Funil" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os Funis</SelectItem>
+              {funnels.map(funnel => (
+                <SelectItem key={funnel.id} value={funnel.id}>
+                  {funnel.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" size="icon" onClick={loadMetrics} disabled={loading}>
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+        </div>
+      </div>
+
+      {/* Top Performers */}
+      <TopPerformersCards data={metrics} />
+
+      {/* Grid: Tabela + Gráfico */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Métricas por Vendedor</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 sm:p-6 sm:pt-0">
+              <TeamMetricsTable
+                data={metrics}
+                onSelectVendor={handleVendorSelect}
+                loading={loading}
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="xl:col-span-1">
+          <PerformanceChart data={metrics} />
+        </div>
+      </div>
+
+      {/* Detail Sheet */}
+      <VendorDetailSheet
+        vendor={selectedVendor}
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+        startDate={dateRange.from}
+        endDate={dateRange.to}
+      />
+    </div>
+  );
+}
