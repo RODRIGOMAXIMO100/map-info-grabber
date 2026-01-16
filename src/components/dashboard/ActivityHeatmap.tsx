@@ -38,13 +38,21 @@ export default function ActivityHeatmap({ funnelId, startDate, endDate }: Activi
       const daysInRange = eachDayOfInterval({ start: heatmapStartDate, end: heatmapEndDate });
       const periodDays = differenceInDays(heatmapEndDate, heatmapStartDate) + 1;
 
-      // Get conversations for this funnel
-      const { data: conversations } = await supabase
+      // Get conversations for this funnel (filtered by created_at)
+      let conversationsQuery = supabase
         .from('whatsapp_conversations')
         .select('id')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId);
 
+      if (heatmapStartDate) {
+        conversationsQuery = conversationsQuery.gte('created_at', heatmapStartDate.toISOString());
+      }
+      if (heatmapEndDate) {
+        conversationsQuery = conversationsQuery.lte('created_at', heatmapEndDate.toISOString());
+      }
+
+      const { data: conversations } = await conversationsQuery;
       const conversationIds = (conversations || []).map(c => c.id);
 
       if (conversationIds.length === 0) {

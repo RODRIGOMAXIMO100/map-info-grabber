@@ -73,12 +73,21 @@ export default function FunnelEvolutionChart({ funnelId, startDate, endDate }: F
 
       const { data: historyData } = await historyQuery;
 
-      // Load current conversations for baseline
-      const { data: conversationsData } = await supabase
+      // Load current conversations for baseline (filtered by created_at)
+      let conversationsQuery = supabase
         .from('whatsapp_conversations')
         .select('id, funnel_stage, created_at')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId);
+
+      if (chartStartDate) {
+        conversationsQuery = conversationsQuery.gte('created_at', chartStartDate.toISOString());
+      }
+      if (chartEndDate) {
+        conversationsQuery = conversationsQuery.lte('created_at', chartEndDate.toISOString());
+      }
+
+      const { data: conversationsData } = await conversationsQuery;
 
       // Calculate daily counts
       const dailyData: DailyData[] = days.map(day => {

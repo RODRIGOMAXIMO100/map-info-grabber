@@ -37,13 +37,21 @@ export default function AIMetricsCard({ funnelId, startDate, endDate, periodDays
       const queryEndDate = endDate || new Date();
       const queryStartDate = startDate || new Date(queryEndDate.getTime() - periodDays * 24 * 60 * 60 * 1000);
 
-      // Get conversations from this funnel
-      const { data: conversations } = await supabase
+      // Get conversations from this funnel (filtered by created_at)
+      let conversationsQuery = supabase
         .from('whatsapp_conversations')
         .select('id')
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId);
 
+      if (queryStartDate) {
+        conversationsQuery = conversationsQuery.gte('created_at', queryStartDate.toISOString());
+      }
+      if (endDate) {
+        conversationsQuery = conversationsQuery.lte('created_at', endDate.toISOString());
+      }
+
+      const { data: conversations } = await conversationsQuery;
       const conversationIds = (conversations || []).map(c => c.id);
 
       if (conversationIds.length === 0) {
