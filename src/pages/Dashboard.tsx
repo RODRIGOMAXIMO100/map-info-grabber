@@ -5,6 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format, differenceInDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 import { 
   Users, 
@@ -15,7 +21,8 @@ import {
   Bot,
   Clock,
   Calendar,
-  DollarSign
+  DollarSign,
+  CalendarRange
 } from "lucide-react";
 import InstanceMonitor from "@/components/InstanceMonitor";
 import { 
@@ -30,7 +37,7 @@ import {
 } from "@/components/dashboard";
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
 
-type DateFilter = 'today' | '7days' | '30days' | 'all';
+type DateFilter = 'today' | '7days' | '30days' | 'all' | 'custom';
 
 interface StageCount {
   id: string;
@@ -48,32 +55,12 @@ interface RecentHandoff {
   time: string;
 }
 
-const getStartDate = (filter: DateFilter): Date | null => {
-  const now = new Date();
-  switch (filter) {
-    case 'today':
-      now.setHours(0, 0, 0, 0);
-      return now;
-    case '7days':
-      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    case '30days':
-      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    default:
-      return null;
-  }
-};
-
-const getPeriodDays = (filter: DateFilter): number => {
-  switch (filter) {
-    case 'today': return 1;
-    case '7days': return 7;
-    case '30days': return 30;
-    default: return 30;
-  }
-};
+// Moved to component to access custom dates
 
 export default function Dashboard() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('30days');
+  const [customStartDate, setCustomStartDate] = useState<Date | undefined>();
+  const [customEndDate, setCustomEndDate] = useState<Date | undefined>();
   const [stageCounts, setStageCounts] = useState<StageCount[]>([]);
   const [recentHandoffs, setRecentHandoffs] = useState<RecentHandoff[]>([]);
   const [aiActive, setAiActive] = useState(false);
@@ -88,6 +75,47 @@ export default function Dashboard() {
     aiResponses: 0,
     pipelineValue: 0,
   });
+
+  // Helper functions for date handling
+  const getStartDate = (filter: DateFilter): Date | null => {
+    if (filter === 'custom') {
+      return customStartDate || null;
+    }
+    const now = new Date();
+    switch (filter) {
+      case 'today':
+        now.setHours(0, 0, 0, 0);
+        return now;
+      case '7days':
+        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      case '30days':
+        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      default:
+        return null;
+    }
+  };
+
+  const getEndDate = (): Date | null => {
+    if (dateFilter === 'custom' && customEndDate) {
+      // Set to end of day
+      const endOfDay = new Date(customEndDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      return endOfDay;
+    }
+    return null;
+  };
+
+  const getPeriodDays = (filter: DateFilter): number => {
+    if (filter === 'custom' && customStartDate && customEndDate) {
+      return Math.max(1, differenceInDays(customEndDate, customStartDate) + 1);
+    }
+    switch (filter) {
+      case 'today': return 1;
+      case '7days': return 7;
+      case '30days': return 30;
+      default: return 30;
+    }
+  };
 
   // Carregar funis na inicialização
   useEffect(() => {
@@ -104,9 +132,16 @@ export default function Dashboard() {
   // Carregar dados do dashboard quando estágios ou filtro mudarem
   useEffect(() => {
     if (stages.length > 0 && selectedFunnelId) {
-      loadDashboardData();
+      // Para filtro custom, só recarregar se tiver datas definidas
+      if (dateFilter === 'custom') {
+        if (customStartDate && customEndDate) {
+          loadDashboardData();
+        }
+      } else {
+        loadDashboardData();
+      }
     }
-  }, [stages, dateFilter, selectedFunnelId]);
+  }, [stages, dateFilter, selectedFunnelId, customStartDate, customEndDate]);
 
   // Configurar realtime
   useEffect(() => {
@@ -177,6 +212,12 @@ export default function Dashboard() {
       // Filtrar por atividade recente (última mensagem ou movimentação)
       if (startDate) {
         conversationsQuery = conversationsQuery.gte('last_message_at', startDate.toISOString());
+      }
+      
+      // Aplicar data final se for período personalizado
+      const endDate = getEndDate();
+      if (endDate) {
+        conversationsQuery = conversationsQuery.lte('last_message_at', endDate.toISOString());
       }
 
       const { data: conversations } = await conversationsQuery;
@@ -347,43 +388,118 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Pipeline de leads do CRM</p>
-        </div>
-        <div className="flex items-center gap-4">
-          {/* Seletor de Funil */}
-          {funnels.length > 1 && (
-            <Select value={selectedFunnelId || ''} onValueChange={setSelectedFunnelId}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Selecione o funil" />
-              </SelectTrigger>
-              <SelectContent>
-                {funnels.map(funnel => (
-                  <SelectItem key={funnel.id} value={funnel.id}>
-                    {funnel.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-            <ToggleGroup 
-              type="single" 
-              value={dateFilter} 
-              onValueChange={(value) => value && setDateFilter(value as DateFilter)}
-              className="bg-muted rounded-lg p-1"
-            >
-              <ToggleGroupItem value="today" className="text-xs px-3">Hoje</ToggleGroupItem>
-              <ToggleGroupItem value="7days" className="text-xs px-3">7 dias</ToggleGroupItem>
-              <ToggleGroupItem value="30days" className="text-xs px-3">30 dias</ToggleGroupItem>
-              <ToggleGroupItem value="all" className="text-xs px-3">Tudo</ToggleGroupItem>
-            </ToggleGroup>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-muted-foreground">Pipeline de leads do CRM</p>
+          </div>
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Seletor de Funil */}
+            {funnels.length > 1 && (
+              <Select value={selectedFunnelId || ''} onValueChange={setSelectedFunnelId}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Selecione o funil" />
+                </SelectTrigger>
+                <SelectContent>
+                  {funnels.map(funnel => (
+                    <SelectItem key={funnel.id} value={funnel.id}>
+                      {funnel.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <ToggleGroup 
+                type="single" 
+                value={dateFilter} 
+                onValueChange={(value) => value && setDateFilter(value as DateFilter)}
+                className="bg-muted rounded-lg p-1"
+              >
+                <ToggleGroupItem value="today" className="text-xs px-3">Hoje</ToggleGroupItem>
+                <ToggleGroupItem value="7days" className="text-xs px-3">7 dias</ToggleGroupItem>
+                <ToggleGroupItem value="30days" className="text-xs px-3">30 dias</ToggleGroupItem>
+                <ToggleGroupItem value="all" className="text-xs px-3">Tudo</ToggleGroupItem>
+                <ToggleGroupItem value="custom" className="text-xs px-3 flex items-center gap-1">
+                  <CalendarRange className="h-3 w-3" />
+                  Personalizado
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
           </div>
         </div>
+
+        {/* Custom Date Range Picker */}
+        {dateFilter === 'custom' && (
+          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
+            <span className="text-sm text-muted-foreground">Período:</span>
+            
+            {/* Start Date */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-[160px] justify-start text-left font-normal",
+                    !customStartDate && "text-muted-foreground"
+                  )}
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  {customStartDate ? format(customStartDate, "dd/MM/yyyy", { locale: ptBR }) : "Data início"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={customStartDate}
+                  onSelect={setCustomStartDate}
+                  disabled={(date) => date > new Date() || (customEndDate ? date > customEndDate : false)}
+                  initialFocus
+                  className="pointer-events-auto"
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
+
+            <span className="text-sm text-muted-foreground">até</span>
+
+            {/* End Date */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-[160px] justify-start text-left font-normal",
+                    !customEndDate && "text-muted-foreground"
+                  )}
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  {customEndDate ? format(customEndDate, "dd/MM/yyyy", { locale: ptBR }) : "Data fim"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={customEndDate}
+                  onSelect={setCustomEndDate}
+                  disabled={(date) => date > new Date() || (customStartDate ? date < customStartDate : false)}
+                  initialFocus
+                  className="pointer-events-auto"
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {customStartDate && customEndDate && (
+              <Badge variant="secondary" className="ml-2">
+                {getPeriodDays(dateFilter)} dias
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Funnel Velocity Card */}
