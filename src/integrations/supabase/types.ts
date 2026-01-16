@@ -366,6 +366,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_activity_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -889,6 +913,7 @@ export type Database = {
           media_url: string | null
           message_id_whatsapp: string | null
           message_type: string
+          sent_by_user_id: string | null
           status: string
         }
         Insert: {
@@ -901,6 +926,7 @@ export type Database = {
           media_url?: string | null
           message_id_whatsapp?: string | null
           message_type?: string
+          sent_by_user_id?: string | null
           status?: string
         }
         Update: {
@@ -913,6 +939,7 @@ export type Database = {
           media_url?: string | null
           message_id_whatsapp?: string | null
           message_type?: string
+          sent_by_user_id?: string | null
           status?: string
         }
         Relationships: [
@@ -922,6 +949,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "whatsapp_conversations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_sent_by_user_id_fkey"
+            columns: ["sent_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
           },
         ]
       }

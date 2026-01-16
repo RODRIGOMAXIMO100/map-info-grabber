@@ -95,6 +95,8 @@ export default function TeamPerformance() {
     try {
       const startDate = startOfDay(dateRange.from).toISOString();
       const endDate = endOfDay(dateRange.to).toISOString();
+      const todayStart = startOfDay(new Date()).toISOString();
+      const todayEnd = endOfDay(new Date()).toISOString();
 
       // Buscar todos os vendedores (SDR e Closer)
       const { data: users } = await supabase
@@ -118,7 +120,7 @@ export default function TeamPerformance() {
       // Query base para conversas
       let conversationsQuery = supabase
         .from('whatsapp_conversations')
-        .select('id, assigned_to, converted_at, closed_value, funnel_stage')
+        .select('id, assigned_to, converted_at, closed_value, funnel_stage, last_message_at')
         .eq('is_crm_lead', true)
         .not('assigned_to', 'is', null);
 
@@ -131,10 +133,18 @@ export default function TeamPerformance() {
       // Query para mensagens enviadas no período
       const { data: messages } = await supabase
         .from('whatsapp_messages')
-        .select('conversation_id')
+        .select('conversation_id, created_at, sent_by_user_id')
         .eq('direction', 'out')
         .gte('created_at', startDate)
         .lte('created_at', endDate);
+
+      // Query para mensagens enviadas HOJE (para atividade diária)
+      const { data: todayMessages } = await supabase
+        .from('whatsapp_messages')
+        .select('conversation_id, created_at, sent_by_user_id')
+        .eq('direction', 'out')
+        .gte('created_at', todayStart)
+        .lte('created_at', todayEnd);
 
       // Mapear conversation_id para assigned_to
       const conversationToAssigned = new Map(
@@ -144,9 +154,29 @@ export default function TeamPerformance() {
       // Contar mensagens por vendedor
       const messagesByVendor: Record<string, number> = {};
       messages?.forEach(m => {
-        const assignedTo = conversationToAssigned.get(m.conversation_id);
-        if (assignedTo) {
-          messagesByVendor[assignedTo] = (messagesByVendor[assignedTo] || 0) + 1;
+        // Se tem sent_by_user_id, usa ele; senão, usa assigned_to da conversa
+        const userId = m.sent_by_user_id || conversationToAssigned.get(m.conversation_id);
+        if (userId) {
+          messagesByVendor[userId] = (messagesByVendor[userId] || 0) + 1;
+        }
+      });
+
+      // Métricas de atividade HOJE
+      const todayActivityByVendor: Record<string, { count: number; first: string | null; last: string | null }> = {};
+      todayMessages?.forEach(m => {
+        const userId = m.sent_by_user_id || conversationToAssigned.get(m.conversation_id);
+        if (userId) {
+          if (!todayActivityByVendor[userId]) {
+            todayActivityByVendor[userId] = { count: 0, first: null, last: null };
+          }
+          todayActivityByVendor[userId].count++;
+          const msgTime = m.created_at;
+          if (!todayActivityByVendor[userId].first || msgTime < todayActivityByVendor[userId].first!) {
+            todayActivityByVendor[userId].first = msgTime;
+          }
+          if (!todayActivityByVendor[userId].last || msgTime > todayActivityByVendor[userId].last!) {
+            todayActivityByVendor[userId].last = msgTime;
+          }
         }
       });
 
@@ -162,6 +192,18 @@ export default function TeamPerformance() {
       movements?.forEach(m => {
         if (m.changed_by) {
           movementsByVendor[m.changed_by] = (movementsByVendor[m.changed_by] || 0) + 1;
+        }
+      });
+
+      // Calcular leads sem contato há 24h+ por vendedor
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const leadsWithoutContactByVendor: Record<string, number> = {};
+      conversations?.forEach(c => {
+        if (c.assigned_to && !c.converted_at) {
+          // Lead ativo sem conversão
+          if (!c.last_message_at || c.last_message_at < twentyFourHoursAgo) {
+            leadsWithoutContactByVendor[c.assigned_to] = (leadsWithoutContactByVendor[c.assigned_to] || 0) + 1;
+          }
         }
       });
 
@@ -192,6 +234,9 @@ export default function TeamPerformance() {
         // Ticket médio
         const avgTicket = leadsConverted > 0 ? closedValue / leadsConverted : 0;
 
+        // Atividade de hoje
+        const todayActivity = todayActivityByVendor[user.user_id] || { count: 0, first: null, last: null };
+
         return {
           user_id: user.user_id,
           full_name: user.full_name,
@@ -204,11 +249,15 @@ export default function TeamPerformance() {
           avg_ticket: avgTicket,
           messages_sent: messagesByVendor[user.user_id] || 0,
           funnel_movements: movementsByVendor[user.user_id] || 0,
+          messages_today: todayActivity.count,
+          first_activity_today: todayActivity.first,
+          last_activity_today: todayActivity.last,
+          leads_without_contact: leadsWithoutContactByVendor[user.user_id] || 0,
         };
       });
 
-      // Ordenar por conversões
-      vendorMetrics.sort((a, b) => b.leads_converted - a.leads_converted);
+      // Ordenar por mensagens hoje (atividade recente)
+      vendorMetrics.sort((a, b) => b.messages_today - a.messages_today);
       setMetrics(vendorMetrics);
     } catch (error) {
       console.error('Error loading metrics:', error);
