@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +72,11 @@ export default function Dashboard() {
     aiResponses: 0,
     pipelineValue: 0,
   });
+
+  // Refs para detectar duplo-clique no calendário
+  const lastClickedDayRef = useRef<Date | null>(null);
+  const lastClickTsRef = useRef<number>(0);
+  const ignoreNextSelectRef = useRef<boolean>(false);
 
   // Helper functions for date handling
   const getStartDate = (): Date | null => {
@@ -493,16 +498,35 @@ export default function Dashboard() {
                   <CalendarComponent
                     mode="range"
                     selected={dateRange}
+                    onDayClick={(day) => {
+                      // Detectar duplo-clique no mesmo dia
+                      const now = Date.now();
+                      const isSameDay = lastClickedDayRef.current && 
+                        day.getFullYear() === lastClickedDayRef.current.getFullYear() &&
+                        day.getMonth() === lastClickedDayRef.current.getMonth() &&
+                        day.getDate() === lastClickedDayRef.current.getDate();
+                      
+                      if (isSameDay && (now - lastClickTsRef.current) < 500) {
+                        // Duplo-clique detectado - forçar dia único
+                        setDateRange({ from: day, to: day });
+                        ignoreNextSelectRef.current = true;
+                        lastClickedDayRef.current = null;
+                        lastClickTsRef.current = 0;
+                      } else {
+                        // Primeiro clique - guardar referência
+                        lastClickedDayRef.current = day;
+                        lastClickTsRef.current = now;
+                      }
+                    }}
                     onSelect={(range) => {
+                      // Se acabamos de tratar um duplo-clique, ignorar este onSelect
+                      if (ignoreNextSelectRef.current) {
+                        ignoreNextSelectRef.current = false;
+                        return;
+                      }
+                      
                       // Ignorar se range for undefined (navegação entre meses)
                       if (!range) return;
-                      
-                      // Helper para comparar apenas ano/mês/dia (evita problemas com horários)
-                      const isSameDay = (date1: Date, date2: Date): boolean => {
-                        return date1.getFullYear() === date2.getFullYear() &&
-                               date1.getMonth() === date2.getMonth() &&
-                               date1.getDate() === date2.getDate();
-                      };
                       
                       // Se tem from e to, usar normalmente (seleção de intervalo completa)
                       if (range.from && range.to) {
@@ -510,17 +534,8 @@ export default function Dashboard() {
                         return;
                       }
                       
-                      // Se só tem from (clique único)
+                      // Se só tem from - primeiro clique de um novo range
                       if (range.from && !range.to) {
-                        // Verifica se está clicando no mesmo dia que já está como from
-                        // (para fixar como dia único no segundo clique)
-                        if (dateRange.from && !dateRange.to && isSameDay(range.from, dateRange.from)) {
-                          // Segundo clique no mesmo dia = fixar como período de 1 dia
-                          setDateRange({ from: range.from, to: range.from });
-                          return;
-                        }
-                        
-                        // Primeiro clique ou clique em dia diferente - definir novo from
                         setDateRange({ from: range.from, to: undefined });
                       }
                     }}
