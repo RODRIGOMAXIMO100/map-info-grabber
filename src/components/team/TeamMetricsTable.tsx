@@ -33,6 +33,7 @@ export interface VendorMetrics {
   // Novas métricas
   conversations_today: number;
   active_time_minutes: number;
+  sessions_count: number;
 }
 
 interface TeamMetricsTableProps {
@@ -101,14 +102,13 @@ export default function TeamMetricsTable({ data, onSelectVendor, loading }: Team
     return format(new Date(dateStr), 'HH:mm');
   };
 
-  const formatActiveTime = (minutes: number) => {
+  const formatActiveTime = (minutes: number, sessions: number) => {
     if (minutes === 0) return '-';
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
-    if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    }
-    return `${mins}m`;
+    const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+    const sessionLabel = sessions === 1 ? 'sessão' : 'sessões';
+    return `${timeStr} (${sessions} ${sessionLabel})`;
   };
 
   const SortableHeader = ({ label, sortKeyName }: { label: string; sortKeyName: SortKey }) => (
@@ -216,7 +216,7 @@ export default function TeamMetricsTable({ data, onSelectVendor, loading }: Team
                     vendor.active_time_minutes > 0 && vendor.active_time_minutes <= 240 && "text-yellow-600",
                     vendor.active_time_minutes === 0 && "text-muted-foreground"
                   )}>
-                    {formatActiveTime(vendor.active_time_minutes)}
+                    {formatActiveTime(vendor.active_time_minutes, vendor.sessions_count)}
                   </span>
                 </TableCell>
                 <TableCell className="text-center">
