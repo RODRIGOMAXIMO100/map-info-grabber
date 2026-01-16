@@ -21,7 +21,10 @@ import {
   Bot,
   Clock,
   DollarSign,
-  CalendarRange
+  CalendarRange,
+  Target,
+  Activity,
+  Send
 } from "lucide-react";
 import InstanceMonitor from "@/components/InstanceMonitor";
 import { 
@@ -33,7 +36,8 @@ import {
   FunnelVelocity,
   ActivityHeatmap,
   StageTimeMetrics,
-  SalesFunnelMetrics
+  SalesFunnelMetrics,
+  SectionHeader
 } from "@/components/dashboard";
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
 
@@ -561,6 +565,13 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* =============== SEÇÃO: FUNIL DE VENDAS =============== */}
+      <SectionHeader 
+        icon={Target}
+        title="Funil de Vendas"
+        description="Métricas de conversão do funil selecionado"
+      />
+
       {/* Sales Funnel Metrics - Disparos → Oportunidades → Fechamentos */}
       {selectedFunnelId && (
         <SalesFunnelMetrics 
@@ -578,6 +589,13 @@ export default function Dashboard() {
           conversionRate={overallConversionRate}
         />
       )}
+
+      {/* =============== SEÇÃO: MÉTRICAS DE LEADS =============== */}
+      <SectionHeader 
+        icon={Users}
+        title="Métricas de Leads"
+        description="Análise de leads criados no período selecionado"
+      />
 
       {/* Cards de Métricas Resumo */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
@@ -649,6 +667,13 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* =============== SEÇÃO: ATIVIDADE & COMUNICAÇÃO =============== */}
+      <SectionHeader 
+        icon={MessageSquare}
+        title="Atividade & Comunicação"
+        description="Mensagens e interações no período"
+      />
 
       {/* Evolution Chart - Full Width */}
       {selectedFunnelId && (
@@ -748,6 +773,13 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* =============== SEÇÃO: ALERTAS & AÇÕES =============== */}
+      <SectionHeader 
+        icon={AlertCircle}
+        title="Alertas & Ações"
+        description="Itens que precisam de atenção"
+      />
+
       {/* Row 3: Alertas + Handoffs + AI Metrics */}
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Leads Críticos */}
@@ -810,6 +842,13 @@ export default function Dashboard() {
           />
         )}
       </div>
+
+      {/* =============== SEÇÃO: MONITORAMENTO =============== */}
+      <SectionHeader 
+        icon={Activity}
+        title="Monitoramento"
+        description="Atividades em tempo real e distribuição de envios"
+      />
 
       {/* Row 4: Movimentações + Heatmap */}
       <div className="grid gap-4 lg:grid-cols-3">
