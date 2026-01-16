@@ -8,3 +8,5 @@ export { default as ActivityHeatmap } from './ActivityHeatmap';
 export { default as StageTimeMetrics } from './StageTimeMetrics';
 export { default as SalesFunnelMetrics } from './SalesFunnelMetrics';
 export { SectionHeader } from './SectionHeader';
+export { default as HeroMetrics } from './HeroMetrics';
+export { default as ActionAlerts } from './ActionAlerts';
