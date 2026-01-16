@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format, differenceInDays, subDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -15,15 +16,12 @@ import type { DateRange } from "react-day-picker";
 import { 
   Users, 
   UserCheck, 
-  MessageSquare, 
-  AlertCircle, 
-  TrendingUp,
-  Bot,
-  Clock,
-  DollarSign,
   CalendarRange,
-  Target,
-  Activity,
+  Bot,
+  BarChart3,
+  Settings2,
+  Plus,
+  RefreshCw,
   Send
 } from "lucide-react";
 import InstanceMonitor from "@/components/InstanceMonitor";
@@ -31,15 +29,15 @@ import {
   FunnelMovementFeed,
   FunnelEvolutionChart,
   PeriodComparison,
-  CriticalLeadsAlert,
   AIMetricsCard,
-  FunnelVelocity,
   ActivityHeatmap,
   StageTimeMetrics,
   SalesFunnelMetrics,
-  SectionHeader
+  HeroMetrics,
+  ActionAlerts
 } from "@/components/dashboard";
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
+import { useNavigate } from "react-router-dom";
 
 interface StageCount {
   id: string;
@@ -49,15 +47,8 @@ interface StageCount {
   is_ai_controlled: boolean;
 }
 
-interface RecentHandoff {
-  id: string;
-  name: string | null;
-  phone: string;
-  reason: string | null;
-  time: string;
-}
-
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date()
@@ -66,19 +57,11 @@ export default function Dashboard() {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>('30days');
   const [stageCounts, setStageCounts] = useState<StageCount[]>([]);
-  const [recentHandoffs, setRecentHandoffs] = useState<RecentHandoff[]>([]);
-  const [aiActive, setAiActive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [funnels, setFunnels] = useState<CRMFunnel[]>([]);
   const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(null);
   const [stages, setStages] = useState<CRMFunnelStage[]>([]);
-  const [metrics, setMetrics] = useState({
-    totalLeads: 0,
-    todayMessages: 0,
-    broadcastsSent: 0,
-    aiResponses: 0,
-    pipelineValue: 0,
-  });
+  const [activeTab, setActiveTab] = useState<'vendas' | 'tecnico'>('vendas');
 
   // Helper functions for date handling
   const getStartDate = (): Date | null => {
@@ -92,7 +75,6 @@ export default function Dashboard() {
     if (dateRange.to) {
       return endOfDay(dateRange.to);
     }
-    // Fallback: se from existe mas to não, usar from como end também
     if (dateRange.from) {
       return endOfDay(dateRange.from);
     }
@@ -140,26 +122,26 @@ export default function Dashboard() {
     setIsDatePickerOpen(false);
   };
 
-  // Carregar funis na inicialização
+  // Load funnels on init
   useEffect(() => {
     loadFunnels();
   }, []);
 
-  // Carregar estágios quando o funil for selecionado
+  // Load stages when funnel selected
   useEffect(() => {
     if (selectedFunnelId) {
       loadStages(selectedFunnelId);
     }
   }, [selectedFunnelId]);
 
-  // Carregar dados do dashboard quando estágios ou filtro mudarem
+  // Load dashboard data when stages or filter change
   useEffect(() => {
     if (stages.length > 0 && selectedFunnelId && dateRange.from) {
       loadDashboardData();
     }
   }, [stages, selectedFunnelId, dateRangeKey]);
 
-  // Configurar realtime
+  // Setup realtime
   useEffect(() => {
     const channel = supabase
       .channel('dashboard-realtime')
@@ -218,7 +200,6 @@ export default function Dashboard() {
       const startDate = getStartDate();
       const endDateValue = getEndDate();
 
-      // Buscar conversas CRM com filtro de período e funil
       let conversationsQuery = supabase
         .from('whatsapp_conversations')
         .select('*')
@@ -226,12 +207,9 @@ export default function Dashboard() {
         .eq('crm_funnel_id', selectedFunnelId)
         .order('created_at', { ascending: false });
       
-      // Filtrar por data de criação do lead no período
       if (startDate) {
         conversationsQuery = conversationsQuery.gte('created_at', startDate.toISOString());
       }
-      
-      // Aplicar data final
       if (endDateValue) {
         conversationsQuery = conversationsQuery.lte('created_at', endDateValue.toISOString());
       }
@@ -239,13 +217,12 @@ export default function Dashboard() {
       const { data: conversations } = await conversationsQuery;
       const filteredConversations = conversations || [];
 
-      // Contagens por estágio usando IDs do banco (UUIDs)
+      // Count by stage
       const counts: Record<string, number> = {};
       stages.forEach(stage => {
         counts[stage.id] = 0;
       });
 
-      let pipelineValue = 0;
       let unclassifiedCount = 0;
       
       filteredConversations.forEach(conv => {
@@ -255,12 +232,8 @@ export default function Dashboard() {
         } else {
           unclassifiedCount++;
         }
-        if (conv.estimated_value) {
-          pipelineValue += Number(conv.estimated_value);
-        }
       });
 
-      // Mapear estágios com contagens
       const stageCountsData: StageCount[] = stages.map(stage => ({
         id: stage.id,
         name: stage.name,
@@ -269,7 +242,6 @@ export default function Dashboard() {
         is_ai_controlled: stage.is_ai_controlled || false,
       }));
 
-      // Adicionar não classificados se houver
       if (unclassifiedCount > 0) {
         stageCountsData.unshift({
           id: 'unclassified',
@@ -280,86 +252,7 @@ export default function Dashboard() {
         });
       }
 
-      // Encontrar estágio de handoff (pelo nome ou por is_ai_controlled = false após estágios de IA)
-      const handoffStage = stages.find(s => 
-        s.name.toLowerCase().includes('handoff') || 
-        s.name.toLowerCase().includes('atendimento')
-      );
-
-      // Handoffs recentes
-      const handoffs = handoffStage 
-        ? filteredConversations
-            .filter(c => c.funnel_stage === handoffStage.id)
-            .slice(0, 5)
-            .map(c => ({
-              id: c.id,
-              name: c.name,
-              phone: c.phone,
-              reason: c.ai_handoff_reason,
-              time: c.last_message_at ? new Date(c.last_message_at).toLocaleString('pt-BR') : '',
-            }))
-        : [];
-
-      // Mensagens no período selecionado
-      let messagesQuery = supabase
-        .from('whatsapp_messages')
-        .select('*', { count: 'exact', head: true });
-      
-      if (startDate) {
-        messagesQuery = messagesQuery.gte('created_at', startDate.toISOString());
-      }
-      if (endDateValue) {
-        messagesQuery = messagesQuery.lte('created_at', endDateValue.toISOString());
-      }
-      
-      const { count: periodMessagesCount } = await messagesQuery;
-
-      // Broadcasts enviados (filtrado pelo período selecionado)
-      let broadcastsQuery = supabase
-        .from('whatsapp_queue')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'sent');
-      
-      if (startDate) {
-        broadcastsQuery = broadcastsQuery.gte('created_at', startDate.toISOString());
-      }
-      if (endDateValue) {
-        broadcastsQuery = broadcastsQuery.lte('created_at', endDateValue.toISOString());
-      }
-      
-      const { count: broadcastsSentCount } = await broadcastsQuery;
-
-      // Respostas da IA no período
-      let aiLogsQuery = supabase
-        .from('whatsapp_ai_logs')
-        .select('*', { count: 'exact', head: true });
-      
-      if (startDate) {
-        aiLogsQuery = aiLogsQuery.gte('created_at', startDate.toISOString());
-      }
-      if (endDateValue) {
-        aiLogsQuery = aiLogsQuery.lte('created_at', endDateValue.toISOString());
-      }
-      
-      const { count: aiResponsesCount } = await aiLogsQuery;
-
-      // Status da IA
-      const { data: aiConfig } = await supabase
-        .from('whatsapp_ai_config')
-        .select('is_active')
-        .limit(1)
-        .maybeSingle();
-
       setStageCounts(stageCountsData);
-      setRecentHandoffs(handoffs);
-      setAiActive(aiConfig?.is_active || false);
-      setMetrics({
-        totalLeads: filteredConversations.length,
-        todayMessages: periodMessagesCount || 0,
-        broadcastsSent: broadcastsSentCount || 0,
-        aiResponses: aiResponsesCount || 0,
-        pipelineValue,
-      });
     } catch (error) {
       console.error('Error loading dashboard:', error);
     } finally {
@@ -367,29 +260,11 @@ export default function Dashboard() {
     }
   };
 
-  // Taxa de avanço: leads que saíram do primeiro estágio
-  const advancementRate = useMemo(() => {
-    if (stageCounts.length === 0) return 0;
-    // Pegar o primeiro estágio real (não o "Não Classificados")
-    const firstStage = stageCounts.find(s => s.id !== 'unclassified');
-    const firstStageCount = firstStage?.count || 0;
-    const total = metrics.totalLeads;
-    if (total === 0) return 0;
-    return Math.round(((total - firstStageCount) / total) * 100);
-  }, [stageCounts, metrics.totalLeads]);
+  const handleRefresh = () => {
+    setDateRangeKey(prev => prev + 1);
+  };
 
-  // Taxa de conversão geral (Primeiro estágio → Último estágio)
-  const overallConversionRate = useMemo(() => {
-    if (stageCounts.length === 0) return 0;
-    const realStages = stageCounts.filter(s => s.id !== 'unclassified');
-    if (realStages.length < 2) return 0;
-    const firstStageCount = realStages[0]?.count || 0;
-    const lastStageCount = realStages[realStages.length - 1]?.count || 0;
-    if (firstStageCount === 0) return 0;
-    return Math.round((lastStageCount / firstStageCount) * 100);
-  }, [stageCounts]);
-
-  // Maior contagem para escala do funil
+  // Max count for funnel scale
   const maxCount = useMemo(() => {
     return Math.max(...stageCounts.map(s => s.count), 1);
   }, [stageCounts]);
@@ -422,464 +297,359 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with Quick Actions */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-            <p className="text-muted-foreground">Pipeline de leads do CRM</p>
+            <p className="text-muted-foreground">
+              {funnels.find(f => f.id === selectedFunnelId)?.name || 'Pipeline de vendas'}
+            </p>
           </div>
-          <div className="flex items-center gap-4 flex-wrap">
-            {/* Seletor de Funil */}
-            {funnels.length > 1 && (
-              <Select value={selectedFunnelId || ''} onValueChange={setSelectedFunnelId}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Selecione o funil" />
-                </SelectTrigger>
-                <SelectContent>
-                  {funnels.map(funnel => (
-                    <SelectItem key={funnel.id} value={funnel.id}>
-                      {funnel.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            
-            {/* Unified Date Range Picker */}
-            <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "min-w-[200px] justify-start text-left font-normal",
-                    !dateRange.from && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarRange className="mr-2 h-4 w-4" />
-                  {getDateRangeDisplay()}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <div className="flex">
-                  {/* Presets */}
-                  <div className="flex flex-col border-r p-2 gap-1 min-w-[120px]">
-                    <Button 
-                      variant={activePreset === 'today' ? 'secondary' : 'ghost'} 
-                      size="sm" 
-                      className="justify-start"
-                      onClick={() => applyPreset('today')}
-                    >
-                      Hoje
-                    </Button>
-                    <Button 
-                      variant={activePreset === 'yesterday' ? 'secondary' : 'ghost'} 
-                      size="sm" 
-                      className="justify-start"
-                      onClick={() => applyPreset('yesterday')}
-                    >
-                      Ontem
-                    </Button>
-                    <Button 
-                      variant={activePreset === '7days' ? 'secondary' : 'ghost'} 
-                      size="sm" 
-                      className="justify-start"
-                      onClick={() => applyPreset('7days')}
-                    >
-                      Últimos 7 dias
-                    </Button>
-                    <Button 
-                      variant={activePreset === '30days' ? 'secondary' : 'ghost'} 
-                      size="sm" 
-                      className="justify-start"
-                      onClick={() => applyPreset('30days')}
-                    >
-                      Últimos 30 dias
-                    </Button>
-                    <Button 
-                      variant={activePreset === 'all' ? 'secondary' : 'ghost'} 
-                      size="sm" 
-                      className="justify-start"
-                      onClick={() => applyPreset('all')}
-                    >
-                      Todo período
-                    </Button>
-                  </div>
-                  
-                  {/* Calendar */}
-                  <CalendarComponent
-                    mode="range"
-                    selected={dateRange}
-                    onSelect={(range) => {
-                      if (!range) return;
-                      
-                      // Limpar preset quando usuário seleciona manualmente
-                      setActivePreset(null);
-                      setDateRange(range);
-                      
-                      // Fechar popover e atualizar quando range completo
-                      if (range.from && range.to) {
-                        setDateRangeKey(prev => prev + 1);
-                        setIsDatePickerOpen(false);
-                      }
-                    }}
-                    numberOfMonths={2}
-                    disabled={(date) => date > new Date()}
-                    locale={ptBR}
-                    className="pointer-events-auto"
-                  />
+          
+          {/* Quick Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate('/crm')}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Novo Lead
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate('/broadcast')}
+            >
+              <Send className="h-4 w-4 mr-1" />
+              Disparo
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={handleRefresh}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Filters Row */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Funnel Selector */}
+          {funnels.length > 1 && (
+            <Select value={selectedFunnelId || ''} onValueChange={setSelectedFunnelId}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Selecione o funil" />
+              </SelectTrigger>
+              <SelectContent>
+                {funnels.map(funnel => (
+                  <SelectItem key={funnel.id} value={funnel.id}>
+                    {funnel.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
+          {/* Date Range Picker */}
+          <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "min-w-[200px] justify-start text-left font-normal",
+                  !dateRange.from && "text-muted-foreground"
+                )}
+              >
+                <CalendarRange className="mr-2 h-4 w-4" />
+                {getDateRangeDisplay()}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <div className="flex">
+                {/* Presets */}
+                <div className="flex flex-col border-r p-2 gap-1 min-w-[120px]">
+                  <Button 
+                    variant={activePreset === 'today' ? 'secondary' : 'ghost'} 
+                    size="sm" 
+                    className="justify-start"
+                    onClick={() => applyPreset('today')}
+                  >
+                    Hoje
+                  </Button>
+                  <Button 
+                    variant={activePreset === 'yesterday' ? 'secondary' : 'ghost'} 
+                    size="sm" 
+                    className="justify-start"
+                    onClick={() => applyPreset('yesterday')}
+                  >
+                    Ontem
+                  </Button>
+                  <Button 
+                    variant={activePreset === '7days' ? 'secondary' : 'ghost'} 
+                    size="sm" 
+                    className="justify-start"
+                    onClick={() => applyPreset('7days')}
+                  >
+                    Últimos 7 dias
+                  </Button>
+                  <Button 
+                    variant={activePreset === '30days' ? 'secondary' : 'ghost'} 
+                    size="sm" 
+                    className="justify-start"
+                    onClick={() => applyPreset('30days')}
+                  >
+                    Últimos 30 dias
+                  </Button>
+                  <Button 
+                    variant={activePreset === 'all' ? 'secondary' : 'ghost'} 
+                    size="sm" 
+                    className="justify-start"
+                    onClick={() => applyPreset('all')}
+                  >
+                    Todo período
+                  </Button>
                 </div>
                 
-                {/* Footer with actions */}
-                <div className="border-t p-2 flex justify-between items-center">
-                  {dateRange.from && dateRange.to && (
-                    <Badge variant="secondary">
-                      {getPeriodDays()} dias selecionados
-                    </Badge>
-                  )}
-                  <div className="flex gap-2 ml-auto">
+                {/* Calendar */}
+                <CalendarComponent
+                  mode="range"
+                  selected={dateRange}
+                  onSelect={(range) => {
+                    if (!range) return;
+                    setActivePreset(null);
+                    setDateRange(range);
+                    if (range.from && range.to) {
+                      setDateRangeKey(prev => prev + 1);
+                      setIsDatePickerOpen(false);
+                    }
+                  }}
+                  numberOfMonths={2}
+                  disabled={(date) => date > new Date()}
+                  locale={ptBR}
+                  className="pointer-events-auto"
+                />
+              </div>
+              
+              {/* Footer */}
+              <div className="border-t p-2 flex justify-between items-center">
+                {dateRange.from && dateRange.to && (
+                  <Badge variant="secondary">
+                    {getPeriodDays()} dias selecionados
+                  </Badge>
+                )}
+                <div className="flex gap-2 ml-auto">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setIsDatePickerOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                  {dateRange.from && !dateRange.to && (
                     <Button 
-                      variant="ghost" 
                       size="sm"
-                      onClick={() => setIsDatePickerOpen(false)}
+                      onClick={() => {
+                        if (dateRange.from) {
+                          setDateRange({ from: dateRange.from, to: dateRange.from });
+                          setDateRangeKey(prev => prev + 1);
+                          setIsDatePickerOpen(false);
+                        }
+                      }}
                     >
-                      Fechar
+                      Usar dia único
                     </Button>
-                    {dateRange.from && !dateRange.to && (
-                      <Button 
-                        size="sm"
-                        onClick={() => {
-                          if (dateRange.from) {
-                            setDateRange({ from: dateRange.from, to: dateRange.from });
-                            setDateRangeKey(prev => prev + 1);
-                            setIsDatePickerOpen(false);
-                          }
-                        }}
-                      >
-                        Usar dia único
-                      </Button>
-                    )}
-                  </div>
+                  )}
                 </div>
-              </PopoverContent>
-            </Popover>
-          </div>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
-      {/* =============== SEÇÃO: FUNIL DE VENDAS =============== */}
-      <SectionHeader 
-        icon={Target}
-        title="Funil de Vendas"
-        description="Métricas de conversão do funil selecionado"
-      />
+      {/* Tabs: Vendas vs Técnico */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'vendas' | 'tecnico')}>
+        <TabsList>
+          <TabsTrigger value="vendas" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Vendas
+          </TabsTrigger>
+          <TabsTrigger value="tecnico" className="gap-2">
+            <Settings2 className="h-4 w-4" />
+            Técnico
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Sales Funnel Metrics - Disparos → Oportunidades → Fechamentos */}
-      {selectedFunnelId && (
-        <SalesFunnelMetrics 
-          funnelId={selectedFunnelId}
-          startDate={getStartDate()}
-          endDate={getEndDate()}
-        />
-      )}
-
-      {/* Funnel Velocity Card */}
-      {selectedFunnelId && (
-        <FunnelVelocity 
-          funnelId={selectedFunnelId}
-          pipelineValue={metrics.pipelineValue}
-          conversionRate={overallConversionRate}
-        />
-      )}
-
-      {/* =============== SEÇÃO: MÉTRICAS DE LEADS =============== */}
-      <SectionHeader 
-        icon={Users}
-        title="Métricas de Leads"
-        description="Análise de leads criados no período selecionado"
-      />
-
-      {/* Cards de Métricas Resumo */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total CRM</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metrics.totalLeads}</div>
-            <p className="text-xs text-muted-foreground">Leads no funil</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taxa de Avanço</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{advancementRate}%</div>
-            <p className="text-xs text-muted-foreground">Saíram do 1º estágio</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Conversão Geral</CardTitle>
-            <UserCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overallConversionRate}%</div>
-            <p className="text-xs text-muted-foreground">1º → Último estágio</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Valor Pipeline</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {metrics.pipelineValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </div>
-            <p className="text-xs text-muted-foreground">Valor estimado</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Mensagens</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metrics.todayMessages}</div>
-            <p className="text-xs text-muted-foreground">No período selecionado</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Respostas IA</CardTitle>
-            <Bot className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metrics.aiResponses}</div>
-            <p className="text-xs text-muted-foreground">No período selecionado</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* =============== SEÇÃO: ATIVIDADE & COMUNICAÇÃO =============== */}
-      <SectionHeader 
-        icon={MessageSquare}
-        title="Atividade & Comunicação"
-        description="Mensagens e interações no período"
-      />
-
-      {/* Evolution Chart - Full Width */}
-      {selectedFunnelId && (
-        <FunnelEvolutionChart 
-          funnelId={selectedFunnelId}
-          startDate={getStartDate()}
-          endDate={getEndDate()}
-        />
-      )}
-
-      {/* Funil Visual + Comparativo */}
-      <div className="grid gap-4 lg:grid-cols-7">
-        {/* Funil Visual */}
-        <Card className="lg:col-span-5">
-          <CardHeader>
-            <CardTitle>Funil de Conversão</CardTitle>
-            <CardDescription>
-              Distribuição de leads por estágio - {funnels.find(f => f.id === selectedFunnelId)?.name || 'Funil'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12 pl-4"></TableHead>
-                  <TableHead className="w-40">Etapa</TableHead>
-                  <TableHead>Distribuição</TableHead>
-                  <TableHead className="text-center w-24">Tempo Médio</TableHead>
-                  <TableHead className="text-right w-20 pr-4">Leads</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {stageCounts.map((stage) => {
-                  const widthPercentage = maxCount > 0 ? (stage.count / maxCount) * 100 : 0;
-                  const isAI = stage.is_ai_controlled;
-                  
-                  return (
-                    <TableRow key={stage.id} className="hover:bg-muted/50">
-                      <TableCell className="pl-4">
-                        {isAI ? (
-                          <Bot className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <UserCheck className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium">{stage.name}</TableCell>
-                      <TableCell>
-                        <div className="w-full bg-muted rounded-full h-5 overflow-hidden">
-                          <div 
-                            className="h-full rounded-full transition-all duration-300"
-                            style={{ 
-                              width: `${Math.max(widthPercentage, stage.count > 0 ? 8 : 0)}%`,
-                              backgroundColor: stage.color 
-                            }}
-                          />
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {stage.id !== 'unclassified' && selectedFunnelId && (
-                          <StageTimeMetrics 
-                            funnelId={selectedFunnelId}
-                            stageId={stage.id}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-bold pr-4">{stage.count}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-
-            {/* Legenda */}
-            <div className="flex items-center justify-center gap-6 py-4 border-t">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Bot className="h-4 w-4" />
-                <span>IA (automático)</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <UserCheck className="h-4 w-4" />
-                <span>Manual (vendedor)</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Comparativo de Período */}
-        {selectedFunnelId && (
-          <div className="lg:col-span-2">
-            <PeriodComparison 
+        {/* ============ TAB: VENDAS ============ */}
+        <TabsContent value="vendas" className="space-y-6 mt-6">
+          
+          {/* HERO SECTION - Key Metrics */}
+          {selectedFunnelId && (
+            <HeroMetrics 
               funnelId={selectedFunnelId}
               startDate={getStartDate()}
               endDate={getEndDate()}
               periodDays={getPeriodDays()}
             />
-          </div>
-        )}
-      </div>
+          )}
 
-      {/* =============== SEÇÃO: ALERTAS & AÇÕES =============== */}
-      <SectionHeader 
-        icon={AlertCircle}
-        title="Alertas & Ações"
-        description="Itens que precisam de atenção"
-      />
+          {/* Main Grid: Funnel + Alerts */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            
+            {/* Funnel Visual - 2 columns */}
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">Funil de Conversão</CardTitle>
+                <CardDescription>
+                  Distribuição atual de leads por estágio
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10 pl-4"></TableHead>
+                      <TableHead className="w-36">Etapa</TableHead>
+                      <TableHead>Distribuição</TableHead>
+                      <TableHead className="text-right w-20 pr-4">Leads</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stageCounts.map((stage) => {
+                      const widthPercentage = maxCount > 0 ? (stage.count / maxCount) * 100 : 0;
+                      const isAI = stage.is_ai_controlled;
+                      
+                      return (
+                        <TableRow 
+                          key={stage.id} 
+                          className="hover:bg-muted/50 cursor-pointer"
+                          onClick={() => navigate(`/crm?stage=${stage.id}`)}
+                        >
+                          <TableCell className="pl-4">
+                            {isAI ? (
+                              <Bot className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <UserCheck className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium text-sm">{stage.name}</TableCell>
+                          <TableCell>
+                            <div className="w-full bg-muted rounded-full h-4 overflow-hidden">
+                              <div 
+                                className="h-full rounded-full transition-all duration-300"
+                                style={{ 
+                                  width: `${Math.max(widthPercentage, stage.count > 0 ? 8 : 0)}%`,
+                                  backgroundColor: stage.color 
+                                }}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-bold pr-4">{stage.count}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
 
-      {/* Row 3: Alertas + Handoffs + AI Metrics */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Leads Críticos */}
-        {selectedFunnelId && (
-          <CriticalLeadsAlert 
-            funnelId={selectedFunnelId}
-            startDate={getStartDate()}
-            endDate={getEndDate()}
-          />
-        )}
-
-        {/* Handoffs Recentes */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Handoffs Pendentes
-              {recentHandoffs.length > 0 && (
-                <Badge variant="destructive">{recentHandoffs.length}</Badge>
-              )}
-            </CardTitle>
-            <CardDescription>Leads aguardando atendimento humano</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {recentHandoffs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                <UserCheck className="h-12 w-12 mb-2" />
-                <p>Nenhum handoff pendente</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {recentHandoffs.map((handoff) => (
-                  <div key={handoff.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                    <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">
-                        {handoff.name || handoff.phone}
-                      </p>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {handoff.reason || 'Sem motivo especificado'}
-                      </p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <Clock className="h-3 w-3" />
-                        {handoff.time}
-                      </p>
-                    </div>
+                {/* Legend */}
+                <div className="flex items-center justify-center gap-6 py-3 border-t text-xs">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Bot className="h-3.5 w-3.5" />
+                    <span>IA</span>
                   </div>
-                ))}
-              </div>
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <UserCheck className="h-3.5 w-3.5" />
+                    <span>Manual</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Action Alerts - 1 column */}
+            {selectedFunnelId && (
+              <ActionAlerts 
+                funnelId={selectedFunnelId}
+                startDate={getStartDate()}
+                endDate={getEndDate()}
+              />
             )}
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* AI Metrics */}
-        {selectedFunnelId && (
-          <AIMetricsCard 
-            funnelId={selectedFunnelId}
-            startDate={getStartDate()}
-            endDate={getEndDate()}
-            periodDays={getPeriodDays()}
-          />
-        )}
-      </div>
+          {/* Activity Section */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Movement Feed - 2 columns */}
+            <div className="lg:col-span-2">
+              {selectedFunnelId && (
+                <FunnelMovementFeed 
+                  funnelId={selectedFunnelId} 
+                  startDate={getStartDate()}
+                  endDate={getEndDate()}
+                />
+              )}
+            </div>
 
-      {/* =============== SEÇÃO: MONITORAMENTO =============== */}
-      <SectionHeader 
-        icon={Activity}
-        title="Monitoramento"
-        description="Atividades em tempo real e distribuição de envios"
-      />
+            {/* Period Comparison - 1 column */}
+            {selectedFunnelId && (
+              <PeriodComparison 
+                funnelId={selectedFunnelId}
+                startDate={getStartDate()}
+                endDate={getEndDate()}
+                periodDays={getPeriodDays()}
+              />
+            )}
+          </div>
 
-      {/* Row 4: Movimentações + Heatmap */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Feed de Movimentações do Funil */}
-        <div className="lg:col-span-2">
+          {/* Sales Funnel Metrics */}
           {selectedFunnelId && (
-            <FunnelMovementFeed 
-              funnelId={selectedFunnelId} 
+            <SalesFunnelMetrics 
+              funnelId={selectedFunnelId}
               startDate={getStartDate()}
               endDate={getEndDate()}
             />
           )}
-        </div>
+        </TabsContent>
 
-        {/* Activity Heatmap */}
-        {selectedFunnelId && (
-          <ActivityHeatmap 
-            funnelId={selectedFunnelId}
+        {/* ============ TAB: TÉCNICO ============ */}
+        <TabsContent value="tecnico" className="space-y-6 mt-6">
+          
+          {/* Instance Monitor */}
+          <InstanceMonitor 
             startDate={getStartDate()}
             endDate={getEndDate()}
           />
-        )}
-      </div>
 
-      {/* Monitor de Instâncias WhatsApp */}
-      <InstanceMonitor 
-        startDate={getStartDate()}
-        endDate={getEndDate()}
-      />
+          {/* AI + Heatmap + Evolution */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            {selectedFunnelId && (
+              <AIMetricsCard 
+                funnelId={selectedFunnelId}
+                startDate={getStartDate()}
+                endDate={getEndDate()}
+                periodDays={getPeriodDays()}
+              />
+            )}
+
+            {selectedFunnelId && (
+              <ActivityHeatmap 
+                funnelId={selectedFunnelId}
+                startDate={getStartDate()}
+                endDate={getEndDate()}
+              />
+            )}
+          </div>
+
+          {/* Evolution Chart */}
+          {selectedFunnelId && (
+            <FunnelEvolutionChart 
+              funnelId={selectedFunnelId}
+              startDate={getStartDate()}
+              endDate={getEndDate()}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
