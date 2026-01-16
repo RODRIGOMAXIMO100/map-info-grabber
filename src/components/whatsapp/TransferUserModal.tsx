@@ -101,12 +101,19 @@ export const TransferUserModal = ({
   };
 
   const handleTransfer = async () => {
+    console.log('[TransferUserModal] === INÍCIO TRANSFERÊNCIA ===');
+    console.log('[TransferUserModal] conversationId:', conversationId);
+    console.log('[TransferUserModal] selectedUserId:', selectedUserId);
+    console.log('[TransferUserModal] user:', user?.id, user?.email);
+    console.log('[TransferUserModal] authLoading:', authLoading);
+
     if (authLoading) {
       toast.error('Carregando sua sessão… tente novamente em alguns segundos.');
       return;
     }
 
     if (!user) {
+      console.error('[TransferUserModal] ERRO: Usuário não logado');
       toast.error('Você precisa estar logado para transferir.');
       return;
     }
@@ -117,18 +124,17 @@ export const TransferUserModal = ({
     }
 
     // Força refresh da sessão antes de qualquer operação (evita token expirado)
-    await supabase.auth.refreshSession();
+    console.log('[TransferUserModal] Refreshing session...');
+    const refreshResult = await supabase.auth.refreshSession();
+    console.log('[TransferUserModal] Refresh result:', refreshResult.error?.message || 'OK');
+    
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     const hasSession = !!sessionData?.session;
 
-    console.debug('[TransferUserModal] preflight', {
-      conversationId,
-      selectedUserId,
-      userId: user.id,
-      authLoading,
-      contextSession: !!session,
+    console.log('[TransferUserModal] Session check:', {
       hasSession,
       sessionError: sessionError?.message,
+      tokenExp: sessionData?.session?.expires_at,
     });
 
     if (!hasSession) {
