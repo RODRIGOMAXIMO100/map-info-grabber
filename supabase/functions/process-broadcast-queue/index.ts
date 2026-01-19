@@ -60,6 +60,7 @@ interface WhatsAppConfig {
   instance_phone: string | null;
   name: string | null;
   is_active: boolean;
+  broadcast_enabled: boolean;
   warmup_started_at: string | null;
 }
 
@@ -339,11 +340,12 @@ serve(async (req) => {
     // Get today's date for limit tracking
     const today = new Date().toISOString().split('T')[0];
 
-    // Get ALL active WhatsApp configurations
+    // Get ALL active WhatsApp configurations that are enabled for broadcast
     const { data: activeConfigs, error: configError } = await supabase
       .from('whatsapp_config')
-      .select('id, server_url, instance_token, instance_phone, name, is_active, warmup_started_at')
-      .eq('is_active', true);
+      .select('id, server_url, instance_token, instance_phone, name, is_active, broadcast_enabled, warmup_started_at')
+      .eq('is_active', true)
+      .eq('broadcast_enabled', true);
 
     if (configError) throw configError;
 

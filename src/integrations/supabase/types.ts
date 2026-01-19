@@ -563,6 +563,7 @@ export type Database = {
       whatsapp_config: {
         Row: {
           admin_token: string | null
+          broadcast_enabled: boolean | null
           color: string | null
           created_at: string | null
           id: string
@@ -576,6 +577,7 @@ export type Database = {
         }
         Insert: {
           admin_token?: string | null
+          broadcast_enabled?: boolean | null
           color?: string | null
           created_at?: string | null
           id?: string
@@ -589,6 +591,7 @@ export type Database = {
         }
         Update: {
           admin_token?: string | null
+          broadcast_enabled?: boolean | null
           color?: string | null
           created_at?: string | null
           id?: string

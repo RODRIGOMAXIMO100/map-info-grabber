@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, TestTube, Loader2, CheckCircle, XCircle, Copy, Check, Plus, Trash2, Webhook, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Save, TestTube, Loader2, CheckCircle, XCircle, Copy, Check, Plus, Trash2, Webhook, AlertCircle, RefreshCw, Megaphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,7 @@ interface WhatsAppInstance {
   admin_token: string;
   instance_phone: string;
   is_active: boolean;
+  broadcast_enabled: boolean;
   warmup_started_at: string | null;
   testResult?: 'success' | 'error' | null;
   testing?: boolean;
@@ -73,6 +74,7 @@ export default function WhatsAppConfig() {
         admin_token: d.admin_token || '',
         instance_phone: d.instance_phone || '',
         is_active: d.is_active ?? true,
+        broadcast_enabled: d.broadcast_enabled ?? true,
         warmup_started_at: d.warmup_started_at || null,
       })));
     } catch (error) {
@@ -92,6 +94,7 @@ export default function WhatsAppConfig() {
       admin_token: '',
       instance_phone: '',
       is_active: true,
+      broadcast_enabled: true,
       warmup_started_at: new Date().toISOString(), // New instances start warmup now
     };
     setSelectedInstance(newInstance);
@@ -468,6 +471,19 @@ export default function WhatsAppConfig() {
                       {!instance.is_active && (
                         <span className="text-xs bg-muted px-2 py-0.5 rounded">Inativa</span>
                       )}
+                      {instance.is_active && (
+                        instance.broadcast_enabled ? (
+                          <span className="text-xs bg-green-500/20 text-green-600 dark:text-green-400 px-2 py-0.5 rounded flex items-center gap-1">
+                            <Megaphone className="h-3 w-3" />
+                            Disparo ✓
+                          </span>
+                        ) : (
+                          <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded flex items-center gap-1">
+                            <Megaphone className="h-3 w-3" />
+                            Disparo ✗
+                          </span>
+                        )
+                      )}
                     </div>
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button
@@ -516,52 +532,93 @@ export default function WhatsAppConfig() {
                     </div>
                   </div>
                   
-                  {/* Warmup Status */}
+                  {/* Warmup Status & Broadcast Toggle */}
                   <div className="mt-3 pt-3 border-t">
-                    {(() => {
-                      const status = getWarmupStatus(instance);
-                      return (
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {status.inWarmup ? (
-                              <>
-                                <span className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded">
-                                  🔥 Warmup ({status.daysRemaining} dias restantes)
-                                </span>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 text-xs"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleMarkAsWarmedUp(instance.id);
-                                  }}
-                                >
-                                  Marcar como aquecido
-                                </Button>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-xs bg-green-500/20 text-green-600 dark:text-green-400 px-2 py-0.5 rounded">
-                                  ✅ Aquecido
-                                </span>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 text-xs"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleResetWarmup(instance.id);
-                                  }}
-                                >
-                                  Reiniciar warmup
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    <div className="flex items-center justify-between gap-4">
+                      {/* Warmup Status */}
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const status = getWarmupStatus(instance);
+                          return status.inWarmup ? (
+                            <>
+                              <span className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded">
+                                🔥 Warmup ({status.daysRemaining} dias)
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkAsWarmedUp(instance.id);
+                                }}
+                              >
+                                Marcar aquecido
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xs bg-green-500/20 text-green-600 dark:text-green-400 px-2 py-0.5 rounded">
+                                ✅ Aquecido
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleResetWarmup(instance.id);
+                                }}
+                              >
+                                Reiniciar
+                              </Button>
+                            </>
+                          );
+                        })()}
+                      </div>
+                      
+                      {/* Broadcast Toggle */}
+                      <div 
+                        className="flex items-center gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Label htmlFor={`broadcast-${instance.id}`} className="text-xs text-muted-foreground cursor-pointer">
+                          Disparo
+                        </Label>
+                        <Switch
+                          id={`broadcast-${instance.id}`}
+                          checked={instance.broadcast_enabled}
+                          onCheckedChange={async (checked) => {
+                            try {
+                              const { error } = await supabase
+                                .from('whatsapp_config')
+                                .update({ broadcast_enabled: checked })
+                                .eq('id', instance.id);
+                              
+                              if (error) throw error;
+                              
+                              setInstances(prev => prev.map(i => 
+                                i.id === instance.id ? { ...i, broadcast_enabled: checked } : i
+                              ));
+                              
+                              toast({
+                                title: checked ? 'Disparo habilitado' : 'Disparo desabilitado',
+                                description: checked 
+                                  ? 'Esta instância participará do rodízio de disparos.'
+                                  : 'Esta instância não participará do rodízio de disparos.',
+                              });
+                            } catch (error) {
+                              console.error('Error toggling broadcast:', error);
+                              toast({
+                                title: 'Erro',
+                                description: 'Não foi possível alterar o status de disparo.',
+                                variant: 'destructive',
+                              });
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                   
                   <div className="mt-3 pt-3 border-t">
