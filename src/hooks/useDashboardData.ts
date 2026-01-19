@@ -436,7 +436,7 @@ export function useDashboardData({
       console.error('Error loading dashboard data:', error);
       setData(prev => ({ ...prev, loading: false, error: error as Error }));
     }
-  }, [funnelId, stages, startDate, endDate, periodDays]);
+  }, [funnelId, stages.length, startDate?.getTime(), endDate?.getTime(), periodDays]);
 
   useEffect(() => {
     loadAllData();
