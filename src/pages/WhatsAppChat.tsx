@@ -219,11 +219,19 @@ export default function WhatsAppChat() {
 
   const loadConversations = async () => {
     try {
-      // Build query based on user role
+      // Build query based on user role - optimized with specific columns
       let query = supabase
         .from('whatsapp_conversations')
-        .select('*')
-        .order('last_message_at', { ascending: false });
+        .select(`
+          id, phone, name, avatar_url, status, 
+          last_message_at, last_message_preview, unread_count,
+          ai_paused, ai_handoff_reason, funnel_stage, crm_funnel_id,
+          is_crm_lead, is_group, group_name, config_id, assigned_to,
+          reminder_at, estimated_value, closed_value, custom_tags, tags,
+          origin, pinned, muted_until, broadcast_list_id
+        `)
+        .order('last_message_at', { ascending: false })
+        .limit(200);
 
       // If not admin, filter by assigned_to OR unassigned conversations
       if (!isAdmin && user?.id) {
@@ -301,9 +309,13 @@ export default function WhatsAppChat() {
     try {
       const { data, error } = await supabase
         .from('whatsapp_messages')
-        .select('*')
+        .select(`
+          id, conversation_id, direction, message_type, content,
+          media_url, status, created_at, edited_at, message_id_whatsapp, sent_by_user_id
+        `)
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .limit(500);
 
       if (error) throw error;
       setMessages((data || []) as unknown as WhatsAppMessage[]);

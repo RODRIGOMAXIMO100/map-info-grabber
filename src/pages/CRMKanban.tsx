@@ -248,18 +248,22 @@ export default function CRMKanban() {
 
   const loadConversations = async (funnelId: string) => {
     try {
-      // Build query with role-based filtering
+      // Build query with role-based filtering - optimized with specific columns
       let query = supabase
         .from('whatsapp_conversations')
         .select(`
-          *,
-          broadcast_lists:broadcast_list_id (
-            name
-          )
+          id, phone, name, avatar_url, status,
+          last_message_at, last_message_preview, unread_count,
+          ai_paused, ai_handoff_reason, funnel_stage, crm_funnel_id,
+          is_crm_lead, is_group, assigned_to, reminder_at, estimated_value, closed_value,
+          custom_tags, tags, lead_city, lead_state, contacted_by_instances,
+          origin, broadcast_list_id, updated_at, pinned, video_sent, site_sent, created_at,
+          broadcast_lists:broadcast_list_id (name)
         `)
         .eq('is_crm_lead', true)
         .eq('crm_funnel_id', funnelId)
-        .order('last_message_at', { ascending: false });
+        .order('last_message_at', { ascending: false })
+        .limit(500);
 
       // If not admin, filter by assigned_to OR unassigned conversations
       if (!isAdmin && user?.id) {

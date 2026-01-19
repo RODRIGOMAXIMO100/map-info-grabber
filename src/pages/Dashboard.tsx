@@ -200,12 +200,12 @@ export default function Dashboard() {
       const startDate = getStartDate();
       const endDateValue = getEndDate();
 
+      // Optimized query - only fetch columns needed for stage counting
       let conversationsQuery = supabase
         .from('whatsapp_conversations')
-        .select('*')
+        .select('id, funnel_stage, created_at')
         .eq('is_crm_lead', true)
-        .eq('crm_funnel_id', selectedFunnelId)
-        .order('created_at', { ascending: false });
+        .eq('crm_funnel_id', selectedFunnelId);
       
       if (startDate) {
         conversationsQuery = conversationsQuery.gte('created_at', startDate.toISOString());
