@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { supabase } from "@/integrations/supabase/client";
+import { useRealtimeRefresh } from "@/hooks/useRealtimeSubscription";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar,
@@ -76,21 +77,12 @@ export function AppSidebar() {
 
   useEffect(() => {
     loadAlerts();
-    
-    // Real-time para handoffs
-    const channel = supabase
-      .channel('sidebar-alerts')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'whatsapp_conversations' },
-        () => loadAlerts()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
+
+  // Centralized realtime subscription
+  useRealtimeRefresh('whatsapp_conversations', useCallback(() => {
+    loadAlerts();
+  }, []));
 
   const loadAlerts = async () => {
     // Contar handoffs pendentes

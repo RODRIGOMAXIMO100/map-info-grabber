@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useRealtimeRefresh } from "@/hooks/useRealtimeSubscription";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -141,25 +142,16 @@ export default function Dashboard() {
     }
   }, [stages, selectedFunnelId, dateRangeKey]);
 
-  // Setup realtime
-  useEffect(() => {
-    const channel = supabase
-      .channel('dashboard-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'whatsapp_conversations' },
-        () => {
-          if (stages.length > 0 && selectedFunnelId) {
-            loadDashboardData();
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [stages, selectedFunnelId]);
+  // Centralized realtime subscription
+  useRealtimeRefresh(
+    'whatsapp_conversations',
+    useCallback(() => {
+      if (stages.length > 0 && selectedFunnelId) {
+        loadDashboardData();
+      }
+    }, [stages, selectedFunnelId]),
+    { enabled: stages.length > 0 && !!selectedFunnelId }
+  );
 
   const loadFunnels = async () => {
     try {

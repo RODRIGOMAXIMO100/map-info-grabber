@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useMultiRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -190,29 +191,23 @@ export default function InstanceMonitor({ startDate, endDate }: InstanceMonitorP
     }
   };
 
+  const handleRealtimeRefresh = useCallback(() => {
+    loadMonitorData();
+  }, [startDate, endDate]);
+
+  // Centralized realtime subscription for logs and queue
+  useMultiRealtimeSubscription([
+    { table: 'whatsapp_logs', callback: handleRealtimeRefresh },
+    { table: 'whatsapp_queue', callback: handleRealtimeRefresh },
+  ]);
+
   useEffect(() => {
     loadMonitorData();
-
-    // Realtime subscription para logs
-    const channel = supabase
-      .channel('instance-monitor-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'whatsapp_logs' },
-        () => loadMonitorData()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'whatsapp_queue' },
-        () => loadMonitorData()
-      )
-      .subscribe();
 
     // Atualizar a cada 30 segundos
     const interval = setInterval(loadMonitorData, 30000);
 
     return () => {
-      supabase.removeChannel(channel);
       clearInterval(interval);
     };
   }, [startDate, endDate]);

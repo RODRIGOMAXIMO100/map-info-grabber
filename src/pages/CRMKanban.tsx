@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, RefreshCw, Settings, ChevronDown, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeRefresh } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -193,18 +194,10 @@ export default function CRMKanban() {
     }
   }, [selectedFunnelId]);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel('crm-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_conversations' }, () => {
-        if (selectedFunnelId) loadConversations(selectedFunnelId);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [selectedFunnelId]);
+  // Centralized realtime subscription
+  useRealtimeRefresh('whatsapp_conversations', useCallback(() => {
+    if (selectedFunnelId) loadConversations(selectedFunnelId);
+  }, [selectedFunnelId]));
 
   const loadFunnels = async () => {
     try {
