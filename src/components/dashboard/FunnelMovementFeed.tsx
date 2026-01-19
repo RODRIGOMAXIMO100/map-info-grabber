@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useRealtimeRefresh } from "@/hooks/useRealtimeSubscription";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -125,23 +126,14 @@ export default function FunnelMovementFeed({ funnelId, startDate, endDate }: Fun
     loadMovements();
   }, [funnelId, startDate, endDate]);
 
-  // Realtime para novas movimentações
-  useEffect(() => {
-    const channel = supabase
-      .channel('funnel-movements')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'funnel_stage_history' },
-        () => {
-          loadMovements();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [funnelId, startDate, endDate]);
+  // Centralized realtime subscription for new movements
+  useRealtimeRefresh(
+    'funnel_stage_history',
+    useCallback(() => {
+      loadMovements();
+    }, [funnelId, startDate, endDate]),
+    { event: 'INSERT' }
+  );
 
   const getDirectionIcon = (fromStage: StageInfo | null, toStage: StageInfo | null) => {
     if (!fromStage) {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Send, Pause, Play, Trash2, Users, Clock, 
@@ -18,6 +18,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeRefresh } from '@/hooks/useRealtimeSubscription';
 import { supabase } from '@/integrations/supabase/client';
 import type { BroadcastList, LeadData } from '@/types/whatsapp';
 import {
@@ -144,20 +145,13 @@ export default function BroadcastDetails() {
     if (id) {
       loadData();
       loadUsers();
-      // Set up realtime subscription for queue updates
-      const channel = supabase
-        .channel('queue-updates')
-        .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'whatsapp_queue', filter: `broadcast_list_id=eq.${id}` },
-          () => loadQueue()
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
     }
   }, [id]);
+
+  // Centralized realtime subscription for queue updates
+  useRealtimeRefresh('whatsapp_queue', useCallback(() => {
+    if (id) loadQueue();
+  }, [id]), { enabled: !!id });
 
   const loadUsers = async () => {
     setLoadingUsers(true);

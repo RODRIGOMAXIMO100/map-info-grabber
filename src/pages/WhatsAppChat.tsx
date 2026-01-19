@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle, UserCheck } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -23,6 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -93,18 +94,15 @@ export default function WhatsAppChat() {
     loadInstances();
     loadConversations();
     loadLabels();
-    
-    const conversationsChannel = supabase
-      .channel('conversations-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_conversations' }, () => {
-        loadConversations();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(conversationsChannel);
-    };
   }, []);
+
+  // Centralized realtime subscription for conversations
+  useRealtimeSubscription(
+    'whatsapp_conversations',
+    useCallback(() => {
+      loadConversations();
+    }, []),
+  );
 
   useEffect(() => {
     if (selectedConversation) {
