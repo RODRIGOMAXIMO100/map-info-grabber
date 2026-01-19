@@ -17,3 +17,4 @@ export { TransferInstanceModal } from './TransferInstanceModal';
 export { TransferUserModal } from './TransferUserModal';
 export { VirtualizedConversationList } from './VirtualizedConversationList';
 export { VirtualizedMessageList } from './VirtualizedMessageList';
+export { ConversationNotes } from './ConversationNotes';
