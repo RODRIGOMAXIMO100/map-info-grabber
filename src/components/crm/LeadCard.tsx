@@ -1,7 +1,8 @@
+import { memo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Phone, 
-  MessageCircle, 
+import {
+  Phone,
+  MessageCircle,
   Bell, 
   BellRing,
   Clock, 
@@ -62,7 +63,7 @@ interface LeadCardProps {
   onStageChange?: (stageId: string) => void;
 }
 
-export function LeadCard({
+function LeadCardComponent({
   conv,
   isDragging,
   onDragStart,
@@ -80,6 +81,21 @@ export function LeadCard({
   onStageChange,
 }: LeadCardProps) {
   const navigate = useNavigate();
+
+  const handleChatClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/whatsapp/chat?phone=${encodeURIComponent(conv.phone)}`);
+  }, [navigate, conv.phone]);
+
+  const handlePhoneClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.open(`tel:${conv.phone}`, '_self');
+  }, [conv.phone]);
+
+  const handleReminderClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSetReminder();
+  }, [onSetReminder]);
 
 
   const formatTime = (date: string | null) => {
@@ -453,3 +469,24 @@ export function LeadCard({
     </Card>
   );
 }
+
+// Memoized export with custom comparison
+export const LeadCard = memo(LeadCardComponent, (prevProps, nextProps) => {
+  // Only re-render if essential data changes
+  return (
+    prevProps.conv.id === nextProps.conv.id &&
+    prevProps.conv.name === nextProps.conv.name &&
+    prevProps.conv.phone === nextProps.conv.phone &&
+    prevProps.conv.ai_paused === nextProps.conv.ai_paused &&
+    prevProps.conv.unread_count === nextProps.conv.unread_count &&
+    prevProps.conv.last_message_at === nextProps.conv.last_message_at &&
+    prevProps.conv.estimated_value === nextProps.conv.estimated_value &&
+    prevProps.conv.closed_value === nextProps.conv.closed_value &&
+    prevProps.conv.funnel_stage === nextProps.conv.funnel_stage &&
+    prevProps.conv.reminder_at === nextProps.conv.reminder_at &&
+    prevProps.conv.custom_tags?.length === nextProps.conv.custom_tags?.length &&
+    prevProps.isDragging === nextProps.isDragging &&
+    prevProps.assignedUserName === nextProps.assignedUserName &&
+    JSON.stringify(prevProps.bantScore) === JSON.stringify(nextProps.bantScore)
+  );
+});
