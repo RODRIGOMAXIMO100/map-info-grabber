@@ -1524,63 +1524,15 @@ export default function WhatsAppChat() {
                     </div>
                   </div>
 
-                  {/* Messages */}
-                  <ScrollArea className="flex-1 p-4">
-                    <div className="space-y-3">
-                      {messages.map((msg, idx) => {
-                        const showDate = idx === 0 || 
-                          formatDate(messages[idx - 1].created_at) !== formatDate(msg.created_at);
-                        
-                        return (
-                          <div key={msg.id}>
-                            {showDate && (
-                              <div className="flex justify-center my-4">
-                                <span className="bg-muted px-3 py-1 rounded-full text-xs text-muted-foreground">
-                                  {formatDate(msg.created_at)}
-                                </span>
-                              </div>
-                            )}
-                            <div className={cn(
-                              'flex',
-                              msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'
-                            )}>
-                              <div className={cn(
-                                'max-w-[70%] rounded-lg px-3 py-2 overflow-hidden',
-                                msg.direction === 'outgoing' 
-                                  ? 'bg-primary text-primary-foreground' 
-                                  : 'bg-muted'
-                              )}>
-                                <MessageContent
-                                  content={msg.content}
-                                  messageType={msg.message_type}
-                                  mediaUrl={msg.media_url}
-                                  direction={msg.direction as 'incoming' | 'outgoing'}
-                                />
-                                <span className={cn(
-                                  'text-[10px] mt-1 flex items-center justify-end gap-1',
-                                  msg.direction === 'outgoing' 
-                                    ? 'text-primary-foreground/70' 
-                                    : 'text-muted-foreground'
-                                )}>
-                                  {formatTime(msg.created_at)}
-                                  {msg.direction === 'outgoing' && (
-                                    <>
-                                      {msg.status === 'pending' && <Clock className="h-3 w-3 animate-pulse" />}
-                                      {msg.status === 'sent' && <Check className="h-3 w-3" />}
-                                      {msg.status === 'delivered' && <CheckCheck className="h-3 w-3" />}
-                                      {msg.status === 'read' && <CheckCheck className="h-3 w-3 text-blue-400" />}
-                                      {msg.status === 'failed' && <AlertCircle className="h-3 w-3 text-red-400" />}
-                                    </>
-                                  )}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  </ScrollArea>
+                  {/* Messages - Virtualized */}
+                  <div ref={messageListRef} className="flex-1 overflow-hidden">
+                    <VirtualizedMessageList
+                      messages={messages}
+                      height={messageListHeight}
+                      formatTime={formatTime}
+                      formatDate={formatDate}
+                    />
+                  </div>
 
                   {/* Input */}
                   <div className="border-t p-3">
