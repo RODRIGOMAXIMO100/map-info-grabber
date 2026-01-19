@@ -73,15 +73,15 @@ export default function SalesFunnelMetrics({ funnelId, startDate, endDate }: Sal
       }
 
       // 3. Fechamentos (leads que foram para o estágio FECHADO no período)
-      // Primeiro, buscar o ID do estágio "FECHADO" ou similar
-      const { data: stages } = await supabase
+      // Buscar o estágio "FECHADO" ou "CONVERTIDO" pelo nome (não o último estágio, que seria PERDIDO)
+      const { data: closedStageData } = await supabase
         .from('crm_funnel_stages')
         .select('id, name')
         .eq('funnel_id', funnelId)
-        .order('stage_order', { ascending: false })
+        .or('name.ilike.%fechado%,name.ilike.%convertido%,name.ilike.%won%,name.ilike.%ganho%')
         .limit(1);
       
-      const closedStageId = stages?.[0]?.id;
+      const closedStageId = closedStageData?.[0]?.id;
       
       let fechamentosCount = 0;
       let valorFechado = 0;
