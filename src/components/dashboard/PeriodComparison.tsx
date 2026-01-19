@@ -1,99 +1,15 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Minus, GitCompare } from "lucide-react";
-
-interface ComparisonMetric {
-  label: string;
-  current: number;
-  previous: number;
-  format: 'number' | 'currency' | 'percent';
-}
+import type { ComparisonMetric } from "@/hooks/useDashboardData";
 
 interface PeriodComparisonProps {
-  funnelId: string;
-  startDate?: Date | null;
-  endDate?: Date | null;
+  data: ComparisonMetric[];
   periodDays: number;
+  loading?: boolean;
 }
 
-export default function PeriodComparison({ funnelId, startDate, endDate, periodDays }: PeriodComparisonProps) {
-  const [metrics, setMetrics] = useState<ComparisonMetric[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadComparison();
-  }, [funnelId, startDate, endDate, periodDays]);
-
-  const loadComparison = async () => {
-    try {
-      setLoading(true);
-      
-      // Current period: startDate to endDate (or use periodDays if no dates)
-      const currentEnd = endDate || new Date();
-      const currentStart = startDate || new Date(currentEnd.getTime() - periodDays * 24 * 60 * 60 * 1000);
-      
-      // Calculate actual period length
-      const actualPeriodMs = currentEnd.getTime() - currentStart.getTime();
-      
-      // Previous period: same duration before currentStart
-      const previousEnd = new Date(currentStart.getTime() - 1); // 1ms before current start
-      const previousStart = new Date(previousEnd.getTime() - actualPeriodMs);
-
-      // Current period data
-      const { data: currentData } = await supabase
-        .from('whatsapp_conversations')
-        .select('id, estimated_value, converted_at, created_at')
-        .eq('is_crm_lead', true)
-        .eq('crm_funnel_id', funnelId)
-        .gte('created_at', currentStart.toISOString())
-        .lte('created_at', currentEnd.toISOString());
-
-      // Previous period data
-      const { data: previousData } = await supabase
-        .from('whatsapp_conversations')
-        .select('id, estimated_value, converted_at, created_at')
-        .eq('is_crm_lead', true)
-        .eq('crm_funnel_id', funnelId)
-        .gte('created_at', previousStart.toISOString())
-        .lte('created_at', previousEnd.toISOString());
-
-      // Calculate metrics
-      const currentLeads = currentData?.length || 0;
-      const previousLeads = previousData?.length || 0;
-
-      const currentValue = (currentData || []).reduce((sum, c) => sum + (Number(c.estimated_value) || 0), 0);
-      const previousValue = (previousData || []).reduce((sum, c) => sum + (Number(c.estimated_value) || 0), 0);
-
-      const currentConversions = (currentData || []).filter(c => c.converted_at).length;
-      const previousConversions = (previousData || []).filter(c => c.converted_at).length;
-
-      // AI responses current period
-      const { count: currentAI } = await supabase
-        .from('whatsapp_ai_logs')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', currentStart.toISOString())
-        .lte('created_at', currentEnd.toISOString());
-
-      const { count: previousAI } = await supabase
-        .from('whatsapp_ai_logs')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', previousStart.toISOString())
-        .lte('created_at', previousEnd.toISOString());
-
-      setMetrics([
-        { label: 'Novos Leads', current: currentLeads, previous: previousLeads, format: 'number' },
-        { label: 'Conversões', current: currentConversions, previous: previousConversions, format: 'number' },
-        { label: 'Valor Pipeline', current: currentValue, previous: previousValue, format: 'currency' },
-        { label: 'Respostas IA', current: currentAI || 0, previous: previousAI || 0, format: 'number' },
-      ]);
-    } catch (error) {
-      console.error('Error loading comparison:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+export default function PeriodComparison({ data, periodDays, loading = false }: PeriodComparisonProps) {
 
   const calculateChange = (current: number, previous: number): number => {
     if (previous === 0) return current > 0 ? 100 : 0;
@@ -154,7 +70,7 @@ export default function PeriodComparison({ funnelId, startDate, endDate, periodD
       </CardHeader>
       <CardContent className="pt-0">
         <div className="space-y-3">
-          {metrics.map((metric) => {
+          {data.map((metric) => {
             const change = calculateChange(metric.current, metric.previous);
             
             return (

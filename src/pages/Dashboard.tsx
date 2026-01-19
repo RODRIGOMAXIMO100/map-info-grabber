@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeRefresh } from "@/hooks/useRealtimeSubscription";
+import { useDashboardData } from "@/hooks/useDashboardData";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,9 +22,7 @@ import {
   Bot,
   BarChart3,
   Settings2,
-  Plus,
   RefreshCw,
-  Send
 } from "lucide-react";
 import InstanceMonitor from "@/components/InstanceMonitor";
 import { 
@@ -32,7 +31,6 @@ import {
   PeriodComparison,
   AIMetricsCard,
   ActivityHeatmap,
-  StageTimeMetrics,
   SalesFunnelMetrics,
   HeroMetrics,
   ActionAlerts
@@ -40,25 +38,15 @@ import {
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
 import { useNavigate } from "react-router-dom";
 
-interface StageCount {
-  id: string;
-  name: string;
-  color: string;
-  count: number;
-  is_ai_controlled: boolean;
-}
-
 export default function Dashboard() {
   const navigate = useNavigate();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date()
   });
-  const [dateRangeKey, setDateRangeKey] = useState(0);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>('30days');
-  const [stageCounts, setStageCounts] = useState<StageCount[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [funnelsLoading, setFunnelsLoading] = useState(true);
   const [funnels, setFunnels] = useState<CRMFunnel[]>([]);
   const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(null);
   const [stages, setStages] = useState<CRMFunnelStage[]>([]);
@@ -88,6 +76,15 @@ export default function Dashboard() {
     }
     return 30;
   };
+
+  // Centralized dashboard data hook
+  const dashboardData = useDashboardData({
+    funnelId: selectedFunnelId,
+    stages,
+    startDate: getStartDate(),
+    endDate: getEndDate(),
+    periodDays: getPeriodDays(),
+  });
 
   // Apply preset date ranges
   const applyPreset = (preset: string) => {
@@ -119,7 +116,6 @@ export default function Dashboard() {
     
     setActivePreset(preset);
     setDateRange(newRange);
-    setDateRangeKey(prev => prev + 1);
     setIsDatePickerOpen(false);
   };
 
@@ -135,21 +131,14 @@ export default function Dashboard() {
     }
   }, [selectedFunnelId]);
 
-  // Load dashboard data when stages or filter change
-  useEffect(() => {
-    if (stages.length > 0 && selectedFunnelId && dateRange.from) {
-      loadDashboardData();
-    }
-  }, [stages, selectedFunnelId, dateRangeKey]);
-
   // Centralized realtime subscription
   useRealtimeRefresh(
     'whatsapp_conversations',
     useCallback(() => {
       if (stages.length > 0 && selectedFunnelId) {
-        loadDashboardData();
+        dashboardData.refresh();
       }
-    }, [stages, selectedFunnelId]),
+    }, [stages, selectedFunnelId, dashboardData.refresh]),
     { enabled: stages.length > 0 && !!selectedFunnelId }
   );
 
@@ -164,12 +153,11 @@ export default function Dashboard() {
         setFunnels(data as CRMFunnel[]);
         const defaultFunnel = data.find(f => f.is_default) || data[0];
         setSelectedFunnelId(defaultFunnel.id);
-      } else {
-        setLoading(false);
       }
+      setFunnelsLoading(false);
     } catch (error) {
       console.error('Error loading funnels:', error);
-      setLoading(false);
+      setFunnelsLoading(false);
     }
   };
 
@@ -187,79 +175,14 @@ export default function Dashboard() {
     }
   };
 
-  const loadDashboardData = async () => {
-    try {
-      const startDate = getStartDate();
-      const endDateValue = getEndDate();
-
-      // Optimized query - only fetch columns needed for stage counting
-      let conversationsQuery = supabase
-        .from('whatsapp_conversations')
-        .select('id, funnel_stage, created_at')
-        .eq('is_crm_lead', true)
-        .eq('crm_funnel_id', selectedFunnelId);
-      
-      if (startDate) {
-        conversationsQuery = conversationsQuery.gte('created_at', startDate.toISOString());
-      }
-      if (endDateValue) {
-        conversationsQuery = conversationsQuery.lte('created_at', endDateValue.toISOString());
-      }
-
-      const { data: conversations } = await conversationsQuery;
-      const filteredConversations = conversations || [];
-
-      // Count by stage
-      const counts: Record<string, number> = {};
-      stages.forEach(stage => {
-        counts[stage.id] = 0;
-      });
-
-      let unclassifiedCount = 0;
-      
-      filteredConversations.forEach(conv => {
-        const stageId = conv.funnel_stage;
-        if (stageId && counts[stageId] !== undefined) {
-          counts[stageId]++;
-        } else {
-          unclassifiedCount++;
-        }
-      });
-
-      const stageCountsData: StageCount[] = stages.map(stage => ({
-        id: stage.id,
-        name: stage.name,
-        color: stage.color || '#6B7280',
-        count: counts[stage.id] || 0,
-        is_ai_controlled: stage.is_ai_controlled || false,
-      }));
-
-      if (unclassifiedCount > 0) {
-        stageCountsData.unshift({
-          id: 'unclassified',
-          name: 'Não Classificados',
-          color: '#9CA3AF',
-          count: unclassifiedCount,
-          is_ai_controlled: false,
-        });
-      }
-
-      setStageCounts(stageCountsData);
-    } catch (error) {
-      console.error('Error loading dashboard:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleRefresh = () => {
-    setDateRangeKey(prev => prev + 1);
+    dashboardData.refresh();
   };
 
   // Max count for funnel scale
   const maxCount = useMemo(() => {
-    return Math.max(...stageCounts.map(s => s.count), 1);
-  }, [stageCounts]);
+    return Math.max(...dashboardData.stageCounts.map(s => s.count), 1);
+  }, [dashboardData.stageCounts]);
 
   // Format display for date range
   const getDateRangeDisplay = () => {
@@ -270,7 +193,7 @@ export default function Dashboard() {
     return `${format(dateRange.from, "dd/MM/yyyy", { locale: ptBR })} - ${format(dateRange.to, "dd/MM/yyyy", { locale: ptBR })}`;
   };
 
-  if (loading) {
+  if (funnelsLoading || dashboardData.loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -398,7 +321,6 @@ export default function Dashboard() {
                     setActivePreset(null);
                     setDateRange(range);
                     if (range.from && range.to) {
-                      setDateRangeKey(prev => prev + 1);
                       setIsDatePickerOpen(false);
                     }
                   }}
@@ -430,7 +352,6 @@ export default function Dashboard() {
                       onClick={() => {
                         if (dateRange.from) {
                           setDateRange({ from: dateRange.from, to: dateRange.from });
-                          setDateRangeKey(prev => prev + 1);
                           setIsDatePickerOpen(false);
                         }
                       }}
@@ -464,10 +385,8 @@ export default function Dashboard() {
           {/* HERO SECTION - Key Metrics */}
           {selectedFunnelId && (
             <HeroMetrics 
-              funnelId={selectedFunnelId}
-              startDate={getStartDate()}
-              endDate={getEndDate()}
-              periodDays={getPeriodDays()}
+              data={dashboardData.heroMetrics}
+              loading={dashboardData.loading}
             />
           )}
 
@@ -493,7 +412,7 @@ export default function Dashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {stageCounts.map((stage) => {
+                    {dashboardData.stageCounts.map((stage) => {
                       const widthPercentage = maxCount > 0 ? (stage.count / maxCount) * 100 : 0;
                       const isAI = stage.is_ai_controlled;
                       
@@ -546,9 +465,8 @@ export default function Dashboard() {
             {/* Action Alerts - 1 column */}
             {selectedFunnelId && (
               <ActionAlerts 
-                funnelId={selectedFunnelId}
-                startDate={getStartDate()}
-                endDate={getEndDate()}
+                data={dashboardData.alerts}
+                loading={dashboardData.loading}
               />
             )}
           </div>
@@ -569,10 +487,9 @@ export default function Dashboard() {
             {/* Period Comparison - 1 column */}
             {selectedFunnelId && (
               <PeriodComparison 
-                funnelId={selectedFunnelId}
-                startDate={getStartDate()}
-                endDate={getEndDate()}
+                data={dashboardData.periodComparison}
                 periodDays={getPeriodDays()}
+                loading={dashboardData.loading}
               />
             )}
           </div>
@@ -600,10 +517,8 @@ export default function Dashboard() {
           <div className="grid gap-6 lg:grid-cols-2">
             {selectedFunnelId && (
               <AIMetricsCard 
-                funnelId={selectedFunnelId}
-                startDate={getStartDate()}
-                endDate={getEndDate()}
-                periodDays={getPeriodDays()}
+                data={dashboardData.aiMetrics}
+                loading={dashboardData.loading}
               />
             )}
 
