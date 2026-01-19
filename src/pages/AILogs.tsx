@@ -115,11 +115,13 @@ export default function AILogs() {
       const { data, error } = await supabase
         .from("whatsapp_ai_logs")
         .select(`
-          *,
+          id, conversation_id, incoming_message, ai_response,
+          detected_intent, confidence_score, needs_human,
+          applied_label_id, created_at, bant_score,
           conversation:whatsapp_conversations(name, phone)
         `)
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(200);
 
       if (error) throw error;
 
