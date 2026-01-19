@@ -924,84 +924,16 @@ export default function WhatsAppChat() {
             </div>
           </div>
 
-          <ScrollArea className="flex-1">
-            {filteredConversations.map((conv) => (
-              <div
-                key={conv.id}
-                onClick={() => setSelectedConversation(conv)}
-                className={cn(
-                  'px-3 py-3 min-h-[56px] border-b cursor-pointer hover:bg-muted/50 transition-colors',
-                  selectedConversation?.id === conv.id && 'bg-muted'
-                )}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="relative flex-shrink-0">
-                    <Avatar className="h-10 w-10">
-                      {conv.avatar_url && <AvatarImage src={conv.avatar_url} alt={conv.name || ''} />}
-                      <AvatarFallback className="text-sm">
-                        {isGroup(conv) ? (
-                          <Users className="h-5 w-5" />
-                        ) : (
-                          conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)
-                        )}
-                      </AvatarFallback>
-                    </Avatar>
-                    {conv.instance && (
-                      <div 
-                        className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
-                        style={{ backgroundColor: conv.instance.color }}
-                      />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {isGroup(conv) && <Users className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
-                        <span className="font-medium truncate text-sm max-w-[140px]">
-                          {conv.name || conv.group_name || conv.phone}
-                        </span>
-                       {conv.is_crm_lead && (
-                          <Badge variant="outline" className="h-4 px-1 text-[10px] bg-green-500/10 text-green-600 border-green-500/30 flex-shrink-0">
-                            Lead
-                          </Badge>
-                        )}
-                        {conv.contacted_by_instances && (conv.contacted_by_instances as string[]).length > 1 && (
-                          <Badge variant="outline" className="h-4 px-1 text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30 flex-shrink-0 gap-0.5">
-                            <AlertTriangle className="h-2.5 w-2.5" />
-                            {(conv.contacted_by_instances as string[]).length}
-                          </Badge>
-                        )}
-                      </div>
-                      <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
-                        {formatTime(conv.last_message_at)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 mt-0.5">
-                      <p className="text-xs text-muted-foreground truncate flex-1">
-                        {formatPreview(conv.last_message_preview)}
-                      </p>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {conv.ai_paused && (
-                          <BotOff className="h-3.5 w-3.5 text-orange-500" />
-                        )}
-                        {(conv.unread_count ?? 0) > 0 && (
-                          <Badge className="h-5 min-w-5 flex items-center justify-center text-xs px-1.5">
-                            {conv.unread_count}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {filteredConversations.length === 0 && (
-              <div className="p-8 text-center text-muted-foreground">
-                Nenhuma conversa encontrada
-              </div>
-            )}
-          </ScrollArea>
+          <div className="flex-1 overflow-hidden">
+            <VirtualizedConversationList
+              conversations={filteredConversations}
+              selectedConversationId={selectedConversation?.id || null}
+              onSelectConversation={setSelectedConversation}
+              height={window.innerHeight - 220}
+              formatTime={formatTime}
+              formatPreview={formatPreview}
+            />
+          </div>
         </div>
 
         {/* Chat Area - mobile */}
@@ -1011,58 +943,15 @@ export default function WhatsAppChat() {
         )}>
           {selectedConversation ? (
             <>
-              {/* Messages */}
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-3">
-                  {messages.map((msg, idx) => {
-                    const showDate = idx === 0 || 
-                      formatDate(messages[idx - 1].created_at) !== formatDate(msg.created_at);
-                    
-                    return (
-                      <div key={msg.id}>
-                        {showDate && (
-                          <div className="flex justify-center my-4">
-                            <span className="bg-muted px-3 py-1 rounded-full text-xs text-muted-foreground">
-                              {formatDate(msg.created_at)}
-                            </span>
-                          </div>
-                        )}
-                        <div className={cn(
-                          'flex',
-                          msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'
-                        )}>
-                          <div className={cn(
-                            'max-w-[85%] rounded-lg px-3 py-2',
-                            msg.direction === 'outgoing' 
-                              ? 'bg-primary text-primary-foreground' 
-                              : 'bg-muted'
-                          )}>
-                            <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                            <span className={cn(
-                              'text-[10px] mt-1 flex items-center justify-end gap-1',
-                              msg.direction === 'outgoing' 
-                                ? 'text-primary-foreground/70' 
-                                : 'text-muted-foreground'
-                            )}>
-                              {formatTime(msg.created_at)}
-                              {msg.direction === 'outgoing' && (
-                                <>
-                                  {msg.status === 'pending' && <Clock className="h-3 w-3 animate-pulse" />}
-                                  {msg.status === 'sent' && <Check className="h-3 w-3" />}
-                                  {msg.status === 'delivered' && <CheckCheck className="h-3 w-3" />}
-                                  {msg.status === 'read' && <CheckCheck className="h-3 w-3 text-blue-400" />}
-                                  {msg.status === 'failed' && <AlertCircle className="h-3 w-3 text-red-400" />}
-                                </>
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
-              </ScrollArea>
+              {/* Messages - Virtualized */}
+              <div className="flex-1 overflow-hidden">
+                <VirtualizedMessageList
+                  messages={messages}
+                  height={window.innerHeight - 180}
+                  formatTime={formatTime}
+                  formatDate={formatDate}
+                />
+              </div>
 
               {/* Input */}
               <div className="border-t p-3">
