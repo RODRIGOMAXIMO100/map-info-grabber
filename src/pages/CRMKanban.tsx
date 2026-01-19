@@ -16,17 +16,14 @@ import { useRealtimeRefresh } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import { LeadDetailsSheet } from '@/components/LeadDetailsSheet';
+import { LeadDetailsSheet, ReminderModal, ClosedValueModal, AddLeadModal } from '@/components/lazy';
 import { useReminderNotifications } from '@/hooks/useReminderNotifications';
 import {
   CRMMetricsBar,
   CRMFilters,
   LeadCard,
-  ReminderModal,
   TagModal,
   ValueModal,
-  AddLeadModal,
-  ClosedValueModal,
   UndoSaleModal,
   AssignUserModal,
   type PeriodFilter,

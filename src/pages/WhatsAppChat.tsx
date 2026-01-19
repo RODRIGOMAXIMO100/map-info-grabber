@@ -7,17 +7,19 @@ import {
   FunnelStageBadge, 
   WaitingTimeBadge,
   detectFunnelStage,
-  TransferInstanceModal,
-  TransferUserModal,
   VirtualizedConversationList,
   VirtualizedMessageList,
   type FunnelStageId
 } from '@/components/whatsapp';
+import { 
+  TransferInstanceModal, 
+  TransferUserModal, 
+  ReminderModal 
+} from '@/components/lazy';
 import { LeadControlPanelCompact } from '@/components/whatsapp/LeadControlPanelCompact';
 import { MessageContent, formatMessagePreview } from '@/components/whatsapp/MessageContent';
 import { MediaUploader, MediaPreview } from '@/components/whatsapp/MediaUploader';
 import { AudioRecorder } from '@/components/whatsapp/AudioRecorder';
-import { ReminderModal } from '@/components/crm/ReminderModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
