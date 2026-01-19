@@ -277,12 +277,12 @@ export function AddLeadModal({
                 <Megaphone className="h-3.5 w-3.5" />
                 Lista de Disparo (opcional)
               </Label>
-              <Select value={broadcastListId} onValueChange={setBroadcastListId}>
+              <Select value={broadcastListId || "none"} onValueChange={(v) => setBroadcastListId(v === "none" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Nenhuma lista selecionada" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhuma</SelectItem>
+                  <SelectItem value="none">Nenhuma</SelectItem>
                   {broadcastLists.map((list) => (
                     <SelectItem key={list.id} value={list.id}>
                       {list.name}
