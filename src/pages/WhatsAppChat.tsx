@@ -9,6 +9,7 @@ import {
   detectFunnelStage,
   VirtualizedConversationList,
   VirtualizedMessageList,
+  ConversationNotes,
   type FunnelStageId
 } from '@/components/whatsapp';
 import { 
@@ -1323,6 +1324,12 @@ export default function WhatsAppChat() {
 
                       {/* Right: Compact Controls */}
                       <div className="flex items-center gap-1 shrink-0">
+                        {/* Notes - icon only */}
+                        <ConversationNotes 
+                          conversationId={selectedConversation.id}
+                          initialNotes={selectedConversation.notes || null}
+                        />
+
                         {/* Mark as Unread - icon only */}
                         <Button 
                           variant="ghost" 
