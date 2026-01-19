@@ -24,17 +24,19 @@ import {
   Settings2,
   RefreshCw,
 } from "lucide-react";
-import InstanceMonitor from "@/components/InstanceMonitor";
 import { 
-  FunnelMovementFeed,
+  InstanceMonitor,
   FunnelEvolutionChart,
+  ActivityHeatmap,
+  FunnelMovementFeed,
+} from '@/components/lazy';
+import { 
   PeriodComparison,
   AIMetricsCard,
-  ActivityHeatmap,
   SalesFunnelMetrics,
   HeroMetrics,
   ActionAlerts
-} from "@/components/dashboard";
+} from '@/components/dashboard';
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
 import { useNavigate } from "react-router-dom";
 

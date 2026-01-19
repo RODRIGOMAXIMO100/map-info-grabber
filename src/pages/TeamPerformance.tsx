@@ -21,11 +21,10 @@ import { format, subDays, startOfDay, endOfDay, differenceInMinutes } from 'date
 import { ptBR } from 'date-fns/locale';
 import { CalendarIcon, Users, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PerformanceChart, VendorDetailSheet } from '@/components/lazy';
 import {
   TeamMetricsTable,
   TopPerformersCards,
-  PerformanceChart,
-  VendorDetailSheet,
   DailyActivityCard,
   InactivityAlerts,
 } from '@/components/team';
