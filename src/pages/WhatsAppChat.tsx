@@ -9,6 +9,8 @@ import {
   detectFunnelStage,
   TransferInstanceModal,
   TransferUserModal,
+  VirtualizedConversationList,
+  VirtualizedMessageList,
   type FunnelStageId
 } from '@/components/whatsapp';
 import { LeadControlPanelCompact } from '@/components/whatsapp/LeadControlPanelCompact';
@@ -51,7 +53,10 @@ export default function WhatsAppChat() {
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+  const conversationListRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const [conversationListHeight, setConversationListHeight] = useState(400);
+  const [messageListHeight, setMessageListHeight] = useState(400);
   const [conversations, setConversations] = useState<ConversationWithInstance[]>([]);
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<string>('all');
@@ -94,6 +99,27 @@ export default function WhatsAppChat() {
     loadInstances();
     loadConversations();
     loadLabels();
+    
+    // Set up resize observer for virtualized lists
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target === conversationListRef.current) {
+          setConversationListHeight(entry.contentRect.height);
+        }
+        if (entry.target === messageListRef.current) {
+          setMessageListHeight(entry.contentRect.height);
+        }
+      }
+    });
+    
+    if (conversationListRef.current) {
+      resizeObserver.observe(conversationListRef.current);
+    }
+    if (messageListRef.current) {
+      resizeObserver.observe(messageListRef.current);
+    }
+    
+    return () => resizeObserver.disconnect();
   }, []);
 
   // Centralized realtime subscription for conversations
@@ -1347,94 +1373,16 @@ export default function WhatsAppChat() {
                 </div>
               </div>
 
-              <ScrollArea className="flex-1">
-                {filteredConversations.map((conv) => {
-                  const funnelStage = detectFunnelStage(conv);
-                  
-                  return (
-                    <div
-                      key={conv.id}
-                      onClick={() => setSelectedConversation(conv)}
-                      className={cn(
-                        'px-3 py-3 min-h-[56px] border-b cursor-pointer transition-colors',
-                        selectedConversation?.id === conv.id && 'bg-muted',
-                        // Background colors based on status
-                        conv.ai_handoff_reason 
-                          ? 'bg-red-50/50 hover:bg-red-100/50 dark:bg-red-950/20 dark:hover:bg-red-950/30'
-                          : conv.ai_paused 
-                            ? 'bg-amber-50/50 hover:bg-amber-100/50 dark:bg-amber-950/20 dark:hover:bg-amber-950/30'
-                            : conv.is_crm_lead && !conv.ai_paused 
-                              ? 'bg-emerald-50/30 hover:bg-emerald-100/30 dark:bg-emerald-950/10 dark:hover:bg-emerald-950/20'
-                              : 'hover:bg-muted/50'
-                      )}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="relative flex-shrink-0">
-                          <Avatar className="h-10 w-10">
-                            {conv.avatar_url && <AvatarImage src={conv.avatar_url} alt={conv.name || ''} />}
-                            <AvatarFallback className="text-sm">
-                              {isGroup(conv) ? (
-                                <Users className="h-5 w-5" />
-                              ) : (
-                                conv.name?.charAt(0).toUpperCase() || conv.phone.slice(-2)
-                              )}
-                            </AvatarFallback>
-                          </Avatar>
-                          {conv.instance && (
-                            <div 
-                              className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
-                              style={{ backgroundColor: conv.instance.color }}
-                            />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              {/* AI Status Icon */}
-                              {conv.is_crm_lead && (
-                                <AIStatusIcon conversation={conv} />
-                              )}
-                              {isGroup(conv) && <Users className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
-                              <span className="font-medium truncate text-sm max-w-[80px]">
-                                {conv.name || conv.group_name || conv.phone}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              {/* Funnel Stage Badge */}
-                              {conv.is_crm_lead && (
-                                <FunnelStageBadge stage={funnelStage} compact />
-                              )}
-                              <span className="text-xs text-muted-foreground tabular-nums">
-                                {formatTime(conv.last_message_at)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between gap-2 mt-0.5">
-                            <p className="text-xs text-muted-foreground truncate max-w-[140px]">
-                              {formatPreview(conv.last_message_preview)}
-                            </p>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              {/* Waiting Time Badge */}
-                              <WaitingTimeBadge lastMessageAt={conv.last_lead_message_at || conv.last_message_at} />
-                              {(conv.unread_count ?? 0) > 0 && (
-                                <Badge className="h-5 min-w-5 flex items-center justify-center text-xs px-1.5">
-                                  {conv.unread_count}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {filteredConversations.length === 0 && (
-                  <div className="p-8 text-center text-muted-foreground">
-                    Nenhuma conversa encontrada
-                  </div>
-                )}
-              </ScrollArea>
+              <div ref={conversationListRef} className="flex-1 overflow-hidden">
+                <VirtualizedConversationList
+                  conversations={filteredConversations}
+                  selectedConversationId={selectedConversation?.id || null}
+                  onSelectConversation={setSelectedConversation}
+                  height={conversationListHeight}
+                  formatTime={formatTime}
+                  formatPreview={formatPreview}
+                />
+              </div>
           </div>
 
           {/* Chat Panel - Flex grow to fill remaining space */}

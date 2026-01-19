@@ -15,3 +15,5 @@ export {
 export { FunnelStageFilter } from './FunnelStageFilter';
 export { TransferInstanceModal } from './TransferInstanceModal';
 export { TransferUserModal } from './TransferUserModal';
+export { VirtualizedConversationList } from './VirtualizedConversationList';
+export { VirtualizedMessageList } from './VirtualizedMessageList';
