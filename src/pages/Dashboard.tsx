@@ -54,15 +54,15 @@ export default function Dashboard() {
   const [stages, setStages] = useState<CRMFunnelStage[]>([]);
   const [activeTab, setActiveTab] = useState<'vendas' | 'tecnico'>('vendas');
 
-  // Helper functions for date handling
-  const getStartDate = (): Date | null => {
+  // Memoized dates to prevent infinite re-renders
+  const startDate = useMemo(() => {
     if (dateRange.from) {
       return startOfDay(dateRange.from);
     }
     return null;
-  };
+  }, [dateRange.from]);
 
-  const getEndDate = (): Date | null => {
+  const endDate = useMemo(() => {
     if (dateRange.to) {
       return endOfDay(dateRange.to);
     }
@@ -70,22 +70,22 @@ export default function Dashboard() {
       return endOfDay(dateRange.from);
     }
     return null;
-  };
+  }, [dateRange.to, dateRange.from]);
 
-  const getPeriodDays = (): number => {
+  const periodDays = useMemo(() => {
     if (dateRange.from && dateRange.to) {
       return Math.max(1, differenceInDays(dateRange.to, dateRange.from) + 1);
     }
     return 30;
-  };
+  }, [dateRange.from, dateRange.to]);
 
   // Centralized dashboard data hook
   const dashboardData = useDashboardData({
     funnelId: selectedFunnelId,
     stages,
-    startDate: getStartDate(),
-    endDate: getEndDate(),
-    periodDays: getPeriodDays(),
+    startDate,
+    endDate,
+    periodDays,
   });
 
   // Apply preset date ranges
@@ -133,14 +133,17 @@ export default function Dashboard() {
     }
   }, [selectedFunnelId]);
 
-  // Centralized realtime subscription
+  // Centralized realtime subscription - stable callback without dashboardData.refresh in deps
+  const refreshDashboard = useCallback(() => {
+    if (stages.length > 0 && selectedFunnelId) {
+      dashboardData.refresh();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stages.length, selectedFunnelId]);
+
   useRealtimeRefresh(
     'whatsapp_conversations',
-    useCallback(() => {
-      if (stages.length > 0 && selectedFunnelId) {
-        dashboardData.refresh();
-      }
-    }, [stages, selectedFunnelId, dashboardData.refresh]),
+    refreshDashboard,
     { enabled: stages.length > 0 && !!selectedFunnelId }
   );
 
@@ -337,7 +340,7 @@ export default function Dashboard() {
               <div className="border-t p-2 flex justify-between items-center">
                 {dateRange.from && dateRange.to && (
                   <Badge variant="secondary">
-                    {getPeriodDays()} dias selecionados
+                    {periodDays} dias selecionados
                   </Badge>
                 )}
                 <div className="flex gap-2 ml-auto">
@@ -480,8 +483,8 @@ export default function Dashboard() {
               {selectedFunnelId && (
                 <FunnelMovementFeed 
                   funnelId={selectedFunnelId} 
-                  startDate={getStartDate()}
-                  endDate={getEndDate()}
+                  startDate={startDate}
+                  endDate={endDate}
                 />
               )}
             </div>
@@ -490,7 +493,7 @@ export default function Dashboard() {
             {selectedFunnelId && (
               <PeriodComparison 
                 data={dashboardData.periodComparison}
-                periodDays={getPeriodDays()}
+                periodDays={periodDays}
                 loading={dashboardData.loading}
               />
             )}
@@ -500,8 +503,8 @@ export default function Dashboard() {
           {selectedFunnelId && (
             <SalesFunnelMetrics 
               funnelId={selectedFunnelId}
-              startDate={getStartDate()}
-              endDate={getEndDate()}
+              startDate={startDate}
+              endDate={endDate}
             />
           )}
         </TabsContent>
@@ -511,8 +514,8 @@ export default function Dashboard() {
           
           {/* Instance Monitor */}
           <InstanceMonitor 
-            startDate={getStartDate()}
-            endDate={getEndDate()}
+            startDate={startDate}
+            endDate={endDate}
           />
 
           {/* AI + Heatmap + Evolution */}
@@ -527,8 +530,8 @@ export default function Dashboard() {
             {selectedFunnelId && (
               <ActivityHeatmap 
                 funnelId={selectedFunnelId}
-                startDate={getStartDate()}
-                endDate={getEndDate()}
+                startDate={startDate}
+                endDate={endDate}
               />
             )}
           </div>
@@ -537,8 +540,8 @@ export default function Dashboard() {
           {selectedFunnelId && (
             <FunnelEvolutionChart 
               funnelId={selectedFunnelId}
-              startDate={getStartDate()}
-              endDate={getEndDate()}
+              startDate={startDate}
+              endDate={endDate}
             />
           )}
         </TabsContent>
