@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Generate cash register "ca-ching" sound using Web Audio API
 const playMoneySound = () => {
@@ -46,8 +47,9 @@ const playMoneySound = () => {
 
 export function useNewMessageNotifications() {
   const navigate = useNavigate();
+  const { user, isAdmin } = useAuth();
   const notifiedIds = useRef<Set<string>>(new Set());
-  const conversationCache = useRef<Map<string, { name: string | null; phone: string; muted_until: string | null }>>(new Map());
+  const conversationCache = useRef<Map<string, { name: string | null; phone: string; muted_until: string | null; assigned_to: string | null }>>(new Map());
 
   // Fetch conversation info when needed
   const getConversationInfo = useCallback(async (conversationId: string) => {
@@ -57,7 +59,7 @@ export function useNewMessageNotifications() {
 
     const { data } = await supabase
       .from('whatsapp_conversations')
-      .select('name, phone, muted_until')
+      .select('name, phone, muted_until, assigned_to')
       .eq('id', conversationId)
       .single();
 
@@ -66,7 +68,7 @@ export function useNewMessageNotifications() {
       return data;
     }
 
-    return { name: null, phone: 'Desconhecido', muted_until: null };
+    return { name: null, phone: 'Desconhecido', muted_until: null, assigned_to: null };
   }, []);
 
   // Handle incoming message notification
@@ -88,6 +90,14 @@ export function useNewMessageNotifications() {
 
     // Get conversation info
     const convInfo = await getConversationInfo(message.conversation_id);
+    
+    // Check if user has permission to see this conversation
+    if (!isAdmin && user) {
+      // Closers/SDRs only see conversations assigned to them or unassigned
+      if (convInfo.assigned_to !== null && convInfo.assigned_to !== user.id) {
+        return; // Don't notify - conversation assigned to another user
+      }
+    }
     
     // Check if conversation is muted
     if (convInfo.muted_until) {
@@ -117,7 +127,7 @@ export function useNewMessageNotifications() {
         onClick: () => navigate(`/whatsapp/chat?lead=${message.conversation_id}`)
       }
     });
-  }, [navigate, getConversationInfo]);
+  }, [navigate, getConversationInfo, user, isAdmin]);
 
   useEffect(() => {
     // Subscribe to new messages via realtime
