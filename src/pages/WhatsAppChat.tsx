@@ -11,7 +11,6 @@ import {
   detectFunnelStage,
   VirtualizedConversationList,
   VirtualizedMessageList,
-  ConversationNotes,
   type FunnelStageId
 } from '@/components/whatsapp';
 import { 
@@ -1341,42 +1340,16 @@ export default function WhatsAppChat() {
                         </div>
                       </div>
 
-                      {/* Right: Compact Controls */}
+                      {/* Right: Simplified Controls */}
                       <div className="flex items-center gap-1 shrink-0">
-                        {/* Notes - icon only */}
-                        <ConversationNotes 
-                          conversationId={selectedConversation.id}
-                          initialNotes={selectedConversation.notes || null}
-                        />
-
-                        {/* Mark as Unread - icon only */}
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => markAsUnread(selectedConversation.id)}
-                          title="Marcar não lido"
-                        >
-                          <Mail className="h-3.5 w-3.5" />
-                        </Button>
-                        
-                        {/* Transfer Instance - icon only */}
-                        {instances.length > 1 && (
-                          <Button 
-                            variant={selectedConversation.instance && !selectedConversation.instance.is_active ? "destructive" : "ghost"} 
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => setTransferModalOpen(true)}
-                            title={selectedConversation.instance && !selectedConversation.instance.is_active 
-                              ? 'Transferir (Instância Desconectada)' 
-                              : 'Transferir instância'}
-                          >
-                            <ArrowRightLeft className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-
-                        {/* Assign to Me / Transfer to User */}
-                        {!selectedConversation.assigned_to ? (
+                        {/* Assigned user badge OR Assumir button */}
+                        {selectedConversation.assigned_to ? (
+                          assignedUserNames[selectedConversation.assigned_to] && (
+                            <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                              {assignedUserNames[selectedConversation.assigned_to]}
+                            </Badge>
+                          )
+                        ) : (
                           <Button 
                             variant="default" 
                             size="sm"
@@ -1396,7 +1369,6 @@ export default function WhatsAppChat() {
                               }
                               toast({ title: 'Lead assumido!' });
                               loadConversations();
-                              // Refresh selected conversation
                               const { data } = await supabase
                                 .from('whatsapp_conversations')
                                 .select('*')
@@ -1415,30 +1387,9 @@ export default function WhatsAppChat() {
                             <UserPlus className="h-3.5 w-3.5" />
                             Assumir
                           </Button>
-                        ) : (
-                          <>
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => setTransferUserModalOpen(true)}
-                              title="Transferir para vendedor"
-                            >
-                              <UserCheck className="h-3.5 w-3.5" />
-                            </Button>
-                            {/* Show assigned user badge */}
-                            {assignedUserNames[selectedConversation.assigned_to] && (
-                              <Badge variant="outline" className="text-[10px] h-5 px-1.5">
-                                {assignedUserNames[selectedConversation.assigned_to]}
-                              </Badge>
-                            )}
-                          </>
                         )}
 
-                        {/* Separator */}
-                        <div className="w-px h-5 bg-border mx-1" />
-
-                        {/* Lead Control Panel Compact */}
+                        {/* Lead Control Panel - contains all controls */}
                         <LeadControlPanelCompact 
                           conversation={{
                             id: selectedConversation.id,
@@ -1452,6 +1403,7 @@ export default function WhatsAppChat() {
                             tags: selectedConversation.tags,
                             status: selectedConversation.status,
                             reminder_at: selectedConversation.reminder_at,
+                            assigned_to: selectedConversation.assigned_to,
                           }}
                           onUpdate={() => {
                             loadConversations();
@@ -1478,6 +1430,40 @@ export default function WhatsAppChat() {
                           }}
                           onArchive={(archive) => archiveConversation(selectedConversation.id, archive)}
                           onReminderClick={() => setReminderModalOpen(true)}
+                          onAssignToMe={async () => {
+                            if (!user?.id) return;
+                            const { error } = await supabase
+                              .from('whatsapp_conversations')
+                              .update({
+                                assigned_to: user.id,
+                                assigned_at: new Date().toISOString(),
+                              })
+                              .eq('id', selectedConversation.id);
+                            if (error) {
+                              toast({ title: 'Erro ao assumir lead', variant: 'destructive' });
+                              return;
+                            }
+                            toast({ title: 'Lead assumido!' });
+                            loadConversations();
+                            const { data } = await supabase
+                              .from('whatsapp_conversations')
+                              .select('*')
+                              .eq('id', selectedConversation.id)
+                              .single();
+                            if (data) {
+                              setSelectedConversation(prev => ({
+                                ...prev!,
+                                ...data,
+                                instance: prev?.instance
+                              }));
+                            }
+                          }}
+                          onTransferUser={() => setTransferUserModalOpen(true)}
+                          onTransferInstance={instances.length > 1 ? () => setTransferModalOpen(true) : undefined}
+                          onMarkUnread={() => markAsUnread(selectedConversation.id)}
+                          hasMultipleInstances={instances.length > 1}
+                          instanceDisconnected={selectedConversation.instance && !selectedConversation.instance.is_active}
+                          initialNotes={selectedConversation.notes || null}
                         />
                       </div>
                     </div>

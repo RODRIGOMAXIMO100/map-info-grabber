@@ -1,4 +1,4 @@
-import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone, Archive, ArchiveRestore, Bell, UserPlus, ArrowRightLeft } from 'lucide-react';
+import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone, Archive, ArchiveRestore, Bell, UserPlus, ArrowRightLeft, Mail, StickyNote, Wifi, WifiOff } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -25,7 +25,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
   Tooltip,
@@ -33,9 +32,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 
 interface Stage {
@@ -66,13 +71,39 @@ interface LeadControlPanelCompactProps {
   onReminderClick?: () => void;
   onAssignToMe?: () => void;
   onTransferUser?: () => void;
+  onTransferInstance?: () => void;
+  onMarkUnread?: () => void;
+  hasMultipleInstances?: boolean;
+  instanceDisconnected?: boolean;
+  initialNotes?: string | null;
 }
 
-export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onArchive, onReminderClick, onAssignToMe, onTransferUser }: LeadControlPanelCompactProps) {
+export function LeadControlPanelCompact({ 
+  conversation, 
+  onUpdate, 
+  onDelete, 
+  onArchive, 
+  onReminderClick, 
+  onAssignToMe, 
+  onTransferUser,
+  onTransferInstance,
+  onMarkUnread,
+  hasMultipleInstances,
+  instanceDisconnected,
+  initialNotes
+}: LeadControlPanelCompactProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [stages, setStages] = useState<Stage[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notes, setNotes] = useState(initialNotes || '');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+
+  // Sync initialNotes with state
+  useEffect(() => {
+    setNotes(initialNotes || '');
+  }, [initialNotes]);
 
   const isInHandoff = conversation.tags?.includes('21') || conversation.tags?.includes('23');
   const isAiActive = conversation.is_crm_lead && !conversation.ai_paused && !conversation.is_group && !isInHandoff;
@@ -82,6 +113,33 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
   const currentOrigin = conversation.origin || 'random';
   const isArchived = conversation.status === 'archived';
   const hasReminder = !!conversation.reminder_at;
+  const hasNotes = !!notes?.trim();
+
+  // Auto-save notes with debounce
+  const saveNotes = useCallback(async (value: string) => {
+    setSaveStatus('saving');
+    const { error } = await supabase
+      .from('whatsapp_conversations')
+      .update({ notes: value || null })
+      .eq('id', conversation.id);
+    
+    if (!error) {
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 1500);
+    } else {
+      setSaveStatus('idle');
+      toast({ title: 'Erro ao salvar nota', variant: 'destructive' });
+    }
+  }, [conversation.id, toast]);
+
+  useEffect(() => {
+    if (notes !== initialNotes) {
+      const timer = setTimeout(() => {
+        saveNotes(notes);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [notes, initialNotes, saveNotes]);
 
   // Load stages when funnel changes - fallback to default funnel if not set
   useEffect(() => {
@@ -437,6 +495,38 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
           </>
         )}
 
+        {/* Notes Popover */}
+        <Popover open={notesOpen} onOpenChange={setNotesOpen}>
+          <PopoverTrigger asChild>
+            <Button 
+              variant={hasNotes ? "default" : "ghost"} 
+              size="icon" 
+              className={cn("h-7 w-7", hasNotes && "bg-amber-500 hover:bg-amber-600")}
+            >
+              <StickyNote className={cn("h-3.5 w-3.5", hasNotes && "text-white")} />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">Notas internas</span>
+                {saveStatus === 'saving' && (
+                  <span className="text-[10px] text-muted-foreground">Salvando...</span>
+                )}
+                {saveStatus === 'saved' && (
+                  <span className="text-[10px] text-emerald-500">Salvo!</span>
+                )}
+              </div>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Escreva notas privadas sobre este lead..."
+                className="text-xs min-h-[80px] resize-none"
+              />
+            </div>
+          </PopoverContent>
+        </Popover>
+
         {/* More options dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -445,6 +535,34 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="bg-popover">
+            {/* Quick actions at top */}
+            {onMarkUnread && (
+              <DropdownMenuItem 
+                onClick={onMarkUnread}
+                className="text-xs"
+              >
+                <Mail className="h-3.5 w-3.5 mr-2" />
+                Marcar não lido
+              </DropdownMenuItem>
+            )}
+            
+            {/* Transfer Instance */}
+            {hasMultipleInstances && onTransferInstance && (
+              <DropdownMenuItem 
+                onClick={onTransferInstance}
+                className={cn("text-xs", instanceDisconnected && "text-destructive")}
+              >
+                {instanceDisconnected ? (
+                  <WifiOff className="h-3.5 w-3.5 mr-2" />
+                ) : (
+                  <Wifi className="h-3.5 w-3.5 mr-2" />
+                )}
+                {instanceDisconnected ? 'Transferir (Desconectada)' : 'Transferir instância'}
+              </DropdownMenuItem>
+            )}
+            
+            {(onMarkUnread || (hasMultipleInstances && onTransferInstance)) && <DropdownMenuSeparator />}
+            
             {/* Assign to me / Transfer */}
             {!conversation.assigned_to && onAssignToMe && (
               <DropdownMenuItem 
