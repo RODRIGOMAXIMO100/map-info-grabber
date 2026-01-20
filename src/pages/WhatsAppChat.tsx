@@ -794,11 +794,14 @@ export default function WhatsAppChat() {
     return preview.includes('{') && preview.includes('}');
   };
 
-  // Formata o preview da mensagem
+  // Formata o preview da mensagem - usa helper que sabe extrair texto de JSON
   const formatPreview = (preview: string | null) => {
     if (!preview) return 'Sem mensagens';
     if (isBroadcastTemplate(preview)) return '📢 Broadcast enviado';
-    return preview;
+    
+    // Usar formatMessagePreview para extrair texto de JSON ou formatar mídia
+    const formatted = formatMessagePreview(preview, 'text');
+    return formatted || preview;
   };
 
   if (loading) {
