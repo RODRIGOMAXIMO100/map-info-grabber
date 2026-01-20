@@ -519,17 +519,19 @@ serve(async (req) => {
     console.log(`[Phone Normalize] Original: ${senderPhone}, Digits: ${phoneDigits}, Last9: ${last9Digits}`);
     
     // Primeiro: buscar conversa específica desta instância usando LIKE com últimos 9 dígitos
+    // PRIORIZAR conversas ativas sobre arquivadas para evitar mensagens caindo em duplicatas arquivadas
     if (configId) {
       const { data: specificConvs } = await supabase
         .from('whatsapp_conversations')
         .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead, status')
         .eq('config_id', configId)
         .like('phone', `%${last9Digits}`)
-        .order('updated_at', { ascending: false })
+        .order('status', { ascending: true })  // 'active' vem antes de 'archived'
+        .order('last_message_at', { ascending: false })
         .limit(1);
       
       existingConv = specificConvs?.[0] || null;
-      console.log(`[Conversation] Looking for phone like %${last9Digits} + config_id=${configId}: ${existingConv ? `FOUND (${existingConv.phone})` : 'NOT FOUND'}`);
+      console.log(`[Conversation] Looking for phone like %${last9Digits} + config_id=${configId}: ${existingConv ? `FOUND (${existingConv.phone}, status=${existingConv.status})` : 'NOT FOUND'}`);
     }
     
     // Se não encontrou conversa específica, verificar se existe conversa órfã (sem config_id)
@@ -539,7 +541,8 @@ serve(async (req) => {
         .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead, status')
         .is('config_id', null)
         .like('phone', `%${last9Digits}`)
-        .order('updated_at', { ascending: false })
+        .order('status', { ascending: true })  // 'active' vem antes de 'archived'
+        .order('last_message_at', { ascending: false })
         .limit(1);
       
       const orphanConv = orphanConvs?.[0] || null;
@@ -573,6 +576,7 @@ serve(async (req) => {
       const updateData: Record<string, unknown> = {
         last_message_at: new Date().toISOString(),
         last_message_preview: isFromMe ? `Você: ${messagePreview}` : messagePreview,
+        updated_at: new Date().toISOString(),  // Garantir que updated_at é persistido
       };
       
       // Lógica de reativação de conversas arquivadas:
@@ -643,10 +647,16 @@ serve(async (req) => {
         updateData.avatar_url = senderProfilePic;
       }
 
-      await supabase
+      const { error: updateError } = await supabase
         .from('whatsapp_conversations')
         .update(updateData)
         .eq('id', conversationId);
+      
+      if (updateError) {
+        console.error('[Conversation] UPDATE failed:', updateError);
+      } else {
+        console.log(`[Conversation] UPDATE success, status: ${updateData.status}, updated_at: ${updateData.updated_at}`);
+      }
     } else {
       // NOVA CONVERSA: Verificar se é do broadcast antes de ativar como lead
       console.log(`[Conversation] Creating new conversation for ${senderPhone}`);
