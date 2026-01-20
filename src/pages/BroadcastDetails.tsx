@@ -331,7 +331,11 @@ export default function BroadcastDetails() {
       return;
     }
 
-    if (!list.message_template) {
+    // Use the edited message if available, otherwise fall back to saved template
+    const messageToUse = editedMessage || list.message_template;
+    const imageToUse = editedImageUrl !== undefined ? editedImageUrl : list.image_url;
+
+    if (!messageToUse) {
       toast({
         title: 'Mensagem não configurada',
         description: 'Configure a mensagem modelo antes de iniciar.',
@@ -340,7 +344,28 @@ export default function BroadcastDetails() {
       return;
     }
 
+    // Warn if no assignee selected
+    if (!selectedAssignee) {
+      const confirmed = window.confirm(
+        'Nenhum responsável selecionado. Os leads que responderem ficarão sem atribuição. Deseja continuar?'
+      );
+      if (!confirmed) return;
+    }
+
     try {
+      // AUTO-SAVE: Save current configuration before starting
+      const { error: saveError } = await supabase
+        .from('broadcast_lists')
+        .update({ 
+          message_template: messageToUse,
+          image_url: imageToUse || null,
+          assigned_to: selectedAssignee || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', list.id);
+
+      if (saveError) throw saveError;
+
       // Check if there are already pending items in queue
       const existingPending = queue.filter(q => q.status === 'pending').length;
       
@@ -351,8 +376,8 @@ export default function BroadcastDetails() {
           return {
             broadcast_list_id: list.id,
             phone,
-            message: list.message_template!,
-            image_url: list.image_url || null,
+            message: messageToUse,
+            image_url: imageToUse || null,
             status: 'pending' as const,
             lead_data: leadInfo || null,
           };
