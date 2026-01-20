@@ -242,7 +242,7 @@ export default function CRMKanban() {
       let query = supabase
         .from('whatsapp_conversations')
         .select(`
-          id, phone, name, avatar_url, status,
+          id, phone, name, avatar_url, status, notes,
           last_message_at, last_message_preview, unread_count,
           ai_paused, ai_handoff_reason, funnel_stage, crm_funnel_id,
           is_crm_lead, is_group, assigned_to, reminder_at, estimated_value, closed_value,
