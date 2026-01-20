@@ -818,36 +818,183 @@ export default function WhatsAppChat() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-background overflow-hidden -m-4 md:-m-6">
-      {/* Header - apenas em mobile quando conversa selecionada */}
-      <div className="border-b p-3 flex items-center gap-3 md:hidden">
+      {/* Header - Mobile */}
+      <div className="border-b p-2 flex items-center gap-2 md:hidden">
         {selectedConversation ? (
-          <Button variant="ghost" size="icon" onClick={() => setSelectedConversation(null)}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-        ) : null}
-        <h1 className="text-lg font-semibold">
-          {selectedConversation ? (selectedConversation.name || selectedConversation.phone) : 'Chat WhatsApp'}
-        </h1>
-        {!selectedConversation && instances.length > 1 && (
-          <Select value={selectedInstance} onValueChange={setSelectedInstance}>
-            <SelectTrigger className="w-[140px] ml-auto">
-              <SelectValue placeholder="Instância" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {instances.map(instance => (
-                <SelectItem key={instance.id} value={instance.id}>
-                  <div className="flex items-center gap-2">
-                    <div 
-                      className="w-2 h-2 rounded-full" 
-                      style={{ backgroundColor: instance.color }}
-                    />
-                    {instance.name}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <>
+            {/* Back Button */}
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setSelectedConversation(null)}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            
+            {/* Avatar + Name */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <Avatar className="h-7 w-7 shrink-0">
+                {selectedConversation.avatar_url && (
+                  <AvatarImage src={selectedConversation.avatar_url} />
+                )}
+                <AvatarFallback className="text-[10px] bg-muted">
+                  {selectedConversation.name?.charAt(0) || selectedConversation.phone.slice(-2)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-medium truncate block">
+                  {selectedConversation.name || selectedConversation.phone}
+                </span>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Assigned user badge OR Assumir button */}
+              {selectedConversation.assigned_to ? (
+                assignedUserNames[selectedConversation.assigned_to] && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                    {assignedUserNames[selectedConversation.assigned_to]}
+                  </Badge>
+                )
+              ) : (
+                <Button 
+                  variant="default" 
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={async () => {
+                    if (!user?.id) return;
+                    const { error } = await supabase
+                      .from('whatsapp_conversations')
+                      .update({
+                        assigned_to: user.id,
+                        assigned_at: new Date().toISOString(),
+                      })
+                      .eq('id', selectedConversation.id);
+                    if (error) {
+                      toast({ title: 'Erro ao assumir lead', variant: 'destructive' });
+                      return;
+                    }
+                    toast({ title: 'Lead assumido!' });
+                    loadConversations();
+                    const { data } = await supabase
+                      .from('whatsapp_conversations')
+                      .select('*')
+                      .eq('id', selectedConversation.id)
+                      .single();
+                    if (data) {
+                      setSelectedConversation(prev => ({
+                        ...prev!,
+                        ...data,
+                        instance: prev?.instance
+                      }));
+                    }
+                  }}
+                  title="Assumir lead"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                </Button>
+              )}
+
+              {/* LeadControlPanelCompact - All controls in menu */}
+              <LeadControlPanelCompact 
+                conversation={{
+                  id: selectedConversation.id,
+                  ai_paused: selectedConversation.ai_paused,
+                  ai_handoff_reason: selectedConversation.ai_handoff_reason,
+                  is_group: selectedConversation.is_group,
+                  is_crm_lead: selectedConversation.is_crm_lead,
+                  origin: (selectedConversation as any).origin,
+                  funnel_stage: (selectedConversation as any).funnel_stage,
+                  crm_funnel_id: (selectedConversation as any).crm_funnel_id,
+                  tags: selectedConversation.tags,
+                  status: selectedConversation.status,
+                  reminder_at: selectedConversation.reminder_at,
+                  assigned_to: selectedConversation.assigned_to,
+                }}
+                onUpdate={() => {
+                  loadConversations();
+                  if (selectedConversation) {
+                    supabase
+                      .from('whatsapp_conversations')
+                      .select('*')
+                      .eq('id', selectedConversation.id)
+                      .single()
+                      .then(({ data }) => {
+                        if (data) {
+                          setSelectedConversation(prev => ({
+                            ...prev!,
+                            ...data,
+                            instance: prev?.instance
+                          }));
+                        }
+                      });
+                  }
+                }}
+                onDelete={() => {
+                  setSelectedConversation(null);
+                  loadConversations();
+                }}
+                onArchive={(archive) => archiveConversation(selectedConversation.id, archive)}
+                onReminderClick={() => setReminderModalOpen(true)}
+                onAssignToMe={async () => {
+                  if (!user?.id) return;
+                  const { error } = await supabase
+                    .from('whatsapp_conversations')
+                    .update({
+                      assigned_to: user.id,
+                      assigned_at: new Date().toISOString(),
+                    })
+                    .eq('id', selectedConversation.id);
+                  if (error) {
+                    toast({ title: 'Erro ao assumir lead', variant: 'destructive' });
+                    return;
+                  }
+                  toast({ title: 'Lead assumido!' });
+                  loadConversations();
+                  const { data } = await supabase
+                    .from('whatsapp_conversations')
+                    .select('*')
+                    .eq('id', selectedConversation.id)
+                    .single();
+                  if (data) {
+                    setSelectedConversation(prev => ({
+                      ...prev!,
+                      ...data,
+                      instance: prev?.instance
+                    }));
+                  }
+                }}
+                onTransferUser={() => setTransferUserModalOpen(true)}
+                onTransferInstance={instances.length > 1 ? () => setTransferModalOpen(true) : undefined}
+                onMarkUnread={() => markAsUnread(selectedConversation.id)}
+                hasMultipleInstances={instances.length > 1}
+                instanceDisconnected={selectedConversation.instance && !selectedConversation.instance.is_active}
+                initialNotes={selectedConversation.notes || null}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <h1 className="text-lg font-semibold flex-1">Chat WhatsApp</h1>
+            {instances.length > 1 && (
+              <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {instances.map(instance => (
+                    <SelectItem key={instance.id} value={instance.id}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-2 h-2 rounded-full" 
+                          style={{ backgroundColor: instance.color }}
+                        />
+                        {instance.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </>
         )}
       </div>
 
