@@ -142,6 +142,29 @@ serve(async (req) => {
       );
     }
     
+    // Detectar número inválido ou que não está no WhatsApp
+    if (result.error && typeof result.error === 'string' && result.error.includes('not on WhatsApp')) {
+      console.error(`[Send] Number not on WhatsApp: ${formattedPhone}`);
+      return new Response(
+        JSON.stringify({ 
+          error: `O número ${formattedPhone} não está no WhatsApp.`,
+          invalid_number: true
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Detectar outros erros da API
+    if (result.error) {
+      console.error(`[Send] UAZAPI error:`, result.error);
+      return new Response(
+        JSON.stringify({ 
+          error: typeof result.error === 'string' ? result.error : 'Erro ao enviar mensagem'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     if (!response.ok) throw new Error(result.message || 'Failed to send message');
 
     // Find or create conversation
