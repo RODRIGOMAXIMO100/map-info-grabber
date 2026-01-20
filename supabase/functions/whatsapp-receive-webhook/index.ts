@@ -17,8 +17,6 @@ const ALL_HANDOFF_LABELS = [HANDOFF_LABEL_NUMERIC, HANDOFF_LABEL_STRING];
 const INITIAL_STAGE = 'new'; // Lead Novo - usando string como padrão
 const INTEREST_STAGE = 'interest'; // Interesse Confirmado
 
-// Instância que mantém conversas arquivadas (não reativa ao receber mensagem)
-const KEEP_ARCHIVED_CONFIG_ID = 'bdeab298-0ee6-43a6-9673-fe2bc04de737';
 
 // Padrões para detectar mensagens automáticas de bot/WhatsApp Business
 const BOT_MESSAGE_PATTERNS = [
@@ -571,14 +569,13 @@ serve(async (req) => {
         last_message_preview: isFromMe ? `Você: ${messagePreview}` : messagePreview,
       };
       
-      // Verifica se deve manter arquivado (instância 8248)
-      const isKeepArchivedInstance = (existingConfigId || configId) === KEEP_ARCHIVED_CONFIG_ID;
+      // Manter conversas arquivadas (leads perdidos, etc.) - não reativar automaticamente
       const isCurrentlyArchived = existingConv.status === 'archived';
       
-      if (!(isKeepArchivedInstance && isCurrentlyArchived)) {
+      if (!isCurrentlyArchived) {
         updateData.status = 'active';
       } else {
-        console.log(`[Archive] Mantendo conversa arquivada para instância 8248: ${conversationId}`);
+        console.log(`[Archive] Mantendo conversa arquivada: ${conversationId}`);
       }
 
       if (!existingConfigId && configId) {
