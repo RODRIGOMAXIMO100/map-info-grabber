@@ -33,7 +33,9 @@ import {
   MapPin,
   Megaphone,
   DollarSign,
+  StickyNote,
 } from 'lucide-react';
+import { ConversationNotes } from '@/components/whatsapp/ConversationNotes';
 import { toast as sonnerToast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -474,6 +476,22 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate, s
                   )}
                 </Button>
               )}
+            </div>
+
+            <Separator />
+
+            {/* Notas do Usuário */}
+            <div>
+              <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+                <StickyNote className="h-4 w-4" />
+                Notas
+              </h4>
+              <ConversationNotes
+                conversationId={conversation.id}
+                initialNotes={conversation.notes}
+                variant="inline"
+                onNotesChange={() => onUpdate?.()}
+              />
             </div>
 
             <Separator />

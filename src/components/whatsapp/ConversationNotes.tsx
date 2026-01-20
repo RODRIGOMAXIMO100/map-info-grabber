@@ -9,12 +9,14 @@ interface ConversationNotesProps {
   conversationId: string;
   initialNotes: string | null;
   onNotesChange?: (notes: string) => void;
+  variant?: 'popover' | 'inline';
 }
 
 export function ConversationNotes({ 
   conversationId, 
   initialNotes,
-  onNotesChange 
+  onNotesChange,
+  variant = 'popover'
 }: ConversationNotesProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [notes, setNotes] = useState(initialNotes || '');
@@ -83,6 +85,40 @@ export function ConversationNotes({
 
   const hasNotes = notes.trim().length > 0;
 
+  // Variante inline - sempre visível
+  if (variant === 'inline') {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground h-4">
+          {isSaving && (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Salvando...</span>
+            </>
+          )}
+          {isSaved && !isSaving && (
+            <>
+              <Check className="h-3 w-3 text-green-500" />
+              <span className="text-green-500">Salvo</span>
+            </>
+          )}
+        </div>
+        
+        <Textarea
+          placeholder="Adicione observações sobre este lead..."
+          value={notes}
+          onChange={(e) => handleNotesChange(e.target.value)}
+          className="min-h-[80px] resize-none text-sm"
+        />
+        
+        <p className="text-[10px] text-muted-foreground">
+          As notas são salvas automaticamente
+        </p>
+      </div>
+    );
+  }
+
+  // Variante popover (padrão) - com toggle button
   return (
     <div className="relative">
       {/* Notes Toggle Button */}
