@@ -569,13 +569,22 @@ serve(async (req) => {
         last_message_preview: isFromMe ? `Você: ${messagePreview}` : messagePreview,
       };
       
-      // Manter conversas arquivadas (leads perdidos, etc.) - não reativar automaticamente
+      // Lógica de reativação de conversas arquivadas:
+      // - Se o LEAD enviar mensagem (!isFromMe): SEMPRE reativa (lead "perdido" voltou a responder)
+      // - Se NÓS enviarmos mensagem (isFromMe): Mantém arquivado (permite enviar para leads perdidos sem reativar)
       const isCurrentlyArchived = existingConv.status === 'archived';
       
-      if (!isCurrentlyArchived) {
+      if (!isFromMe) {
+        // Lead enviou mensagem - sempre reativa a conversa
+        updateData.status = 'active';
+        if (isCurrentlyArchived) {
+          console.log(`[Archive] Reativando conversa arquivada - lead respondeu: ${conversationId}`);
+        }
+      } else if (!isCurrentlyArchived) {
+        // Nossas mensagens: só atualiza status se não estava arquivado
         updateData.status = 'active';
       } else {
-        console.log(`[Archive] Mantendo conversa arquivada: ${conversationId}`);
+        console.log(`[Archive] Mantendo conversa arquivada (mensagem nossa): ${conversationId}`);
       }
 
       if (!existingConfigId && configId) {
