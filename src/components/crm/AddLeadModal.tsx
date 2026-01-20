@@ -87,12 +87,17 @@ export function AddLeadModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cityOpen, setCityOpen] = useState(false);
+  const [citySearch, setCitySearch] = useState('');
 
-  // Get cities for selected state
+  // Get cities for selected state, filtered by search
   const citiesForState = useMemo(() => {
     if (!state) return [];
-    return CITIES_BY_STATE[state]?.map(c => c.city) || [];
-  }, [state]);
+    const allCities = CITIES_BY_STATE[state]?.map(c => c.city) || [];
+    if (!citySearch) return allCities;
+    return allCities.filter(c => 
+      c.toLowerCase().includes(citySearch.toLowerCase())
+    );
+  }, [state, citySearch]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -108,9 +113,10 @@ export function AddLeadModal({
     }
   }, [open, stages, whatsappConfigs]);
 
-  // Reset city when state changes
+  // Reset city and search when state changes
   useEffect(() => {
     setCity('');
+    setCitySearch('');
   }, [state]);
 
   // Format phone as user types (Brazilian format)
@@ -229,7 +235,10 @@ export function AddLeadModal({
 
             <div className="space-y-2">
               <Label>Cidade</Label>
-              <Popover open={cityOpen} onOpenChange={setCityOpen}>
+              <Popover open={cityOpen} onOpenChange={(open) => {
+                setCityOpen(open);
+                if (!open) setCitySearch('');
+              }}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -239,30 +248,60 @@ export function AddLeadModal({
                       "w-full justify-between font-normal",
                       !city && "text-muted-foreground"
                     )}
-                    disabled={!state}
                   >
-                    {city || "Selecione..."}
+                    {city || "Digitar cidade..."}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[200px] p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Buscar cidade..." />
+                <PopoverContent className="w-[220px] p-0" align="start">
+                  <Command shouldFilter={false}>
+                    <CommandInput 
+                      placeholder="Buscar ou digitar..." 
+                      value={citySearch}
+                      onValueChange={setCitySearch}
+                    />
                     <CommandList>
-                      <CommandEmpty>Nenhuma cidade encontrada.</CommandEmpty>
-                      <CommandGroup>
-                        {citiesForState.map((cityName) => (
-                          <CommandItem
-                            key={cityName}
-                            value={cityName}
-                            onSelect={() => {
-                              setCity(cityName);
-                              setCityOpen(false);
-                            }}
-                          >
-                            {cityName}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
+                      {/* Option to use typed value */}
+                      {citySearch && !citiesForState.some(c => 
+                        c.toLowerCase() === citySearch.toLowerCase()
+                      ) && (
+                        <CommandItem
+                          value={`use-custom-${citySearch}`}
+                          onSelect={() => {
+                            setCity(citySearch);
+                            setCityOpen(false);
+                            setCitySearch('');
+                          }}
+                        >
+                          <span className="text-primary">Usar: "{citySearch}"</span>
+                        </CommandItem>
+                      )}
+                      
+                      {/* Suggested cities from database */}
+                      {citiesForState.length > 0 && (
+                        <CommandGroup heading={state ? `Cidades de ${state}` : 'Selecione um estado'}>
+                          {citiesForState.map((cityName) => (
+                            <CommandItem
+                              key={cityName}
+                              value={cityName}
+                              onSelect={() => {
+                                setCity(cityName);
+                                setCityOpen(false);
+                                setCitySearch('');
+                              }}
+                            >
+                              {cityName}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                      
+                      {citiesForState.length === 0 && !citySearch && state && (
+                        <CommandEmpty>Digite o nome da cidade</CommandEmpty>
+                      )}
+                      
+                      {!state && (
+                        <CommandEmpty>Selecione um estado primeiro ou digite a cidade</CommandEmpty>
+                      )}
                     </CommandList>
                   </Command>
                 </PopoverContent>
