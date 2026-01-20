@@ -892,8 +892,9 @@ export default function WhatsAppChat() {
                 </Button>
               )}
 
-              {/* LeadControlPanelCompact - All controls in menu */}
+              {/* LeadControlPanelCompact - Mobile mode with single menu */}
               <LeadControlPanelCompact 
+                isMobile={true}
                 conversation={{
                   id: selectedConversation.id,
                   ai_paused: selectedConversation.ai_paused,
