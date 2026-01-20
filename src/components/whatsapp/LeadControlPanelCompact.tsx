@@ -224,6 +224,14 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
         .eq('id', conversation.id);
 
       if (error) throw error;
+      
+      if (isLostStage) {
+        toast({
+          title: 'Lead marcado como perdido',
+          description: 'A conversa foi arquivada automaticamente.',
+        });
+      }
+      
       onUpdate?.();
     } catch (error) {
       console.error('Error updating stage:', error);

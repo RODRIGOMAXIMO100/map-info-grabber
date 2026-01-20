@@ -284,7 +284,10 @@ export function LeadControlPanel({ conversation, onUpdate, onDelete }: LeadContr
 
       if (error) throw error;
 
-      toast({ title: isLostStage ? 'Lead arquivado' : 'Etapa atualizada' });
+      toast({ 
+        title: isLostStage ? 'Lead marcado como perdido' : 'Etapa atualizada',
+        description: isLostStage ? 'A conversa foi arquivada automaticamente.' : undefined
+      });
       onUpdate?.();
     } catch (error) {
       console.error('Error updating stage:', error);
