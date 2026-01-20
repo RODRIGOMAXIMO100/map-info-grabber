@@ -40,6 +40,8 @@ interface CRMFiltersProps {
   availableUsers?: AvailableUser[];
   assignedToFilter?: string;
   onAssignedToChange?: (value: string) => void;
+  // Layout mode
+  layout?: 'horizontal' | 'vertical';
 }
 
 export function CRMFilters({
@@ -60,17 +62,26 @@ export function CRMFilters({
   availableUsers = [],
   assignedToFilter = 'all',
   onAssignedToChange,
+  layout = 'horizontal',
 }: CRMFiltersProps) {
+  const isVertical = layout === 'vertical';
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={cn(
+      isVertical 
+        ? "flex flex-col gap-3" 
+        : "flex flex-wrap items-center gap-2"
+    )}>
       {/* Search */}
-      <div className="relative flex-1 min-w-[150px] max-w-[250px]">
+      <div className={cn(
+        "relative",
+        isVertical ? "w-full" : "flex-1 min-w-[150px] max-w-[250px]"
+      )}>
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Buscar lead..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="pl-8 h-8 text-sm"
+          className={cn("pl-8 text-sm", isVertical ? "h-10" : "h-8")}
         />
       </div>
 
@@ -80,7 +91,8 @@ export function CRMFilters({
           variant={showRemindersOnly ? "default" : "outline"}
           size="sm"
           className={cn(
-            "h-8 text-xs gap-1.5",
+            "text-xs gap-1.5",
+            isVertical ? "h-10 w-full justify-start" : "h-8",
             showRemindersOnly && "bg-primary"
           )}
           onClick={() => onRemindersFilterChange(!showRemindersOnly)}
@@ -102,7 +114,10 @@ export function CRMFilters({
 
       {/* Period Filter */}
       <Select value={periodFilter} onValueChange={(v) => onPeriodChange(v as PeriodFilter)}>
-        <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
+        <SelectTrigger className={cn(
+          "text-xs",
+          isVertical ? "h-10 w-full" : "h-8 w-auto min-w-[100px]"
+        )}>
           <Clock className="h-3.5 w-3.5 mr-1" />
           <SelectValue />
         </SelectTrigger>
@@ -116,7 +131,10 @@ export function CRMFilters({
 
       {/* AI Status Filter */}
       <Select value={aiStatusFilter} onValueChange={(v) => onAIStatusChange(v as AIStatusFilter)}>
-        <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
+        <SelectTrigger className={cn(
+          "text-xs",
+          isVertical ? "h-10 w-full" : "h-8 w-auto min-w-[100px]"
+        )}>
           <Bot className="h-3.5 w-3.5 mr-1" />
           <SelectValue />
         </SelectTrigger>
@@ -129,7 +147,10 @@ export function CRMFilters({
 
       {/* Urgency Filter */}
       <Select value={urgencyFilter} onValueChange={(v) => onUrgencyChange(v as UrgencyFilter)}>
-        <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
+        <SelectTrigger className={cn(
+          "text-xs",
+          isVertical ? "h-10 w-full" : "h-8 w-auto min-w-[100px]"
+        )}>
           <Flame className="h-3.5 w-3.5 mr-1" />
           <SelectValue />
         </SelectTrigger>
@@ -143,7 +164,10 @@ export function CRMFilters({
 
       {/* Sort */}
       <Select value={sortOption} onValueChange={(v) => onSortChange(v as SortOption)}>
-        <SelectTrigger className="h-8 w-auto min-w-[110px] text-xs">
+        <SelectTrigger className={cn(
+          "text-xs",
+          isVertical ? "h-10 w-full" : "h-8 w-auto min-w-[110px]"
+        )}>
           <Filter className="h-3.5 w-3.5 mr-1" />
           <SelectValue />
         </SelectTrigger>
@@ -157,7 +181,10 @@ export function CRMFilters({
       {/* Assigned To Filter (Admin only) */}
       {isAdmin && onAssignedToChange && (
         <Select value={assignedToFilter} onValueChange={onAssignedToChange}>
-          <SelectTrigger className="h-8 w-auto min-w-[140px] text-xs">
+          <SelectTrigger className={cn(
+            "text-xs",
+            isVertical ? "h-10 w-full" : "h-8 w-auto min-w-[140px]"
+          )}>
             <UserCheck className="h-3.5 w-3.5 mr-1" />
             <SelectValue placeholder="Vendedor" />
           </SelectTrigger>

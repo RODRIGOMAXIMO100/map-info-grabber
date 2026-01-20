@@ -14,6 +14,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/contexts/AuthContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { LeadDetailsSheet, ReminderModal, ClosedValueModal, AddLeadModal } from '@/components/lazy';
@@ -26,6 +27,8 @@ import {
   ValueModal,
   UndoSaleModal,
   AssignUserModal,
+  MobileFiltersDrawer,
+  MobileKanbanView,
   type PeriodFilter,
   type AIStatusFilter,
   type UrgencyFilter,
@@ -45,6 +48,7 @@ export default function CRMKanban() {
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [bantScores, setBantScores] = useState<Record<string, BANTScore>>({});
   const [loading, setLoading] = useState(true);
@@ -765,14 +769,15 @@ export default function CRMKanban() {
     <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-background">
       {/* Header with Metrics */}
       <div className="border-b p-3 space-y-3 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Funnel Selector */}
+        {/* Mobile Header */}
+        {isMobile ? (
+          <div className="flex items-center justify-between gap-2">
+            {/* Funnel Selector - Compact */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  {selectedFunnel?.name || 'Selecionar Funil'}
-                  <ChevronDown className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="gap-1 text-xs max-w-[140px]">
+                  <span className="truncate">{selectedFunnel?.name || 'Funil'}</span>
+                  <ChevronDown className="h-3 w-3 flex-shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
@@ -780,16 +785,11 @@ export default function CRMKanban() {
                   <DropdownMenuItem
                     key={funnel.id}
                     onClick={() => setSelectedFunnelId(funnel.id)}
-                    className={cn(
-                      'gap-2',
-                      funnel.id === selectedFunnelId && 'bg-accent'
-                    )}
+                    className={cn('gap-2', funnel.id === selectedFunnelId && 'bg-accent')}
                   >
                     {funnel.name}
                     {funnel.is_default && (
-                      <Badge variant="secondary" className="ml-auto text-[10px]">
-                        Padrão
-                      </Badge>
+                      <Badge variant="secondary" className="ml-auto text-[10px]">Padrão</Badge>
                     )}
                   </DropdownMenuItem>
                 ))}
@@ -801,52 +801,145 @@ export default function CRMKanban() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Badge variant="secondary" className="text-xs">
-              {filteredConversations.length} leads
-            </Badge>
-
-            <Button 
-              size="sm" 
-              onClick={() => setAddLeadModalOpen(true)}
-              className="gap-1"
-            >
-              <UserPlus className="h-4 w-4" />
-              <span className="hidden sm:inline">Adicionar Lead</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-xs">{filteredConversations.length}</Badge>
+              
+              <MobileFiltersDrawer
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                periodFilter={periodFilter}
+                onPeriodChange={setPeriodFilter}
+                aiStatusFilter={aiStatusFilter}
+                onAIStatusChange={setAIStatusFilter}
+                urgencyFilter={urgencyFilter}
+                onUrgencyChange={setUrgencyFilter}
+                sortOption={sortOption}
+                onSortChange={setSortOption}
+                showRemindersOnly={showRemindersOnly}
+                onRemindersFilterChange={setShowRemindersOnly}
+                pendingRemindersCount={pendingRemindersCount}
+                isAdmin={isAdmin}
+                availableUsers={availableUsers}
+                assignedToFilter={assignedToFilter}
+                onAssignedToChange={setAssignedToFilter}
+              />
+              
+              <Button size="icon" className="h-9 w-9" onClick={() => setAddLeadModalOpen(true)}>
+                <UserPlus className="h-4 w-4" />
+              </Button>
+              
+              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => selectedFunnelId && loadConversations(selectedFunnelId)}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => selectedFunnelId && loadConversations(selectedFunnelId)} className="gap-1">
-            <RefreshCw className="h-4 w-4" />
-            <span className="hidden sm:inline">Atualizar</span>
-          </Button>
-        </div>
+        ) : (
+          <>
+            {/* Desktop Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {/* Funnel Selector */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="gap-2">
+                      {selectedFunnel?.name || 'Selecionar Funil'}
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {funnels.map((funnel) => (
+                      <DropdownMenuItem
+                        key={funnel.id}
+                        onClick={() => setSelectedFunnelId(funnel.id)}
+                        className={cn(
+                          'gap-2',
+                          funnel.id === selectedFunnelId && 'bg-accent'
+                        )}
+                      >
+                        {funnel.name}
+                        {funnel.is_default && (
+                          <Badge variant="secondary" className="ml-auto text-[10px]">
+                            Padrão
+                          </Badge>
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => navigate('/crm/funnels')} className="gap-2">
+                      <Settings className="h-4 w-4" />
+                      Gerenciar Funis
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-        {/* Metrics Bar */}
-        <CRMMetricsBar conversations={conversations} />
+                <Badge variant="secondary" className="text-xs">
+                  {filteredConversations.length} leads
+                </Badge>
 
-        {/* Filters */}
-        <CRMFilters
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          periodFilter={periodFilter}
-          onPeriodChange={setPeriodFilter}
-          aiStatusFilter={aiStatusFilter}
-          onAIStatusChange={setAIStatusFilter}
-          urgencyFilter={urgencyFilter}
-          onUrgencyChange={setUrgencyFilter}
-          sortOption={sortOption}
-          onSortChange={setSortOption}
-          showRemindersOnly={showRemindersOnly}
-          onRemindersFilterChange={setShowRemindersOnly}
-          pendingRemindersCount={pendingRemindersCount}
-          isAdmin={isAdmin}
-          availableUsers={availableUsers}
-          assignedToFilter={assignedToFilter}
-          onAssignedToChange={setAssignedToFilter}
-        />
+                <Button 
+                  size="sm" 
+                  onClick={() => setAddLeadModalOpen(true)}
+                  className="gap-1"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Adicionar Lead</span>
+                </Button>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => selectedFunnelId && loadConversations(selectedFunnelId)} className="gap-1">
+                <RefreshCw className="h-4 w-4" />
+                <span className="hidden sm:inline">Atualizar</span>
+              </Button>
+            </div>
+
+            {/* Metrics Bar */}
+            <CRMMetricsBar conversations={conversations} />
+
+            {/* Filters */}
+            <CRMFilters
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              periodFilter={periodFilter}
+              onPeriodChange={setPeriodFilter}
+              aiStatusFilter={aiStatusFilter}
+              onAIStatusChange={setAIStatusFilter}
+              urgencyFilter={urgencyFilter}
+              onUrgencyChange={setUrgencyFilter}
+              sortOption={sortOption}
+              onSortChange={setSortOption}
+              showRemindersOnly={showRemindersOnly}
+              onRemindersFilterChange={setShowRemindersOnly}
+              pendingRemindersCount={pendingRemindersCount}
+              isAdmin={isAdmin}
+              availableUsers={availableUsers}
+              assignedToFilter={assignedToFilter}
+              onAssignedToChange={setAssignedToFilter}
+            />
+          </>
+        )}
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
+      {/* Mobile Kanban View */}
+      {isMobile ? (
+        <MobileKanbanView
+          stages={stages}
+          filteredConversations={filteredConversations}
+          unclassified={unclassified}
+          bantScores={bantScores}
+          assignedUserNames={assignedUserNames}
+          onLeadClick={(conv) => { setSelectedLead(conv); setSheetOpen(true); }}
+          onSetReminder={(conv) => setReminderModal({ open: true, lead: conv })}
+          onAddTag={(conv) => setTagModal({ open: true, lead: conv })}
+          onSetValue={(conv) => setValueModal({ open: true, lead: conv })}
+          onUndoSale={(conv) => setUndoSaleModal({ open: true, lead: conv })}
+          onEditClosedValue={handleEditClosedValue}
+          onRemoveClosedValue={handleRemoveClosedValue}
+          onAssignUser={(conv) => setAssignUserModal({ open: true, lead: conv })}
+          onAssignToMe={handleAssignToMe}
+          onStageChange={handleStageChange}
+        />
+      ) : (
+        /* Desktop Kanban Board */
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
         <div className="flex gap-3 p-3 h-full min-w-max">
           {/* Unclassified Column */}
           {unclassified.length > 0 && (
@@ -951,6 +1044,7 @@ export default function CRMKanban() {
           })}
         </div>
       </div>
+      )}
 
       {/* Modals */}
       <ReminderModal
