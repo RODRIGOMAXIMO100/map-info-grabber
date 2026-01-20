@@ -1,7 +1,8 @@
-import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone, Archive, ArchiveRestore, Bell, UserPlus, ArrowRightLeft, Mail, StickyNote, Wifi, WifiOff } from 'lucide-react';
+import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone, Archive, ArchiveRestore, Bell, UserPlus, ArrowRightLeft, Mail, StickyNote, Wifi, WifiOff, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -15,6 +16,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
@@ -76,6 +80,7 @@ interface LeadControlPanelCompactProps {
   hasMultipleInstances?: boolean;
   instanceDisconnected?: boolean;
   initialNotes?: string | null;
+  isMobile?: boolean;
 }
 
 export function LeadControlPanelCompact({ 
@@ -90,7 +95,8 @@ export function LeadControlPanelCompact({
   onMarkUnread,
   hasMultipleInstances,
   instanceDisconnected,
-  initialNotes
+  initialNotes,
+  isMobile = false
 }: LeadControlPanelCompactProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -373,6 +379,240 @@ export function LeadControlPanelCompact({
 
   const currentStageData = stages.find(s => s.id === currentStage);
 
+  // Mobile layout - ultra compact: just AI badge + single menu
+  if (isMobile) {
+    return (
+      <div className="flex items-center gap-1">
+        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+
+        {/* AI Status Badge - visual indicator only */}
+        {isCrmLead && !isInHandoff && (
+          <Badge 
+            variant={isAiActive ? "default" : "outline"} 
+            className={cn(
+              "h-5 px-1.5 text-[10px] gap-0.5",
+              isAiActive && "bg-emerald-500 hover:bg-emerald-600"
+            )}
+          >
+            {isAiActive ? <Bot className="h-3 w-3" /> : <BotOff className="h-3 w-3" />}
+          </Badge>
+        )}
+
+        {/* Handoff badge */}
+        {isInHandoff && (
+          <Badge variant="outline" className="h-5 px-1.5 text-[10px] gap-0.5 border-amber-500 text-amber-600">
+            <Bot className="h-3 w-3" />
+          </Badge>
+        )}
+
+        {/* Single dropdown with ALL actions */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56 bg-popover">
+            {/* Resume from handoff */}
+            {isInHandoff && (
+              <>
+                <DropdownMenuItem onClick={handleResumeFromHandoff} className="text-xs">
+                  <Bot className="h-3.5 w-3.5 mr-2" />
+                  Retomar IA
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+
+            {/* Toggle AI */}
+            {isCrmLead && !isInHandoff && (
+              <DropdownMenuItem onClick={handleToggleAI} className="text-xs">
+                {isAiActive ? <BotOff className="h-3.5 w-3.5 mr-2" /> : <Bot className="h-3.5 w-3.5 mr-2" />}
+                {isAiActive ? 'Pausar IA' : 'Ativar IA'}
+              </DropdownMenuItem>
+            )}
+
+            {/* Toggle Lead */}
+            <DropdownMenuItem onClick={handleToggleLead} className="text-xs">
+              {isCrmLead ? <UserX className="h-3.5 w-3.5 mr-2" /> : <UserCheck className="h-3.5 w-3.5 mr-2" />}
+              {isCrmLead ? 'Desativar Lead' : 'Ativar Lead'}
+            </DropdownMenuItem>
+
+            {/* Stage submenu */}
+            {isCrmLead && stages.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="text-xs">
+                  <div className="flex items-center gap-2">
+                    {currentStageData && (
+                      <span 
+                        className="w-2 h-2 rounded-full shrink-0" 
+                        style={{ backgroundColor: currentStageData.color }}
+                      />
+                    )}
+                    Etapa: {currentStageData?.name || 'Selecionar'}
+                  </div>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="bg-popover">
+                  {stages.map((stage) => (
+                    <DropdownMenuItem 
+                      key={stage.id} 
+                      onClick={() => handleStageChange(stage.id)}
+                      className="text-xs"
+                    >
+                      <span 
+                        className="w-2 h-2 rounded-full mr-2" 
+                        style={{ backgroundColor: stage.color }}
+                      />
+                      {stage.name}
+                      {stage.id === currentStage && <span className="ml-auto">✓</span>}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+
+            <DropdownMenuSeparator />
+
+            {/* Reminder */}
+            {onReminderClick && (
+              <DropdownMenuItem onClick={onReminderClick} className="text-xs">
+                <Bell className={cn("h-3.5 w-3.5 mr-2", hasReminder && "text-amber-500")} />
+                {hasReminder 
+                  ? `Lembrete: ${format(new Date(conversation.reminder_at!), "dd/MM HH:mm", { locale: ptBR })}` 
+                  : 'Agendar Lembrete'
+                }
+              </DropdownMenuItem>
+            )}
+
+            {/* Notes */}
+            <DropdownMenuItem onClick={() => setNotesOpen(true)} className="text-xs">
+              <StickyNote className={cn("h-3.5 w-3.5 mr-2", hasNotes && "text-amber-500")} />
+              {hasNotes ? 'Editar Notas' : 'Adicionar Notas'}
+            </DropdownMenuItem>
+
+            {onMarkUnread && (
+              <DropdownMenuItem onClick={onMarkUnread} className="text-xs">
+                <Mail className="h-3.5 w-3.5 mr-2" />
+                Marcar não lido
+              </DropdownMenuItem>
+            )}
+
+            <DropdownMenuSeparator />
+
+            {/* Assign / Transfer */}
+            {!conversation.assigned_to && onAssignToMe && (
+              <DropdownMenuItem onClick={onAssignToMe} className="text-xs">
+                <UserPlus className="h-3.5 w-3.5 mr-2" />
+                Assumir Lead
+              </DropdownMenuItem>
+            )}
+            {conversation.assigned_to && onTransferUser && (
+              <DropdownMenuItem onClick={onTransferUser} className="text-xs">
+                <ArrowRightLeft className="h-3.5 w-3.5 mr-2" />
+                Transferir Lead
+              </DropdownMenuItem>
+            )}
+
+            {/* Transfer Instance */}
+            {hasMultipleInstances && onTransferInstance && (
+              <DropdownMenuItem 
+                onClick={onTransferInstance}
+                className={cn("text-xs", instanceDisconnected && "text-destructive")}
+              >
+                {instanceDisconnected ? <WifiOff className="h-3.5 w-3.5 mr-2" /> : <Wifi className="h-3.5 w-3.5 mr-2" />}
+                {instanceDisconnected ? 'Transferir (Desconectada)' : 'Transferir instância'}
+              </DropdownMenuItem>
+            )}
+
+            {/* Origin */}
+            {isCrmLead && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleOriginChange('random')} className="text-xs">
+                  <Radio className="h-3.5 w-3.5 mr-2" />
+                  Origem: Aleatório
+                  {currentOrigin === 'random' && <span className="ml-auto">✓</span>}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleOriginChange('broadcast')} className="text-xs">
+                  <Megaphone className="h-3.5 w-3.5 mr-2" />
+                  Origem: Broadcast
+                  {currentOrigin === 'broadcast' && <span className="ml-auto">✓</span>}
+                </DropdownMenuItem>
+              </>
+            )}
+
+            <DropdownMenuSeparator />
+
+            {/* Archive */}
+            {onArchive && (
+              <DropdownMenuItem onClick={() => onArchive(!isArchived)} className="text-xs">
+                {isArchived ? <ArchiveRestore className="h-3.5 w-3.5 mr-2" /> : <Archive className="h-3.5 w-3.5 mr-2" />}
+                {isArchived ? 'Desarquivar' : 'Arquivar'}
+              </DropdownMenuItem>
+            )}
+
+            {/* Delete */}
+            <DropdownMenuItem 
+              onClick={() => setDeleteDialogOpen(true)}
+              className="text-xs text-destructive focus:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-2" />
+              Deletar conversa
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Notes Popover for mobile */}
+        <Popover open={notesOpen} onOpenChange={setNotesOpen}>
+          <PopoverTrigger asChild>
+            <span className="hidden" />
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">Notas internas</span>
+                {saveStatus === 'saving' && (
+                  <span className="text-[10px] text-muted-foreground">Salvando...</span>
+                )}
+                {saveStatus === 'saved' && (
+                  <span className="text-[10px] text-emerald-500">Salvo!</span>
+                )}
+              </div>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Escreva notas privadas sobre este lead..."
+                className="text-xs min-h-[80px] resize-none"
+              />
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Deletar conversa?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação não pode ser desfeita. Todas as mensagens serão removidas.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteConversation}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Deletar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
+  // Desktop layout - original inline buttons
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex items-center gap-1">
