@@ -509,38 +509,44 @@ serve(async (req) => {
     let aiPaused = false;
     let existingConfigId: string | null = null;
     
-    // === FIX: Buscar conversa por phone + config_id para separar por instância ===
+    // === FIX: Buscar conversa com matching flexível de telefone (últimos 9 dígitos) ===
+    // Isso resolve duplicatas causadas por formatos diferentes (5531997776075 vs 553197776075)
     let existingConv = null;
     
-    // Primeiro: buscar conversa específica desta instância (phone + config_id)
+    // Normalizar telefone para matching flexível
+    const phoneDigits = senderPhone.replace(/\D/g, '');
+    const last9Digits = phoneDigits.slice(-9);
+    console.log(`[Phone Normalize] Original: ${senderPhone}, Digits: ${phoneDigits}, Last9: ${last9Digits}`);
+    
+    // Primeiro: buscar conversa específica desta instância usando LIKE com últimos 9 dígitos
     if (configId) {
-      const { data: specificConv } = await supabase
+      const { data: specificConvs } = await supabase
         .from('whatsapp_conversations')
         .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead, status')
-        .eq('phone', senderPhone)
         .eq('config_id', configId)
+        .like('phone', `%${last9Digits}`)
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
       
-      existingConv = specificConv;
-      console.log(`[Conversation] Looking for phone=${senderPhone} + config_id=${configId}: ${existingConv ? 'FOUND' : 'NOT FOUND'}`);
+      existingConv = specificConvs?.[0] || null;
+      console.log(`[Conversation] Looking for phone like %${last9Digits} + config_id=${configId}: ${existingConv ? `FOUND (${existingConv.phone})` : 'NOT FOUND'}`);
     }
     
     // Se não encontrou conversa específica, verificar se existe conversa órfã (sem config_id)
     if (!existingConv) {
-      const { data: orphanConv } = await supabase
+      const { data: orphanConvs } = await supabase
         .from('whatsapp_conversations')
         .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead, status')
-        .eq('phone', senderPhone)
         .is('config_id', null)
+        .like('phone', `%${last9Digits}`)
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+      
+      const orphanConv = orphanConvs?.[0] || null;
       
       if (orphanConv && configId) {
         // Adotar a conversa órfã para esta instância
-        console.log(`[Conversation] Found orphan conversation ${orphanConv.id} for ${senderPhone}, adopting to config_id=${configId}`);
+        console.log(`[Conversation] Found orphan conversation ${orphanConv.id} for %${last9Digits}, adopting to config_id=${configId}`);
         await supabase
           .from('whatsapp_conversations')
           .update({ config_id: configId })
