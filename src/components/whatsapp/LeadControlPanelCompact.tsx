@@ -1,4 +1,4 @@
-import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone, Archive, ArchiveRestore, Bell } from 'lucide-react';
+import { Bot, BotOff, Loader2, UserCheck, UserX, MoreVertical, Trash2, Radio, Megaphone, Archive, ArchiveRestore, Bell, UserPlus, ArrowRightLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -58,14 +58,17 @@ interface LeadControlPanelCompactProps {
     tags?: string[];
     status?: string;
     reminder_at?: string | null;
+    assigned_to?: string | null;
   };
   onUpdate?: () => void;
   onArchive?: (archive: boolean) => void;
   onDelete?: () => void;
   onReminderClick?: () => void;
+  onAssignToMe?: () => void;
+  onTransferUser?: () => void;
 }
 
-export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onArchive, onReminderClick }: LeadControlPanelCompactProps) {
+export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onArchive, onReminderClick, onAssignToMe, onTransferUser }: LeadControlPanelCompactProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -442,6 +445,27 @@ export function LeadControlPanelCompact({ conversation, onUpdate, onDelete, onAr
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="bg-popover">
+            {/* Assign to me / Transfer */}
+            {!conversation.assigned_to && onAssignToMe && (
+              <DropdownMenuItem 
+                onClick={onAssignToMe}
+                className="text-xs"
+              >
+                <UserPlus className="h-3.5 w-3.5 mr-2" />
+                Assumir Lead
+              </DropdownMenuItem>
+            )}
+            {conversation.assigned_to && onTransferUser && (
+              <DropdownMenuItem 
+                onClick={onTransferUser}
+                className="text-xs"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5 mr-2" />
+                Transferir Lead
+              </DropdownMenuItem>
+            )}
+            {(onAssignToMe || onTransferUser) && <DropdownMenuSeparator />}
+            
             {/* Origin selector */}
             {isCrmLead && (
               <>

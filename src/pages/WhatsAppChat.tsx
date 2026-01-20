@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle, UserCheck, Smile } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle, UserCheck, UserPlus, Smile } from 'lucide-react';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -1375,22 +1375,64 @@ export default function WhatsAppChat() {
                           </Button>
                         )}
 
-                        {/* Transfer to User - icon only */}
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => setTransferUserModalOpen(true)}
-                          title="Transferir para vendedor"
-                        >
-                          <UserCheck className="h-3.5 w-3.5" />
-                        </Button>
-
-                        {/* Show assigned user badge */}
-                        {selectedConversation.assigned_to && assignedUserNames[selectedConversation.assigned_to] && (
-                          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
-                            {assignedUserNames[selectedConversation.assigned_to]}
-                          </Badge>
+                        {/* Assign to Me / Transfer to User */}
+                        {!selectedConversation.assigned_to ? (
+                          <Button 
+                            variant="default" 
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={async () => {
+                              if (!user?.id) return;
+                              const { error } = await supabase
+                                .from('whatsapp_conversations')
+                                .update({
+                                  assigned_to: user.id,
+                                  assigned_at: new Date().toISOString(),
+                                })
+                                .eq('id', selectedConversation.id);
+                              if (error) {
+                                toast({ title: 'Erro ao assumir lead', variant: 'destructive' });
+                                return;
+                              }
+                              toast({ title: 'Lead assumido!' });
+                              loadConversations();
+                              // Refresh selected conversation
+                              const { data } = await supabase
+                                .from('whatsapp_conversations')
+                                .select('*')
+                                .eq('id', selectedConversation.id)
+                                .single();
+                              if (data) {
+                                setSelectedConversation(prev => ({
+                                  ...prev!,
+                                  ...data,
+                                  instance: prev?.instance
+                                }));
+                              }
+                            }}
+                            title="Assumir lead para você"
+                          >
+                            <UserPlus className="h-3.5 w-3.5" />
+                            Assumir
+                          </Button>
+                        ) : (
+                          <>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => setTransferUserModalOpen(true)}
+                              title="Transferir para vendedor"
+                            >
+                              <UserCheck className="h-3.5 w-3.5" />
+                            </Button>
+                            {/* Show assigned user badge */}
+                            {assignedUserNames[selectedConversation.assigned_to] && (
+                              <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                                {assignedUserNames[selectedConversation.assigned_to]}
+                              </Badge>
+                            )}
+                          </>
                         )}
 
                         {/* Separator */}

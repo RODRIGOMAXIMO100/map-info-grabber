@@ -717,6 +717,28 @@ export default function CRMKanban() {
     }
   };
 
+  const handleAssignToMe = async (conversationId: string) => {
+    if (!user?.id) return;
+    
+    try {
+      const { error } = await supabase
+        .from('whatsapp_conversations')
+        .update({
+          assigned_to: user.id,
+          assigned_at: new Date().toISOString(),
+        })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+
+      toast({ title: 'Lead assumido!' });
+      if (selectedFunnelId) loadConversations(selectedFunnelId);
+    } catch (error) {
+      console.error('Error assigning lead:', error);
+      toast({ title: 'Erro ao assumir lead', variant: 'destructive' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -849,6 +871,7 @@ export default function CRMKanban() {
                         onEditClosedValue={() => handleEditClosedValue(conv)}
                         onRemoveClosedValue={() => handleRemoveClosedValue(conv)}
                         onAssignUser={() => setAssignUserModal({ open: true, lead: conv })}
+                        onAssignToMe={() => handleAssignToMe(conv.id)}
                         assignedUserName={conv.assigned_to ? assignedUserNames[conv.assigned_to] : null}
                         bantScore={bantScores[conv.id]}
                         stages={stages}
@@ -908,6 +931,7 @@ export default function CRMKanban() {
                           onEditClosedValue={() => handleEditClosedValue(conv)}
                           onRemoveClosedValue={() => handleRemoveClosedValue(conv)}
                           onAssignUser={() => setAssignUserModal({ open: true, lead: conv })}
+                          onAssignToMe={() => handleAssignToMe(conv.id)}
                           assignedUserName={conv.assigned_to ? assignedUserNames[conv.assigned_to] : null}
                           bantScore={bantScores[conv.id]}
                           stages={stages}
