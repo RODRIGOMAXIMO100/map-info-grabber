@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle, UserCheck } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle, UserCheck, Smile } from 'lucide-react';
+import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AIStatusIcon, 
@@ -95,6 +97,9 @@ export default function WhatsAppChat() {
   const [quickAddLeadOpen, setQuickAddLeadOpen] = useState(false);
   const [quickAddLeadPhone, setQuickAddLeadPhone] = useState('');
   const [quickAddLeadName, setQuickAddLeadName] = useState<string | undefined>();
+  
+  // Emoji picker state
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   
   // Cache for assigned user names
   const [assignedUserNames, setAssignedUserNames] = useState<Record<string, string>>({});
@@ -1476,6 +1481,34 @@ export default function WhatsAppChat() {
                         onAudioReady={handleAudioReady}
                         disabled={sending || !!pendingMedia}
                       />
+                      
+                      {/* Emoji Picker */}
+                      <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+                        <PopoverTrigger asChild>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon"
+                            disabled={sending}
+                          >
+                            <Smile className="h-5 w-5 text-muted-foreground" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent 
+                          className="w-auto p-0 border-0" 
+                          side="top" 
+                          align="start"
+                        >
+                          <EmojiPicker 
+                            onEmojiClick={(emojiData: EmojiClickData) => {
+                              setNewMessage(prev => prev + emojiData.emoji);
+                              setEmojiPickerOpen(false);
+                            }}
+                            width={320}
+                            height={400}
+                          />
+                        </PopoverContent>
+                      </Popover>
                       
                       <div className="relative flex-1">
                         <Textarea
