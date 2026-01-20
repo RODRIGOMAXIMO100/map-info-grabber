@@ -48,8 +48,10 @@ export function ConversationNotes({
         setIsSaved(true);
         onNotesChange?.(value);
         
-        // Hide "saved" indicator after 2 seconds
-        setTimeout(() => setIsSaved(false), 2000);
+        // Hide "saved" indicator after 3 seconds
+        setTimeout(() => setIsSaved(false), 3000);
+      } else {
+        console.error('Error saving notes:', error);
       }
     } catch (error) {
       console.error('Error saving notes:', error);
