@@ -17,6 +17,7 @@ import {
   Pencil,
   Trash2,
   UserCheck,
+  UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -57,6 +58,7 @@ interface LeadCardProps {
   onEditClosedValue?: () => void;
   onRemoveClosedValue?: () => void;
   onAssignUser?: () => void;
+  onAssignToMe?: () => void;
   assignedUserName?: string | null;
   bantScore?: { budget?: boolean; authority?: boolean; need?: boolean; timing?: boolean } | null;
   stages?: CRMFunnelStage[];
@@ -75,6 +77,7 @@ function LeadCardComponent({
   onEditClosedValue,
   onRemoveClosedValue,
   onAssignUser,
+  onAssignToMe,
   assignedUserName,
   bantScore,
   stages,
@@ -301,10 +304,16 @@ function LeadCardComponent({
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                 )}
+                {!conv.assigned_to && onAssignToMe && (
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAssignToMe(); }}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Assumir para mim
+                  </DropdownMenuItem>
+                )}
                 {onAssignUser && (
                   <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAssignUser(); }}>
                     <UserCheck className="h-4 w-4 mr-2" />
-                    Atribuir vendedor
+                    {conv.assigned_to ? 'Transferir lead' : 'Atribuir vendedor'}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddTag(); }}>
