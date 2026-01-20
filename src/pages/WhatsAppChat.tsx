@@ -17,6 +17,7 @@ import {
   TransferUserModal, 
   ReminderModal 
 } from '@/components/lazy';
+import { QuickAddLeadModal } from '@/components/crm';
 import { LeadControlPanelCompact } from '@/components/whatsapp/LeadControlPanelCompact';
 import { MessageContent, formatMessagePreview } from '@/components/whatsapp/MessageContent';
 import { MediaUploader, MediaPreview } from '@/components/whatsapp/MediaUploader';
@@ -89,6 +90,11 @@ export default function WhatsAppChat() {
   
   // Reminder modal state
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
+
+  // Quick add lead modal state
+  const [quickAddLeadOpen, setQuickAddLeadOpen] = useState(false);
+  const [quickAddLeadPhone, setQuickAddLeadPhone] = useState('');
+  const [quickAddLeadName, setQuickAddLeadName] = useState<string | undefined>();
   
   // Cache for assigned user names
   const [assignedUserNames, setAssignedUserNames] = useState<Record<string, string>>({});
@@ -953,6 +959,11 @@ export default function WhatsAppChat() {
                   height={window.innerHeight - 180}
                   formatTime={formatTime}
                   formatDate={formatDate}
+                  onAddLead={(phone, name) => {
+                    setQuickAddLeadPhone(phone);
+                    setQuickAddLeadName(name);
+                    setQuickAddLeadOpen(true);
+                  }}
                 />
               </div>
 
@@ -1429,6 +1440,11 @@ export default function WhatsAppChat() {
                       height={messageListHeight}
                       formatTime={formatTime}
                       formatDate={formatDate}
+                      onAddLead={(phone, name) => {
+                        setQuickAddLeadPhone(phone);
+                        setQuickAddLeadName(name);
+                        setQuickAddLeadOpen(true);
+                      }}
                     />
                   </div>
 
@@ -1577,6 +1593,15 @@ export default function WhatsAppChat() {
           }}
         />
       )}
+
+      {/* Quick Add Lead Modal */}
+      <QuickAddLeadModal
+        open={quickAddLeadOpen}
+        onOpenChange={setQuickAddLeadOpen}
+        initialPhone={quickAddLeadPhone}
+        initialName={quickAddLeadName}
+        defaultConfigId={selectedConversation?.config_id}
+      />
     </div>
   );
 }

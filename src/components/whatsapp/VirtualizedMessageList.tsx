@@ -10,6 +10,7 @@ interface MessageRowProps {
   formatTime: (date: string) => string;
   formatDate: (date: string) => string;
   showDateForIndex: boolean[];
+  onAddLead?: (phone: string, name?: string) => void;
 }
 
 interface VirtualizedMessageListProps {
@@ -17,6 +18,7 @@ interface VirtualizedMessageListProps {
   height: number;
   formatTime: (date: string) => string;
   formatDate: (date: string) => string;
+  onAddLead?: (phone: string, name?: string) => void;
 }
 
 const DEFAULT_MESSAGE_HEIGHT = 80;
@@ -29,6 +31,7 @@ function MessageRow({
   formatTime,
   formatDate,
   showDateForIndex,
+  onAddLead,
 }: {
   ariaAttributes: { "aria-posinset": number; "aria-setsize": number; role: "listitem" };
   index: number;
@@ -66,6 +69,7 @@ function MessageRow({
             messageType={msg.message_type}
             mediaUrl={msg.media_url}
             direction={msg.direction as 'incoming' | 'outgoing'}
+            onAddLead={onAddLead}
           />
           <span className={cn(
             'text-[10px] mt-1 flex items-center justify-end gap-1',
@@ -95,6 +99,7 @@ export function VirtualizedMessageList({
   height,
   formatTime,
   formatDate,
+  onAddLead,
 }: VirtualizedMessageListProps) {
   const listRef = useListRef();
   
@@ -147,6 +152,7 @@ export function VirtualizedMessageList({
         formatTime,
         formatDate,
         showDateForIndex,
+        onAddLead,
       }}
     />
   );
