@@ -9,3 +9,4 @@ export { TagModal } from './TagModal';
 export { ValueModal } from './ValueModal';
 export { AddLeadModal } from './AddLeadModal';
 export { AssignUserModal } from './AssignUserModal';
+export { QuickAddLeadModal } from './QuickAddLeadModal';

@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Image, Video, Mic, FileText, Play, Download, Loader2, CheckCircle2, AlertCircle, ExternalLink, User, Copy } from 'lucide-react';
+import { Image, Video, Mic, FileText, Play, Download, Loader2, CheckCircle2, AlertCircle, ExternalLink, User, Copy, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -51,6 +51,7 @@ interface MessageContentProps {
   mediaUrl?: string | null;
   direction: 'incoming' | 'outgoing';
   messageId?: string;
+  onAddLead?: (phone: string, name?: string) => void;
 }
 
 // Parse JSON content safely
@@ -485,7 +486,7 @@ function AudioPlayer({
   );
 }
 
-export function MessageContent({ content, messageType, mediaUrl, direction, messageId }: MessageContentProps) {
+export function MessageContent({ content, messageType, mediaUrl, direction, messageId, onAddLead }: MessageContentProps) {
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [fullImageUrl, setFullImageUrl] = useState<string>('');
   const [isDownloading, setIsDownloading] = useState(false);
@@ -888,6 +889,12 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
         toast.success('Número copiado!');
       }
     };
+
+    const handleAddToCRM = () => {
+      if (phone && onAddLead) {
+        onAddLead(phone.replace(/\s/g, ''), displayName !== 'Contato' ? displayName : undefined);
+      }
+    };
     
     return (
       <div className={cn(
@@ -928,20 +935,38 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
           </p>
         )}
         {phone && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopyPhone}
-            className={cn(
-              "gap-1.5 w-full",
-              isOutgoing 
-                ? "border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20" 
-                : "hover:bg-primary/10"
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopyPhone}
+              className={cn(
+                "gap-1.5 flex-1",
+                isOutgoing 
+                  ? "border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20" 
+                  : "hover:bg-primary/10"
+              )}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Copiar
+            </Button>
+            {onAddLead && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddToCRM}
+                className={cn(
+                  "gap-1.5 flex-1",
+                  isOutgoing 
+                    ? "border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/20" 
+                    : "hover:bg-primary/10"
+                )}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Adicionar
+              </Button>
             )}
-          >
-            <Copy className="h-3.5 w-3.5" />
-            Copiar número
-          </Button>
+          </div>
         )}
       </div>
     );
