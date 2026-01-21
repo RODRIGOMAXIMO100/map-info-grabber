@@ -34,6 +34,7 @@ import {
   Megaphone,
   DollarSign,
   StickyNote,
+  Link,
 } from 'lucide-react';
 import { ConversationNotes } from '@/components/whatsapp/ConversationNotes';
 import { toast as sonnerToast } from 'sonner';
@@ -45,6 +46,14 @@ import { formatPhoneNumber } from '@/lib/phone';
 import type { WhatsAppConversation } from '@/types/whatsapp';
 import type { CRMFunnelStage } from '@/types/crm';
 import { CRM_STAGES } from '@/types/whatsapp';
+
+interface UtmData {
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+}
 
 interface LeadDetailsSheetProps {
   conversation: WhatsAppConversation | null;
@@ -373,6 +382,55 @@ export function LeadDetailsSheet({ conversation, open, onOpenChange, onUpdate, s
                   )}
                 </div>
               )}
+
+              {/* UTM Marketing Data */}
+              {(() => {
+                const utmData = (conversation as { utm_data?: UtmData }).utm_data;
+                const hasUtmData = utmData && (utmData.utm_source || utmData.utm_medium || utmData.utm_campaign);
+                
+                if (!hasUtmData) return null;
+                
+                return (
+                  <div className="space-y-1.5 pt-2 border-t">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Link className="h-4 w-4 text-blue-600" />
+                      <span>Origem Marketing</span>
+                    </div>
+                    <div className="ml-6 space-y-1 text-sm text-muted-foreground">
+                      {utmData?.utm_source && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-20 text-xs">Source:</span>
+                          <Badge variant="outline" className="text-xs">{utmData.utm_source}</Badge>
+                        </div>
+                      )}
+                      {utmData?.utm_medium && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-20 text-xs">Medium:</span>
+                          <Badge variant="outline" className="text-xs">{utmData.utm_medium}</Badge>
+                        </div>
+                      )}
+                      {utmData?.utm_campaign && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-20 text-xs">Campaign:</span>
+                          <Badge variant="outline" className="text-xs">{utmData.utm_campaign}</Badge>
+                        </div>
+                      )}
+                      {utmData?.utm_term && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-20 text-xs">Term:</span>
+                          <Badge variant="outline" className="text-xs">{utmData.utm_term}</Badge>
+                        </div>
+                      )}
+                      {utmData?.utm_content && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-20 text-xs">Content:</span>
+                          <Badge variant="outline" className="text-xs">{utmData.utm_content}</Badge>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Stage selector */}
               {stages && stages.length > 0 && onStageChange && (

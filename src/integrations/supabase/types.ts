@@ -303,6 +303,39 @@ export type Database = {
           },
         ]
       }
+      integration_api_keys: {
+        Row: {
+          api_key: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          last_used_at: string | null
+          name: string
+          usage_count: number | null
+        }
+        Insert: {
+          api_key: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_used_at?: string | null
+          name: string
+          usage_count?: number | null
+        }
+        Update: {
+          api_key?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_used_at?: string | null
+          name?: string
+          usage_count?: number | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -683,6 +716,7 @@ export type Database = {
           transferred_by: string | null
           unread_count: number | null
           updated_at: string | null
+          utm_data: Json | null
           value_delivery_status: Json | null
           video_sent: boolean | null
         }
@@ -733,6 +767,7 @@ export type Database = {
           transferred_by?: string | null
           unread_count?: number | null
           updated_at?: string | null
+          utm_data?: Json | null
           value_delivery_status?: Json | null
           video_sent?: boolean | null
         }
@@ -783,6 +818,7 @@ export type Database = {
           transferred_by?: string | null
           unread_count?: number | null
           updated_at?: string | null
+          utm_data?: Json | null
           value_delivery_status?: Json | null
           video_sent?: boolean | null
         }

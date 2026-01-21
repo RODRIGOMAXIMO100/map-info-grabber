@@ -13,8 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
-import { Loader2, Shield, Users, UserCheck, UserX, RefreshCw, Pencil, Trash2, Lock } from 'lucide-react';
+import { Loader2, Shield, Users, UserCheck, UserX, RefreshCw, Pencil, Trash2, Lock, Plug, Key, Copy, Check, Plus, Trash, Eye, EyeOff } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 interface UserWithRole {
@@ -25,6 +26,22 @@ interface UserWithRole {
   created_at: string;
   role: 'admin' | 'sdr' | 'closer' | null;
   email?: string;
+}
+
+interface ApiKey {
+  id: string;
+  name: string;
+  api_key: string;
+  is_active: boolean;
+  last_used_at: string | null;
+  usage_count: number;
+  created_at: string;
+}
+
+interface FunnelWithStages {
+  id: string;
+  name: string;
+  stages: { id: string; name: string; stage_order: number }[];
 }
 
 const AdminPanel = () => {
@@ -45,6 +62,16 @@ const AdminPanel = () => {
   const [deletingUser, setDeletingUser] = useState<UserWithRole | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Estado para integrações
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [funnels, setFunnels] = useState<FunnelWithStages[]>([]);
+  const [loadingKeys, setLoadingKeys] = useState(false);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [showKey, setShowKey] = useState<string | null>(null);
+  const [deletingKeyId, setDeletingKeyId] = useState<string | null>(null);
+
   // Permissões
   const { 
     permissionsByRoute, 
@@ -57,8 +84,136 @@ const AdminPanel = () => {
   useEffect(() => {
     if (isAdmin) {
       loadUsers();
+      loadApiKeys();
+      loadFunnels();
     }
   }, [isAdmin]);
+
+  const loadApiKeys = async () => {
+    try {
+      setLoadingKeys(true);
+      const { data, error } = await supabase
+        .from('integration_api_keys')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setApiKeys(data || []);
+    } catch (error) {
+      console.error('Error loading API keys:', error);
+    } finally {
+      setLoadingKeys(false);
+    }
+  };
+
+  const loadFunnels = async () => {
+    try {
+      const { data: funnelsData, error: funnelsError } = await supabase
+        .from('crm_funnels')
+        .select('id, name');
+
+      if (funnelsError) throw funnelsError;
+
+      const funnelsWithStages: FunnelWithStages[] = [];
+      for (const funnel of funnelsData || []) {
+        const { data: stagesData } = await supabase
+          .from('crm_funnel_stages')
+          .select('id, name, stage_order')
+          .eq('funnel_id', funnel.id)
+          .order('stage_order', { ascending: true });
+
+        funnelsWithStages.push({
+          ...funnel,
+          stages: stagesData || [],
+        });
+      }
+      setFunnels(funnelsWithStages);
+    } catch (error) {
+      console.error('Error loading funnels:', error);
+    }
+  };
+
+  const generateApiKey = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let key = 'lv_';
+    for (let i = 0; i < 32; i++) {
+      key += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return key;
+  };
+
+  const handleCreateKey = async () => {
+    if (!newKeyName.trim()) {
+      toast.error('Digite um nome para a chave');
+      return;
+    }
+
+    try {
+      setCreatingKey(true);
+      const apiKey = generateApiKey();
+
+      const { error } = await supabase
+        .from('integration_api_keys')
+        .insert({
+          name: newKeyName.trim(),
+          api_key: apiKey,
+          created_by: currentUser?.id,
+        });
+
+      if (error) throw error;
+
+      toast.success('Chave criada com sucesso!');
+      setNewKeyName('');
+      loadApiKeys();
+    } catch (error) {
+      console.error('Error creating API key:', error);
+      toast.error('Erro ao criar chave');
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
+  const handleToggleKeyStatus = async (keyId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('integration_api_keys')
+        .update({ is_active: !currentStatus })
+        .eq('id', keyId);
+
+      if (error) throw error;
+      toast.success(currentStatus ? 'Chave desativada' : 'Chave ativada');
+      loadApiKeys();
+    } catch (error) {
+      console.error('Error toggling key status:', error);
+      toast.error('Erro ao atualizar chave');
+    }
+  };
+
+  const handleDeleteKey = async (keyId: string) => {
+    try {
+      setDeletingKeyId(keyId);
+      const { error } = await supabase
+        .from('integration_api_keys')
+        .delete()
+        .eq('id', keyId);
+
+      if (error) throw error;
+      toast.success('Chave deletada');
+      loadApiKeys();
+    } catch (error) {
+      console.error('Error deleting key:', error);
+      toast.error('Erro ao deletar chave');
+    } finally {
+      setDeletingKeyId(null);
+    }
+  };
+
+  const copyToClipboard = (text: string, keyId: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(keyId);
+    setTimeout(() => setCopiedKey(null), 2000);
+    toast.success('Copiado!');
+  };
 
   const loadUsers = async () => {
     try {
@@ -264,6 +419,10 @@ const AdminPanel = () => {
           <TabsTrigger value="permissions" className="gap-2">
             <Lock className="h-4 w-4" />
             Permissões
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="gap-2">
+            <Plug className="h-4 w-4" />
+            Integrações
           </TabsTrigger>
         </TabsList>
 
@@ -477,6 +636,297 @@ const AdminPanel = () => {
                     )}
                   </TableBody>
                 </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ABA DE INTEGRAÇÕES */}
+        <TabsContent value="integrations" className="space-y-4">
+          {/* API Keys Management */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5" />
+                Chaves de API
+              </CardTitle>
+              <CardDescription>
+                Gerencie chaves de API para integrar sistemas externos
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Create new key */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Nome da chave (ex: Formulário Site)"
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  className="flex-1"
+                />
+                <Button onClick={handleCreateKey} disabled={creatingKey || !newKeyName.trim()}>
+                  {creatingKey ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Criar Chave
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Keys list */}
+              {loadingKeys ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : apiKeys.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhuma chave criada. Crie uma chave para começar a integrar.
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Chave</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Uso</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {apiKeys.map((key) => (
+                      <TableRow key={key.id}>
+                        <TableCell className="font-medium">{key.name}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs bg-muted px-2 py-1 rounded">
+                              {showKey === key.id ? key.api_key : `${key.api_key.substring(0, 8)}...`}
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => setShowKey(showKey === key.id ? null : key.id)}
+                            >
+                              {showKey === key.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => copyToClipboard(key.api_key, key.id)}
+                            >
+                              {copiedKey === key.id ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                            </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={key.is_active ? 'default' : 'secondary'}>
+                            {key.is_active ? 'Ativa' : 'Inativa'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">
+                            {key.usage_count} requisições
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Switch
+                              checked={key.is_active}
+                              onCheckedChange={() => handleToggleKeyStatus(key.id, key.is_active)}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteKey(key.id)}
+                              disabled={deletingKeyId === key.id}
+                            >
+                              {deletingKeyId === key.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* API Documentation */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Documentação da API</CardTitle>
+              <CardDescription>
+                Como integrar seu sistema externo para enviar leads
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Endpoint */}
+              <div>
+                <Label className="text-sm font-medium">Endpoint</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="flex-1 text-sm bg-muted px-3 py-2 rounded font-mono">
+                    POST https://vorehtfxwvsbbivnskeq.supabase.co/functions/v1/receive-external-lead
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard('https://vorehtfxwvsbbivnskeq.supabase.co/functions/v1/receive-external-lead', 'endpoint')}
+                  >
+                    {copiedKey === 'endpoint' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Headers */}
+              <div>
+                <Label className="text-sm font-medium">Headers Obrigatórios</Label>
+                <pre className="mt-1 text-sm bg-muted px-3 py-2 rounded font-mono overflow-x-auto">
+{`Content-Type: application/json
+X-API-Key: sua_chave_api_aqui`}
+                </pre>
+              </div>
+
+              {/* Payload Example */}
+              <div>
+                <Label className="text-sm font-medium">Exemplo de Payload</Label>
+                <ScrollArea className="h-[300px] mt-1">
+                  <pre className="text-sm bg-muted px-3 py-2 rounded font-mono">
+{`{
+  "phone": "5534999999999",    // Obrigatório - Telefone com DDD
+  "name": "Nome do Lead",       // Opcional
+  "funnel_id": "uuid",          // Opcional - ID do funil
+  "stage_id": "uuid",           // Opcional - ID da etapa
+  "origin": "formulario_site",  // Opcional - Origem do lead
+  "notes": "Observações",       // Opcional
+  "city": "Uberlândia",         // Opcional
+  "state": "MG",                // Opcional
+  "tags": ["tag1", "tag2"],     // Opcional
+  
+  // UTMs para rastreamento de marketing
+  "utm_source": "google",       // Opcional
+  "utm_medium": "cpc",          // Opcional  
+  "utm_campaign": "black_friday", // Opcional
+  "utm_term": "keyword",        // Opcional
+  "utm_content": "ad_variant"   // Opcional
+}`}
+                  </pre>
+                </ScrollArea>
+              </div>
+
+              {/* Response Example */}
+              <div>
+                <Label className="text-sm font-medium">Resposta de Sucesso</Label>
+                <pre className="mt-1 text-sm bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-3 py-2 rounded font-mono">
+{`{
+  "success": true,
+  "lead_id": "uuid-do-lead",
+  "is_new": true,
+  "message": "Lead criado com sucesso",
+  "phone": "5534999999999"
+}`}
+                </pre>
+              </div>
+
+              {/* JavaScript Example */}
+              <div>
+                <Label className="text-sm font-medium">Exemplo JavaScript (Formulário)</Label>
+                <ScrollArea className="h-[280px] mt-1">
+                  <pre className="text-sm bg-muted px-3 py-2 rounded font-mono">
+{`// Capturar UTMs da URL
+const urlParams = new URLSearchParams(window.location.search);
+
+const formData = {
+  phone: document.getElementById('phone').value,
+  name: document.getElementById('name').value,
+  origin: "landing_page",
+  utm_source: urlParams.get('utm_source'),
+  utm_medium: urlParams.get('utm_medium'),
+  utm_campaign: urlParams.get('utm_campaign'),
+  utm_term: urlParams.get('utm_term'),
+  utm_content: urlParams.get('utm_content'),
+};
+
+fetch('https://vorehtfxwvsbbivnskeq.supabase.co/functions/v1/receive-external-lead', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-API-Key': 'sua_chave_api_aqui'
+  },
+  body: JSON.stringify(formData)
+})
+.then(response => response.json())
+.then(data => console.log('Lead criado:', data))
+.catch(error => console.error('Erro:', error));`}
+                  </pre>
+                </ScrollArea>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Funnels & Stages Reference */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Funis e Etapas Disponíveis</CardTitle>
+              <CardDescription>
+                Use esses IDs no payload para direcionar leads para funis/etapas específicos
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {funnels.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground">
+                  Nenhum funil configurado
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {funnels.map((funnel) => (
+                    <div key={funnel.id} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">{funnel.name}</span>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded">{funnel.id}</code>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => copyToClipboard(funnel.id, `funnel-${funnel.id}`)}
+                          >
+                            {copiedKey === `funnel-${funnel.id}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-1 ml-4">
+                        {funnel.stages.map((stage) => (
+                          <div key={stage.id} className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">
+                              {stage.stage_order + 1}. {stage.name}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <code className="text-xs bg-muted px-2 py-1 rounded">{stage.id}</code>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => copyToClipboard(stage.id, `stage-${stage.id}`)}
+                              >
+                                {copiedKey === `stage-${stage.id}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>

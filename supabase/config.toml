@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.check-instance-status]
 verify_jwt = false
+
+[functions.receive-external-lead]
+verify_jwt = false
