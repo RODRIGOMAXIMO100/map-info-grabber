@@ -23,6 +23,8 @@ import {
   BarChart3,
   Settings2,
   RefreshCw,
+  Smartphone,
+  TrendingUp,
 } from "lucide-react";
 import { 
   InstanceMonitor,
@@ -35,7 +37,8 @@ import {
   AIMetricsCard,
   SalesFunnelMetrics,
   HeroMetrics,
-  ActionAlerts
+  ActionAlerts,
+  SectionHeader
 } from '@/components/dashboard';
 import { InstanceStatusPanel } from '@/components/instance/InstanceStatusPanel';
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
@@ -513,44 +516,64 @@ export default function Dashboard() {
         {/* ============ TAB: TÉCNICO ============ */}
         <TabsContent value="tecnico" className="space-y-6 mt-6">
           
-          {/* Instance Status + Monitor */}
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-1">
-              <InstanceStatusPanel />
+          {/* ====== SEÇÃO 1: MONITORAMENTO WHATSAPP ====== */}
+          <section>
+            <SectionHeader 
+              icon={Smartphone} 
+              title="Instâncias WhatsApp" 
+              description="Status de conexão e envios em tempo real"
+            />
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="lg:col-span-1">
+                <InstanceStatusPanel />
+              </div>
+              <div className="lg:col-span-2">
+                <InstanceMonitor 
+                  startDate={startDate}
+                  endDate={endDate}
+                />
+              </div>
             </div>
-            <div className="lg:col-span-2">
-              <InstanceMonitor 
-                startDate={startDate}
-                endDate={endDate}
-              />
+          </section>
+
+          {/* ====== SEÇÃO 2: INTELIGÊNCIA ARTIFICIAL ====== */}
+          <section>
+            <SectionHeader 
+              icon={Bot} 
+              title="Inteligência Artificial" 
+              description="Desempenho e atividade do agente IA"
+            />
+            <div className="grid gap-4 lg:grid-cols-2">
+              {selectedFunnelId && (
+                <AIMetricsCard 
+                  data={dashboardData.aiMetrics}
+                  loading={dashboardData.loading}
+                />
+              )}
+              {selectedFunnelId && (
+                <ActivityHeatmap 
+                  funnelId={selectedFunnelId}
+                  startDate={startDate}
+                  endDate={endDate}
+                />
+              )}
             </div>
-          </div>
+          </section>
 
-          {/* AI + Heatmap + Evolution */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            {selectedFunnelId && (
-              <AIMetricsCard 
-                data={dashboardData.aiMetrics}
-                loading={dashboardData.loading}
+          {/* ====== SEÇÃO 3: EVOLUÇÃO DO FUNIL ====== */}
+          {selectedFunnelId && (
+            <section>
+              <SectionHeader 
+                icon={TrendingUp} 
+                title="Evolução do Funil" 
+                description="Distribuição de leads por etapa ao longo do tempo"
               />
-            )}
-
-            {selectedFunnelId && (
-              <ActivityHeatmap 
+              <FunnelEvolutionChart 
                 funnelId={selectedFunnelId}
                 startDate={startDate}
                 endDate={endDate}
               />
-            )}
-          </div>
-
-          {/* Evolution Chart */}
-          {selectedFunnelId && (
-            <FunnelEvolutionChart 
-              funnelId={selectedFunnelId}
-              startDate={startDate}
-              endDate={endDate}
-            />
+            </section>
           )}
         </TabsContent>
       </Tabs>
