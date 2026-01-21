@@ -43,10 +43,19 @@ import { formatPhoneNumber } from '@/lib/phone';
 import type { WhatsAppConversation } from '@/types/whatsapp';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
 
+interface UtmData {
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+}
+
 interface LeadCardProps {
   conv: WhatsAppConversation & { 
     contacted_by_instances?: string[] | null;
     closed_value?: number | null;
+    utm_data?: UtmData | null;
   };
   isDragging?: boolean;
   onDragStart: () => void;
@@ -385,8 +394,8 @@ function LeadCardComponent({
           )}
         </div>
 
-        {/* Row 2.5: Origin (City + Broadcast) */}
-        {(conv.lead_city || conv.broadcast_lists?.name) && (
+        {/* Row 2.5: Origin (City + Broadcast + UTM) */}
+        {(conv.lead_city || conv.broadcast_lists?.name || conv.utm_data?.utm_source) && (
           <div className="flex items-center justify-between text-xs text-muted-foreground mt-1 gap-1">
             {conv.lead_city && (
               <span className="truncate flex items-center gap-1 min-w-0">
@@ -394,12 +403,35 @@ function LeadCardComponent({
                 {conv.lead_city}{conv.lead_state ? `/${conv.lead_state}` : ''}
               </span>
             )}
-            {conv.broadcast_lists?.name && (
-              <Badge variant="outline" className="text-[9px] h-4 px-1 flex-shrink-0 gap-0.5">
-                <Megaphone className="h-2.5 w-2.5" />
-                {conv.broadcast_lists.name}
-              </Badge>
-            )}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {conv.utm_data?.utm_source && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="text-[9px] h-4 px-1 gap-0.5 border-blue-400 text-blue-600 bg-blue-50 dark:bg-blue-950/30">
+                        🔗 {conv.utm_data.utm_source}
+                        {conv.utm_data.utm_medium && `/${conv.utm_data.utm_medium}`}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <div className="text-xs space-y-1">
+                        {conv.utm_data.utm_source && <div>Source: {conv.utm_data.utm_source}</div>}
+                        {conv.utm_data.utm_medium && <div>Medium: {conv.utm_data.utm_medium}</div>}
+                        {conv.utm_data.utm_campaign && <div>Campaign: {conv.utm_data.utm_campaign}</div>}
+                        {conv.utm_data.utm_term && <div>Term: {conv.utm_data.utm_term}</div>}
+                        {conv.utm_data.utm_content && <div>Content: {conv.utm_data.utm_content}</div>}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              {conv.broadcast_lists?.name && (
+                <Badge variant="outline" className="text-[9px] h-4 px-1 flex-shrink-0 gap-0.5">
+                  <Megaphone className="h-2.5 w-2.5" />
+                  {conv.broadcast_lists.name}
+                </Badge>
+              )}
+            </div>
           </div>
         )}
 
