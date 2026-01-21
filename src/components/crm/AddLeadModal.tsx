@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { UserPlus, MapPin, Megaphone } from 'lucide-react';
+import { UserPlus, MapPin, Megaphone, AlertTriangle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +34,7 @@ import {
 import type { CRMFunnelStage } from '@/types/crm';
 import { CITIES_BY_STATE } from '@/data/brazilianCities';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface WhatsAppConfig {
   id: string;
@@ -86,6 +87,7 @@ export function AddLeadModal({
   const [broadcastListId, setBroadcastListId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [invalidPhoneWarning, setInvalidPhoneWarning] = useState(false);
   const [cityOpen, setCityOpen] = useState(false);
   const [citySearch, setCitySearch] = useState('');
 
@@ -110,6 +112,7 @@ export function AddLeadModal({
       setCity('');
       setBroadcastListId('');
       setError(null);
+      setInvalidPhoneWarning(false);
     }
   }, [open, stages, whatsappConfigs]);
 
@@ -158,7 +161,28 @@ export function AddLeadModal({
     }
 
     setSaving(true);
+    setError(null);
+    
     try {
+      // Format phone for database check
+      const phoneDigits = phone.replace(/\D/g, '');
+      const formattedPhone = phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`;
+      
+      // Check if phone is already marked as invalid in the database
+      const { data: existingConv } = await supabase
+        .from('whatsapp_conversations')
+        .select('id, phone_invalid')
+        .or(`phone.eq.${formattedPhone},phone.eq.${phoneDigits}`)
+        .limit(1)
+        .maybeSingle();
+      
+      if (existingConv?.phone_invalid) {
+        setError('Este número já foi identificado como não existente no WhatsApp');
+        setInvalidPhoneWarning(true);
+        setSaving(false);
+        return;
+      }
+      
       await onSave({
         phone,
         name: name.trim() || undefined,
@@ -371,7 +395,13 @@ export function AddLeadModal({
           </div>
 
           {error && (
-            <p className="text-sm text-destructive">{error}</p>
+            <div className={cn(
+              "text-sm flex items-center gap-2",
+              invalidPhoneWarning ? "text-destructive" : "text-destructive"
+            )}>
+              {invalidPhoneWarning && <AlertTriangle className="h-4 w-4" />}
+              {error}
+            </div>
           )}
         </div>
 

@@ -113,12 +113,19 @@ export function QuickAddLeadModal({
       // Check if conversation already exists
       const { data: existing } = await supabase
         .from('whatsapp_conversations')
-        .select('id, phone, name')
+        .select('id, phone, name, phone_invalid')
         .or(`phone.eq.${formattedPhone},phone.eq.${phoneDigits}`)
         .limit(1)
         .maybeSingle();
 
       if (existing) {
+        // Check if it's marked as invalid
+        if (existing.phone_invalid) {
+          setError('Este número já foi identificado como não existente no WhatsApp');
+          setSaving(false);
+          return;
+        }
+        
         toast.info('Contato já existe', {
           description: `${existing.name || existing.phone} já está no CRM`,
         });

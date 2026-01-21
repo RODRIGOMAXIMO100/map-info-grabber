@@ -201,10 +201,21 @@ serve(async (req) => {
     // Detectar número inválido ou que não está no WhatsApp
     if (result.error && typeof result.error === 'string' && result.error.includes('not on WhatsApp')) {
       console.error(`[Send] Number not on WhatsApp: ${formattedPhone}`);
+      
+      // Marcar conversa como número inválido no banco
+      if (conversationId) {
+        await supabase
+          .from('whatsapp_conversations')
+          .update({ phone_invalid: true })
+          .eq('id', conversationId);
+        console.log(`[Send] Marked conversation ${conversationId} as phone_invalid`);
+      }
+      
       return new Response(
         JSON.stringify({ 
           error: `O número ${formattedPhone} não está no WhatsApp.`,
-          invalid_number: true
+          invalid_number: true,
+          conversation_id: conversationId
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

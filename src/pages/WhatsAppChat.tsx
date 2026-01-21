@@ -292,7 +292,7 @@ export default function WhatsAppChat() {
           ai_paused, ai_handoff_reason, funnel_stage, crm_funnel_id,
           is_crm_lead, is_group, group_name, config_id, assigned_to,
           reminder_at, estimated_value, closed_value, custom_tags, tags,
-          origin, pinned, muted_until, broadcast_list_id
+          origin, pinned, muted_until, broadcast_list_id, phone_invalid
         `)
         .order('last_message_at', { ascending: false })
         .limit(200);
@@ -478,6 +478,12 @@ export default function WhatsAppChat() {
         
         // Check for specific error types
         if (errorData?.invalid_number) {
+          // Atualizar estado local da conversa para refletir número inválido
+          setSelectedConversation(prev => prev ? { ...prev, phone_invalid: true } : null);
+          setConversations(prev => prev.map(c => 
+            c.id === selectedConversation.id ? { ...c, phone_invalid: true } : c
+          ));
+          
           toast({
             title: 'Número Inválido',
             description: errorData.error || 'Este número não está no WhatsApp.',
@@ -1668,6 +1674,16 @@ export default function WhatsAppChat() {
                     </div>
                   </div>
 
+                  {/* Invalid Phone Banner */}
+                  {selectedConversation.phone_invalid && (
+                    <div className="bg-destructive/15 border-b border-destructive px-4 py-2 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                      <span className="text-sm font-medium text-destructive">
+                        Este número não está no WhatsApp. Mensagens não podem ser enviadas.
+                      </span>
+                    </div>
+                  )}
+
                   {/* Messages - Virtualized */}
                   <div ref={messageListRef} className="flex-1 overflow-hidden min-h-0">
                     <VirtualizedMessageList
@@ -1702,11 +1718,11 @@ export default function WhatsAppChat() {
                       {/* Media Buttons */}
                       <MediaUploader 
                         onMediaReady={handleMediaReady}
-                        disabled={sending || !!pendingMedia}
+                        disabled={sending || !!pendingMedia || selectedConversation.phone_invalid}
                       />
                       <AudioRecorder 
                         onAudioReady={handleAudioReady}
-                        disabled={sending || !!pendingMedia}
+                        disabled={sending || !!pendingMedia || selectedConversation.phone_invalid}
                       />
                       
                       {/* Emoji Picker */}
@@ -1716,7 +1732,7 @@ export default function WhatsAppChat() {
                             type="button" 
                             variant="ghost" 
                             size="icon"
-                            disabled={sending}
+                            disabled={sending || selectedConversation.phone_invalid}
                           >
                             <Smile className="h-5 w-5 text-muted-foreground" />
                           </Button>
@@ -1739,10 +1755,12 @@ export default function WhatsAppChat() {
                       
                       <div className="relative flex-1">
                         <Textarea
-                          placeholder="Digite sua mensagem..."
+                          placeholder={selectedConversation.phone_invalid 
+                            ? "Número inválido - não é possível enviar mensagens" 
+                            : "Digite sua mensagem..."}
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
-                          disabled={sending}
+                          disabled={sending || selectedConversation.phone_invalid}
                           className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2"
                           rows={1}
                           onKeyDown={(e) => {
@@ -1756,7 +1774,7 @@ export default function WhatsAppChat() {
                       <Button 
                         type="submit" 
                         size="icon" 
-                        disabled={sending || (!newMessage.trim() && !pendingMedia)}
+                        disabled={sending || selectedConversation.phone_invalid || (!newMessage.trim() && !pendingMedia)}
                       >
                         {sending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
