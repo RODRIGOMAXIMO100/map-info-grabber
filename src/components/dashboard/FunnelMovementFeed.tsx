@@ -37,7 +37,11 @@ export default function FunnelMovementFeed({ funnelId, startDate, endDate }: Fun
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadMovements = async () => {
+  // Convert dates to timestamps for stable dependencies
+  const startTimestamp = startDate?.getTime();
+  const endTimestamp = endDate?.getTime();
+
+  const loadMovements = useCallback(async () => {
     try {
       // Carregar estágios do funil
       const { data: stagesData } = await supabase
@@ -120,18 +124,17 @@ export default function FunnelMovementFeed({ funnelId, startDate, endDate }: Fun
     } finally {
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [funnelId, startTimestamp, endTimestamp]);
 
   useEffect(() => {
     loadMovements();
-  }, [funnelId, startDate, endDate]);
+  }, [loadMovements]);
 
   // Centralized realtime subscription for new movements
   useRealtimeRefresh(
     'funnel_stage_history',
-    useCallback(() => {
-      loadMovements();
-    }, [funnelId, startDate, endDate]),
+    loadMovements,
     { event: 'INSERT' }
   );
 

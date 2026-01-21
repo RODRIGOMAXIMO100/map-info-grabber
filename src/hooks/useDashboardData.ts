@@ -99,14 +99,20 @@ export function useDashboardData({
     error: null,
   });
 
-  const loadAllData = useCallback(async () => {
+  // Track if initial load has completed
+  const [hasInitialLoad, setHasInitialLoad] = useState(false);
+
+  const loadAllData = useCallback(async (isRefresh = false) => {
     if (!funnelId || stages.length === 0) {
       setData(prev => ({ ...prev, loading: false }));
       return;
     }
 
     try {
-      setData(prev => ({ ...prev, loading: true, error: null }));
+      // Only show loading spinner on initial load, not on refreshes
+      if (!isRefresh && !hasInitialLoad) {
+        setData(prev => ({ ...prev, loading: true, error: null }));
+      }
 
       const now = new Date();
       const currentStart = startDate?.toISOString();
@@ -432,15 +438,25 @@ export function useDashboardData({
         loading: false,
         error: null,
       });
+      
+      // Mark initial load as complete
+      if (!hasInitialLoad) {
+        setHasInitialLoad(true);
+      }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
       setData(prev => ({ ...prev, loading: false, error: error as Error }));
     }
-  }, [funnelId, stages.length, startDate?.getTime(), endDate?.getTime(), periodDays]);
+  }, [funnelId, stages.length, startDate?.getTime(), endDate?.getTime(), periodDays, hasInitialLoad]);
 
   useEffect(() => {
-    loadAllData();
+    loadAllData(false); // Initial load
   }, [loadAllData]);
 
-  return { ...data, refresh: loadAllData };
+  // Silent refresh function for realtime updates
+  const refresh = useCallback(() => {
+    loadAllData(true);
+  }, [loadAllData]);
+
+  return { ...data, refresh };
 }

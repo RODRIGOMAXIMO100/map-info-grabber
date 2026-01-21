@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeRefresh } from "@/hooks/useRealtimeSubscription";
 import { useDashboardData } from "@/hooks/useDashboardData";
@@ -137,13 +137,32 @@ export default function Dashboard() {
     }
   }, [selectedFunnelId]);
 
+  // Debounced refresh to prevent multiple rapid updates
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Centralized realtime subscription - stable callback without dashboardData.refresh in deps
   const refreshDashboard = useCallback(() => {
     if (stages.length > 0 && selectedFunnelId) {
-      dashboardData.refresh();
+      // Cancel any pending refresh
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      // Debounce: wait 500ms before refreshing
+      refreshTimeoutRef.current = setTimeout(() => {
+        dashboardData.refresh();
+      }, 500);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stages.length, selectedFunnelId]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useRealtimeRefresh(
     'whatsapp_conversations',
@@ -202,7 +221,8 @@ export default function Dashboard() {
     return `${format(dateRange.from, "dd/MM/yyyy", { locale: ptBR })} - ${format(dateRange.to, "dd/MM/yyyy", { locale: ptBR })}`;
   };
 
-  if (funnelsLoading || dashboardData.loading) {
+  // Only show loading spinner during initial load, not refreshes
+  if (funnelsLoading || (dashboardData.loading && dashboardData.stageCounts.length === 0)) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
