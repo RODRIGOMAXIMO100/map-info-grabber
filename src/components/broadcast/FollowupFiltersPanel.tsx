@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapPin, GitBranch, Radio, MessageSquare, Calendar, Filter } from 'lucide-react';
+import { MapPin, GitBranch, GitFork, Radio, MessageSquare, Calendar, Filter } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 
 export interface FollowupFilters {
+  funnelId: string | null;
   cities: string[];
   funnelStages: string[];
   broadcastListId: string | null;
@@ -32,22 +33,39 @@ interface BroadcastListOption {
   name: string;
 }
 
+interface FunnelOption {
+  id: string;
+  name: string;
+  is_default: boolean;
+}
+
 interface FunnelStageOption {
   id: string;
   name: string;
+  color: string;
 }
 
 export function FollowupFiltersPanel({ filters, onFiltersChange }: FollowupFiltersPanelProps) {
   const [availableCities, setAvailableCities] = useState<string[]>([]);
+  const [availableFunnels, setAvailableFunnels] = useState<FunnelOption[]>([]);
   const [availableStages, setAvailableStages] = useState<FunnelStageOption[]>([]);
   const [availableLists, setAvailableLists] = useState<BroadcastListOption[]>([]);
   const [citySearch, setCitySearch] = useState('');
 
   useEffect(() => {
-    loadFilterOptions();
+    loadInitialOptions();
   }, []);
 
-  const loadFilterOptions = async () => {
+  // Load stages when funnel changes
+  useEffect(() => {
+    if (filters.funnelId) {
+      loadStagesForFunnel(filters.funnelId);
+    } else {
+      setAvailableStages([]);
+    }
+  }, [filters.funnelId]);
+
+  const loadInitialOptions = async () => {
     // Load unique cities from conversations
     const { data: citiesData } = await supabase
       .from('whatsapp_conversations')
@@ -60,14 +78,14 @@ export function FollowupFiltersPanel({ filters, onFiltersChange }: FollowupFilte
       setAvailableCities(uniqueCities.sort());
     }
 
-    // Load funnel stages
-    const { data: stagesData } = await supabase
-      .from('crm_funnel_stages')
-      .select('id, name')
-      .order('stage_order');
+    // Load funnels
+    const { data: funnelsData } = await supabase
+      .from('crm_funnels')
+      .select('id, name, is_default')
+      .order('is_default', { ascending: false });
 
-    if (stagesData) {
-      setAvailableStages(stagesData);
+    if (funnelsData) {
+      setAvailableFunnels(funnelsData);
     }
 
     // Load broadcast lists
@@ -79,6 +97,27 @@ export function FollowupFiltersPanel({ filters, onFiltersChange }: FollowupFilte
     if (listsData) {
       setAvailableLists(listsData);
     }
+  };
+
+  const loadStagesForFunnel = async (funnelId: string) => {
+    const { data: stagesData } = await supabase
+      .from('crm_funnel_stages')
+      .select('id, name, color')
+      .eq('funnel_id', funnelId)
+      .order('stage_order');
+
+    if (stagesData) {
+      setAvailableStages(stagesData);
+    }
+  };
+
+  const handleFunnelChange = (funnelId: string | null) => {
+    // Clear selected stages when funnel changes
+    onFiltersChange({
+      ...filters,
+      funnelId,
+      funnelStages: [],
+    });
   };
 
   const toggleCity = (city: string) => {
@@ -97,6 +136,7 @@ export function FollowupFiltersPanel({ filters, onFiltersChange }: FollowupFilte
 
   const clearFilters = () => {
     onFiltersChange({
+      funnelId: null,
       cities: [],
       funnelStages: [],
       broadcastListId: null,
@@ -111,6 +151,7 @@ export function FollowupFiltersPanel({ filters, onFiltersChange }: FollowupFilte
     : availableCities;
 
   const hasActiveFilters = 
+    filters.funnelId ||
     filters.cities.length > 0 ||
     filters.funnelStages.length > 0 ||
     filters.broadcastListId ||
@@ -168,24 +209,59 @@ export function FollowupFiltersPanel({ filters, onFiltersChange }: FollowupFilte
         )}
       </div>
 
+      {/* Funil */}
+      <div className="space-y-2">
+        <Label className="flex items-center gap-2">
+          <GitFork className="h-4 w-4" />
+          Funil
+        </Label>
+        <Select
+          value={filters.funnelId || 'none'}
+          onValueChange={(value) => handleFunnelChange(value === 'none' ? null : value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione o funil..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Selecione o funil...</SelectItem>
+            {availableFunnels.map((funnel) => (
+              <SelectItem key={funnel.id} value={funnel.id}>
+                {funnel.name} {funnel.is_default && '(padrão)'}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Etapa do Funil */}
       <div className="space-y-2">
         <Label className="flex items-center gap-2">
           <GitBranch className="h-4 w-4" />
           Etapa do Funil
         </Label>
-        <div className="flex flex-wrap gap-2">
-          {availableStages.map((stage) => (
-            <Badge
-              key={stage.id}
-              variant={filters.funnelStages.includes(stage.id) ? 'default' : 'outline'}
-              className="cursor-pointer hover:bg-primary/80"
-              onClick={() => toggleStage(stage.id)}
-            >
-              {stage.name}
-            </Badge>
-          ))}
-        </div>
+        {!filters.funnelId ? (
+          <p className="text-sm text-muted-foreground">
+            Selecione um funil primeiro para ver as etapas
+          </p>
+        ) : availableStages.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhuma etapa encontrada neste funil
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {availableStages.map((stage) => (
+              <Badge
+                key={stage.id}
+                variant={filters.funnelStages.includes(stage.id) ? 'default' : 'outline'}
+                className="cursor-pointer hover:bg-primary/80"
+                style={filters.funnelStages.includes(stage.id) ? { backgroundColor: stage.color } : { borderColor: stage.color, color: stage.color }}
+                onClick={() => toggleStage(stage.id)}
+              >
+                {stage.name}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Campanha Original */}

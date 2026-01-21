@@ -16,6 +16,7 @@ export function SegmentedFollowup() {
   const { toast } = useToast();
   
   const [filters, setFilters] = useState<FollowupFilters>({
+    funnelId: null,
     cities: [],
     funnelStages: [],
     broadcastListId: null,
