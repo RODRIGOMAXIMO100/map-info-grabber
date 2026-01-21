@@ -20,15 +20,40 @@ function normalizeAndValidatePhone(phone: string): { valid: boolean; formatted: 
     digits = '55' + digits;
   }
   
-  // Brazilian mobile with 12 digits: add the 9th digit if missing
-  // Expected format: 55 + DDD(2) + 9 + number(8) = 13 digits
-  if (digits.length === 12 && digits.startsWith('55')) {
+  // Brazilian numbers starting with 55: fix missing 9th digit
+  // Expected final format: 55 + DDD(2) + 9 + number(8) = 13 digits (mobile)
+  // Or: 55 + DDD(2) + number(8) = 12 digits (landline)
+  if (digits.startsWith('55')) {
     const ddd = digits.substring(2, 4);
     const numero = digits.substring(4);
-    // Only add 9 if the number doesn't already start with 9
-    if (!numero.startsWith('9')) {
-      digits = '55' + ddd + '9' + numero;
-      console.log(`[Phone] Auto-added 9th digit: ${phone} -> ${digits}`);
+    
+    // Case 1: 11 digits (55 + DDD + 7 digits) - missing 2 digits, likely incomplete
+    // Try to add 9 prefix to make it a valid mobile: 55 + DDD + 9 + 7 digits = 12 digits (still short)
+    // This case is truly invalid - number is incomplete
+    if (digits.length === 11) {
+      // Check if it looks like it should be a mobile (has 9 but missing a digit)
+      if (numero.startsWith('9') && numero.length === 7) {
+        // Missing one digit at the end - truly invalid
+        return { 
+          valid: false, 
+          formatted: digits,
+          error: `Número incompleto: ${digits} (faltando dígitos)`
+        };
+      }
+      // Doesn't start with 9, try adding it
+      if (!numero.startsWith('9')) {
+        digits = '55' + ddd + '9' + numero;
+        console.log(`[Phone] Auto-added 9 prefix (11->12 digits): ${phone} -> ${digits}`);
+      }
+    }
+    
+    // Case 2: 12 digits (55 + DDD + 8 digits) - add 9th digit if missing
+    if (digits.length === 12 && digits.startsWith('55')) {
+      const currentNumero = digits.substring(4);
+      if (!currentNumero.startsWith('9')) {
+        digits = '55' + ddd + '9' + currentNumero;
+        console.log(`[Phone] Auto-added 9th digit (12->13 digits): ${phone} -> ${digits}`);
+      }
     }
   }
   
