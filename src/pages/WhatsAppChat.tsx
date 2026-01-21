@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle, UserCheck, UserPlus, Smile } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle, UserCheck, UserPlus, Smile } from 'lucide-react';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -37,7 +37,6 @@ import { cn } from '@/lib/utils';
 import type { WhatsAppConversation, WhatsAppMessage, WhatsAppLabel } from '@/types/whatsapp';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 type FilterType = 'all' | 'no_reply' | 'unread' | 'ai_paused' | 'waiting' | 'ai_active' | 'handoff';
-type ConversationType = 'all' | 'contacts' | 'groups';
 type OriginType = 'all' | 'broadcast' | 'random';
 
 interface WhatsAppInstance {
@@ -73,7 +72,6 @@ export default function WhatsAppChat() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [conversationType, setConversationType] = useState<ConversationType>('all');
   const [originType, setOriginType] = useState<OriginType>('all');
   const [funnelStageFilter, setFunnelStageFilter] = useState<FunnelStageId | 'all'>('all');
   const [viewTab, setViewTab] = useState<'active' | 'archived'>('active');
@@ -284,6 +282,7 @@ export default function WhatsAppChat() {
   const loadConversations = async () => {
     try {
       // Build query based on user role - optimized with specific columns
+      // Exclude groups (is_group = false or null)
       let query = supabase
         .from('whatsapp_conversations')
         .select(`
@@ -294,6 +293,7 @@ export default function WhatsAppChat() {
           reminder_at, estimated_value, closed_value, custom_tags, tags,
           origin, pinned, muted_until, broadcast_list_id, phone_invalid
         `)
+        .or('is_group.is.null,is_group.eq.false')
         .order('last_message_at', { ascending: false })
         .limit(200);
 
@@ -650,10 +650,6 @@ export default function WhatsAppChat() {
       return matchesSearch && matchesInstance;
     });
 
-    // Type counts (groups vs contacts)
-    const contacts = baseFiltered.filter(c => !isGroup(c));
-    const groups = baseFiltered.filter(c => isGroup(c));
-
     // Origin counts (broadcast vs random)
     const broadcast = baseFiltered.filter(c => c.is_crm_lead === true);
     const random = baseFiltered.filter(c => c.is_crm_lead !== true);
@@ -666,8 +662,6 @@ export default function WhatsAppChat() {
 
     return {
       all: baseFiltered.length,
-      contacts: contacts.length,
-      groups: groups.length,
       broadcast: broadcast.length,
       random: random.length,
       no_reply: baseFiltered.filter(c => !c.last_lead_message_at).length,
@@ -750,11 +744,6 @@ export default function WhatsAppChat() {
       
       const matchesInstance = selectedInstance === 'all' || conv.config_id === selectedInstance;
       
-      // Type filter (groups vs contacts)
-      const matchesType = conversationType === 'all' || 
-        (conversationType === 'contacts' && !isGroup(conv)) ||
-        (conversationType === 'groups' && isGroup(conv));
-      
       // Origin filter (broadcast vs random)
       const matchesOrigin = originType === 'all' ||
         (originType === 'broadcast' && conv.is_crm_lead === true) ||
@@ -764,7 +753,7 @@ export default function WhatsAppChat() {
       const convStage = conv.funnel_stage || 'new';
       const matchesFunnelStage = funnelStageFilter === 'all' || convStage === funnelStageFilter;
       
-      if (!matchesSearch || !matchesInstance || !matchesType || !matchesOrigin || !matchesFunnelStage) return false;
+      if (!matchesSearch || !matchesInstance || !matchesOrigin || !matchesFunnelStage) return false;
 
       switch (activeFilter) {
         case 'no_reply':
@@ -786,7 +775,7 @@ export default function WhatsAppChat() {
           return true;
       }
     });
-  }, [conversations, searchTerm, selectedInstance, activeFilter, conversationType, originType, funnelStageFilter, viewTab]);
+  }, [conversations, searchTerm, selectedInstance, activeFilter, originType, funnelStageFilter, viewTab]);
 
   // Archive counts
   const activeCount = useMemo(() => conversations.filter(c => c.status !== 'archived').length, [conversations]);
@@ -1090,23 +1079,6 @@ export default function WhatsAppChat() {
             </div>
             {/* Compact Filter Dropdowns - Mobile */}
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Type Filter */}
-              <Select value={conversationType} onValueChange={(value) => setConversationType(value as ConversationType)}>
-                <SelectTrigger className="h-8 flex-1 min-w-[80px] text-xs">
-                  <div className="flex items-center gap-1">
-                    {conversationType === 'all' && <span>Tipo</span>}
-                    {conversationType === 'contacts' && <><User className="h-3 w-3" /><span>Contatos</span></>}
-                    {conversationType === 'groups' && <><Users className="h-3 w-3" /><span>Grupos</span></>}
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos ({filterCounts.all})</SelectItem>
-                  <SelectItem value="contacts"><div className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" />Contatos ({filterCounts.contacts})</div></SelectItem>
-                  <SelectItem value="groups"><div className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />Grupos ({filterCounts.groups})</div></SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Origin Filter */}
               <Select value={originType} onValueChange={(value) => setOriginType(value as OriginType)}>
                 <SelectTrigger className="h-8 flex-1 min-w-[90px] text-xs">
                   <div className="flex items-center gap-1">
@@ -1300,38 +1272,6 @@ export default function WhatsAppChat() {
                 </div>
                 {/* Compact Filter Row with Dropdowns */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Type Filter (Contacts/Groups) */}
-                  <Select value={conversationType} onValueChange={(value) => setConversationType(value as ConversationType)}>
-                    <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
-                      <div className="flex items-center gap-1.5">
-                        {conversationType === 'all' && <><span>Tipo</span><Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.all}</Badge></>}
-                        {conversationType === 'contacts' && <><User className="h-3 w-3" /><span>Contatos</span><Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.contacts}</Badge></>}
-                        {conversationType === 'groups' && <><Users className="h-3 w-3" /><span>Grupos</span><Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.groups}</Badge></>}
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Todos</span>
-                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.all}</Badge>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="contacts">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" /><span>Contatos</span></div>
-                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.contacts}</Badge>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="groups">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /><span>Grupos</span></div>
-                          <Badge variant="secondary" className="h-4 px-1 text-[10px]">{filterCounts.groups}</Badge>
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {/* Origin Filter (Broadcast/Random) */}
                   <Select value={originType} onValueChange={(value) => setOriginType(value as OriginType)}>
                     <SelectTrigger className="h-8 w-auto min-w-[110px] text-xs">
                       <div className="flex items-center gap-1.5">
