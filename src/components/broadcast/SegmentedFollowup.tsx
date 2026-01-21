@@ -44,6 +44,17 @@ export function SegmentedFollowup() {
   const loadLeads = useCallback(async () => {
     setLoading(true);
     try {
+      // If a funnel is selected, fetch its stage IDs first
+      let funnelStageIds: string[] = [];
+      if (filters.funnelId) {
+        const { data: stages } = await supabase
+          .from('crm_funnel_stages')
+          .select('id')
+          .eq('funnel_id', filters.funnelId);
+        
+        funnelStageIds = stages?.map(s => s.id) || [];
+      }
+
       let query = supabase
         .from('whatsapp_conversations')
         .select('id, phone, name, lead_city, funnel_stage, last_message_at, broadcast_sent_at, followup_count, last_lead_message_at, broadcast_list_id')
@@ -55,8 +66,11 @@ export function SegmentedFollowup() {
         query = query.in('lead_city', filters.cities);
       }
 
+      // Filter by specific stages if selected, otherwise by all stages of the selected funnel
       if (filters.funnelStages.length > 0) {
         query = query.in('funnel_stage', filters.funnelStages);
+      } else if (funnelStageIds.length > 0) {
+        query = query.in('funnel_stage', funnelStageIds);
       }
 
       if (filters.broadcastListId) {
