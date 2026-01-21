@@ -37,6 +37,7 @@ import {
   HeroMetrics,
   ActionAlerts
 } from '@/components/dashboard';
+import { InstanceStatusPanel } from '@/components/instance/InstanceStatusPanel';
 import type { CRMFunnel, CRMFunnelStage } from "@/types/crm";
 import { useNavigate } from "react-router-dom";
 
@@ -512,11 +513,18 @@ export default function Dashboard() {
         {/* ============ TAB: TÉCNICO ============ */}
         <TabsContent value="tecnico" className="space-y-6 mt-6">
           
-          {/* Instance Monitor */}
-          <InstanceMonitor 
-            startDate={startDate}
-            endDate={endDate}
-          />
+          {/* Instance Status + Monitor */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-1">
+              <InstanceStatusPanel />
+            </div>
+            <div className="lg:col-span-2">
+              <InstanceMonitor 
+                startDate={startDate}
+                endDate={endDate}
+              />
+            </div>
+          </div>
 
           {/* AI + Heatmap + Evolution */}
           <div className="grid gap-6 lg:grid-cols-2">

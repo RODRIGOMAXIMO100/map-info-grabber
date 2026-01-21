@@ -860,6 +860,38 @@ export type Database = {
           },
         ]
       }
+      whatsapp_instance_status: {
+        Row: {
+          checked_at: string | null
+          config_id: string
+          details: Json | null
+          id: string
+          status: string
+        }
+        Insert: {
+          checked_at?: string | null
+          config_id: string
+          details?: Json | null
+          id?: string
+          status: string
+        }
+        Update: {
+          checked_at?: string | null
+          config_id?: string
+          details?: Json | null
+          id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_instance_status_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_labels: {
         Row: {
           color: number | null
@@ -1166,6 +1198,7 @@ export type Database = {
     }
     Functions: {
       clean_expired_cache: { Args: never; Returns: undefined }
+      clean_old_instance_status: { Args: never; Returns: undefined }
       get_pending_broadcast_messages: {
         Args: { batch_limit: number }
         Returns: {

@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.update-user]
 verify_jwt = false
+
+[functions.check-instance-status]
+verify_jwt = false
