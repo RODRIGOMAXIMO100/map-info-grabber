@@ -5,10 +5,10 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatMessagePreview } from '@/components/whatsapp/MessageContent';
 
-// Play real cash register sound
+// Play custom cash register sound
 const playMoneySound = () => {
   try {
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2058/2058-preview.mp3');
+    const audio = new Audio('/sounds/cash-register.mp3');
     audio.volume = 0.5;
     audio.play().catch(err => console.warn('Could not play sound:', err));
   } catch (error) {
