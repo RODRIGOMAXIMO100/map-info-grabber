@@ -18,6 +18,7 @@ import {
   Trash2,
   UserCheck,
   UserPlus,
+  PhoneOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -56,6 +57,7 @@ interface LeadCardProps {
     contacted_by_instances?: string[] | null;
     closed_value?: number | null;
     utm_data?: UtmData | null;
+    phone_invalid?: boolean;
   };
   isDragging?: boolean;
   onDragStart: () => void;
@@ -456,6 +458,21 @@ function LeadCardComponent({
                 </Tooltip>
               </TooltipProvider>
             )}
+            {/* Phone Invalid Indicator */}
+            {conv.phone_invalid && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="destructive" className="text-[9px] h-4 px-1 gap-0.5">
+                      <PhoneOff className="h-2.5 w-2.5" />
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Número não está no WhatsApp
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             <Badge 
               variant={conv.ai_paused ? "outline" : "secondary"} 
               className="text-[9px] h-4 px-1"
@@ -525,6 +542,7 @@ export const LeadCard = memo(LeadCardComponent, (prevProps, nextProps) => {
     prevProps.conv.closed_value === nextProps.conv.closed_value &&
     prevProps.conv.funnel_stage === nextProps.conv.funnel_stage &&
     prevProps.conv.reminder_at === nextProps.conv.reminder_at &&
+    prevProps.conv.phone_invalid === nextProps.conv.phone_invalid &&
     prevProps.conv.custom_tags?.length === nextProps.conv.custom_tags?.length &&
     prevProps.isDragging === nextProps.isDragging &&
     prevProps.assignedUserName === nextProps.assignedUserName &&

@@ -57,6 +57,7 @@ export interface WhatsAppConversation {
   assigned_to?: string | null;
   assigned_at?: string | null;
   transferred_by?: string | null;
+  phone_invalid?: boolean;
 }
 
 export interface WhatsAppMessage {

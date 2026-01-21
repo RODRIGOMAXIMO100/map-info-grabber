@@ -591,6 +591,8 @@ serve(async (req) => {
 
       if (!numberCheck.exists) {
         console.log(`[Broadcast] ⚠️ Skipping ${queueItem.phone} - number not on WhatsApp`);
+        
+        // Mark queue item as failed
         await supabase
           .from('whatsapp_queue')
           .update({ 
@@ -599,6 +601,23 @@ serve(async (req) => {
             processed_at: new Date().toISOString()
           })
           .eq('id', queueItem.id);
+        
+        // Mark existing conversation as phone_invalid if exists
+        const phoneCore = queueItem.phone.replace(/\D/g, '').slice(-8);
+        const { data: existingConv } = await supabase
+          .from('whatsapp_conversations')
+          .select('id')
+          .ilike('phone', `%${phoneCore}`)
+          .limit(1)
+          .maybeSingle();
+        
+        if (existingConv) {
+          await supabase
+            .from('whatsapp_conversations')
+            .update({ phone_invalid: true })
+            .eq('id', existingConv.id);
+          console.log(`[Broadcast] Marked conversation ${existingConv.id} as phone_invalid`);
+        }
         
         // Update broadcast list counter
         if (queueItem.broadcast_list_id) {

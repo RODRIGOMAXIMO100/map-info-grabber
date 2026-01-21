@@ -707,6 +707,7 @@ export type Database = {
           notes: string | null
           origin: string | null
           phone: string
+          phone_invalid: boolean | null
           pinned: boolean | null
           reminder_at: string | null
           site_sent: boolean | null
@@ -758,6 +759,7 @@ export type Database = {
           notes?: string | null
           origin?: string | null
           phone: string
+          phone_invalid?: boolean | null
           pinned?: boolean | null
           reminder_at?: string | null
           site_sent?: boolean | null
@@ -809,6 +811,7 @@ export type Database = {
           notes?: string | null
           origin?: string | null
           phone?: string
+          phone_invalid?: boolean | null
           pinned?: boolean | null
           reminder_at?: string | null
           site_sent?: boolean | null
