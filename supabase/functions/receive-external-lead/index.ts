@@ -24,25 +24,50 @@ interface LeadPayload {
   utm_content?: string;
 }
 
-function normalizePhone(phone: string): string {
-  // Remove all non-digit characters
-  let cleaned = phone.replace(/\D/g, '');
+function normalizePhone(phone: string): { valid: boolean; formatted: string; error?: string } {
+  let digits = phone.replace(/\D/g, '');
   
-  // Add Brazil country code if not present
-  if (cleaned.length === 10 || cleaned.length === 11) {
-    cleaned = '55' + cleaned;
+  // WhatsApp groups start with 120 - pass through as-is
+  if (digits.startsWith('120')) {
+    return { valid: true, formatted: digits };
   }
   
-  // Handle 9-digit mobile numbers (add 9 if missing)
-  if (cleaned.length === 12 && cleaned.startsWith('55')) {
-    const ddd = cleaned.substring(2, 4);
-    const number = cleaned.substring(4);
-    if (number.length === 8 && !number.startsWith('9')) {
-      cleaned = '55' + ddd + '9' + number;
+  // Add Brazil country code if number is local (10-11 digits without country code)
+  if (digits.length >= 10 && digits.length <= 11 && !digits.startsWith('55')) {
+    digits = '55' + digits;
+  }
+  
+  // Brazilian mobile with 12 digits: add the 9th digit if missing
+  // Expected format: 55 + DDD(2) + 9 + number(8) = 13 digits
+  if (digits.length === 12 && digits.startsWith('55')) {
+    const ddd = digits.substring(2, 4);
+    const numero = digits.substring(4);
+    // Only add 9 if the number doesn't already start with 9
+    if (!numero.startsWith('9')) {
+      digits = '55' + ddd + '9' + numero;
+      console.log(`[Phone] Auto-added 9th digit: ${phone} -> ${digits}`);
     }
   }
   
-  return cleaned;
+  // Validate final length for Brazilian numbers
+  if (digits.startsWith('55') && (digits.length < 12 || digits.length > 13)) {
+    return { 
+      valid: false, 
+      formatted: digits,
+      error: `Número brasileiro inválido: ${digits} (${digits.length} dígitos, esperado 12-13)`
+    };
+  }
+  
+  // For non-Brazilian numbers, just ensure minimum reasonable length
+  if (!digits.startsWith('55') && !digits.startsWith('120') && digits.length < 10) {
+    return {
+      valid: false,
+      formatted: digits,
+      error: `Número muito curto: ${digits} (${digits.length} dígitos)`
+    };
+  }
+  
+  return { valid: true, formatted: digits };
 }
 
 serve(async (req) => {
@@ -105,15 +130,21 @@ serve(async (req) => {
       );
     }
 
-    const normalizedPhone = normalizePhone(body.phone);
+    const phoneResult = normalizePhone(body.phone);
 
     // Validate phone format
-    if (normalizedPhone.length < 12 || normalizedPhone.length > 13) {
+    if (!phoneResult.valid) {
       return new Response(
-        JSON.stringify({ error: 'Invalid phone format', code: 'INVALID_PHONE' }),
+        JSON.stringify({ 
+          error: phoneResult.error || 'Invalid phone format', 
+          code: 'INVALID_PHONE',
+          original_phone: body.phone
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    const normalizedPhone = phoneResult.formatted;
 
     // Build UTM data object
     const utmData = {

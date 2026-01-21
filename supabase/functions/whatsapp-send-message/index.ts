@@ -6,6 +6,53 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Robust phone normalization and validation for Brazilian numbers
+function normalizeAndValidatePhone(phone: string): { valid: boolean; formatted: string; error?: string } {
+  let digits = phone.replace(/\D/g, '');
+  
+  // WhatsApp groups start with 120 - pass through as-is
+  if (digits.startsWith('120')) {
+    return { valid: true, formatted: digits };
+  }
+  
+  // Add Brazil country code if number is local (10-11 digits without country code)
+  if (digits.length >= 10 && digits.length <= 11 && !digits.startsWith('55')) {
+    digits = '55' + digits;
+  }
+  
+  // Brazilian mobile with 12 digits: add the 9th digit if missing
+  // Expected format: 55 + DDD(2) + 9 + number(8) = 13 digits
+  if (digits.length === 12 && digits.startsWith('55')) {
+    const ddd = digits.substring(2, 4);
+    const numero = digits.substring(4);
+    // Only add 9 if the number doesn't already start with 9
+    if (!numero.startsWith('9')) {
+      digits = '55' + ddd + '9' + numero;
+      console.log(`[Phone] Auto-added 9th digit: ${phone} -> ${digits}`);
+    }
+  }
+  
+  // Validate final length for Brazilian numbers
+  if (digits.startsWith('55') && (digits.length < 12 || digits.length > 13)) {
+    return { 
+      valid: false, 
+      formatted: digits,
+      error: `Número brasileiro inválido: ${digits} (${digits.length} dígitos, esperado 12-13)`
+    };
+  }
+  
+  // For non-Brazilian numbers, just ensure minimum reasonable length
+  if (!digits.startsWith('55') && !digits.startsWith('120') && digits.length < 10) {
+    return {
+      valid: false,
+      formatted: digits,
+      error: `Número muito curto: ${digits} (${digits.length} dígitos)`
+    };
+  }
+  
+  return { valid: true, formatted: digits };
+}
+
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -94,11 +141,20 @@ serve(async (req) => {
       console.log('[Send] Using fallback config:', fallbackConfig.id);
     }
 
-    // Format phone (add 55 for Brazilian numbers)
-    let formattedPhone = targetPhone.replace(/\D/g, '');
-    if (formattedPhone.length >= 10 && formattedPhone.length <= 11 && !formattedPhone.startsWith('55')) {
-      formattedPhone = '55' + formattedPhone;
+    // Normalize and validate phone number
+    const phoneResult = normalizeAndValidatePhone(targetPhone);
+    if (!phoneResult.valid) {
+      console.error(`[Send] Invalid phone format: ${targetPhone} -> ${phoneResult.formatted} (${phoneResult.error})`);
+      return new Response(
+        JSON.stringify({ 
+          error: phoneResult.error,
+          invalid_format: true,
+          original_phone: targetPhone
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+    const formattedPhone = phoneResult.formatted;
 
     // Send via UAZAPI
     const serverUrl = configToUse.server_url.replace(/\/$/, '');
