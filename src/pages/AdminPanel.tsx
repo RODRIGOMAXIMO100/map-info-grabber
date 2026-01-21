@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissionsAdmin } from '@/hooks/usePermissions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Loader2, Shield, Users, UserCheck, UserX, RefreshCw, Pencil, Trash2 } from 'lucide-react';
+import { Loader2, Shield, Users, UserCheck, UserX, RefreshCw, Pencil, Trash2, Lock } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 interface UserWithRole {
@@ -41,6 +44,15 @@ const AdminPanel = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletingUser, setDeletingUser] = useState<UserWithRole | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Permissões
+  const { 
+    permissionsByRoute, 
+    loading: permLoading, 
+    updating: permUpdating,
+    updatePermission,
+    refresh: refreshPermissions 
+  } = usePermissionsAdmin();
 
   useEffect(() => {
     if (isAdmin) {
@@ -197,6 +209,15 @@ const AdminPanel = () => {
     }
   };
 
+  const handlePermissionToggle = async (routeKey: string, role: 'sdr' | 'closer', currentValue: boolean) => {
+    const success = await updatePermission(role, routeKey, !currentValue);
+    if (success) {
+      toast.success('Permissão atualizada!');
+    } else {
+      toast.error('Erro ao atualizar permissão');
+    }
+  };
+
   const getRoleBadge = (role: string | null) => {
     switch (role) {
       case 'admin':
@@ -232,138 +253,235 @@ const AdminPanel = () => {
             <p className="text-muted-foreground">Gerencie usuários e permissões</p>
           </div>
         </div>
-        <Button onClick={loadUsers} variant="outline" disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Usuários</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{users.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Com Papel Atribuído</CardTitle>
-            <UserCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {users.filter(u => u.role).length}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sem Papel</CardTitle>
-            <UserX className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {users.filter(u => !u.role).length}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs defaultValue="users" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="users" className="gap-2">
+            <Users className="h-4 w-4" />
+            Usuários
+          </TabsTrigger>
+          <TabsTrigger value="permissions" className="gap-2">
+            <Lock className="h-4 w-4" />
+            Permissões
+          </TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Usuários</CardTitle>
-          <CardDescription>
-            Gerencie os papéis de cada usuário no sistema
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Papel Atual</TableHead>
-                  <TableHead>Data de Cadastro</TableHead>
-                  <TableHead>Alterar Papel</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">
-                      {user.full_name}
-                    </TableCell>
-                    <TableCell>
-                      {getRoleBadge(user.role)}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(user.created_at).toLocaleDateString('pt-BR')}
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        value={user.role || 'none'}
-                        onValueChange={(value) => handleRoleChange(user.user_id, value)}
-                        disabled={updating === user.user_id}
-                      >
-                        <SelectTrigger className="w-32">
-                          {updating === user.user_id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <SelectValue />
-                          )}
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Sem papel</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="sdr">SDR</SelectItem>
-                          <SelectItem value="closer">Closer</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEditClick(user)}
-                          title="Editar usuário"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteClick(user)}
-                          disabled={user.user_id === currentUser?.id}
-                          title={user.user_id === currentUser?.id ? "Você não pode deletar a si mesmo" : "Deletar usuário"}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {users.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      Nenhum usuário encontrado
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+        {/* ABA DE USUÁRIOS */}
+        <TabsContent value="users" className="space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={loadUsers} variant="outline" disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total de Usuários</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{users.length}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Com Papel Atribuído</CardTitle>
+                <UserCheck className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {users.filter(u => u.role).length}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Sem Papel</CardTitle>
+                <UserX className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {users.filter(u => !u.role).length}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Usuários</CardTitle>
+              <CardDescription>
+                Gerencie os papéis de cada usuário no sistema
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Papel Atual</TableHead>
+                      <TableHead>Data de Cadastro</TableHead>
+                      <TableHead>Alterar Papel</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell className="font-medium">
+                          {user.full_name}
+                        </TableCell>
+                        <TableCell>
+                          {getRoleBadge(user.role)}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(user.created_at).toLocaleDateString('pt-BR')}
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={user.role || 'none'}
+                            onValueChange={(value) => handleRoleChange(user.user_id, value)}
+                            disabled={updating === user.user_id}
+                          >
+                            <SelectTrigger className="w-32">
+                              {updating === user.user_id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <SelectValue />
+                              )}
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Sem papel</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
+                              <SelectItem value="sdr">SDR</SelectItem>
+                              <SelectItem value="closer">Closer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEditClick(user)}
+                              title="Editar usuário"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteClick(user)}
+                              disabled={user.user_id === currentUser?.id}
+                              title={user.user_id === currentUser?.id ? "Você não pode deletar a si mesmo" : "Deletar usuário"}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {users.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          Nenhum usuário encontrado
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ABA DE PERMISSÕES */}
+        <TabsContent value="permissions" className="space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={refreshPermissions} variant="outline" disabled={permLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${permLoading ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Permissões por Role</CardTitle>
+              <CardDescription>
+                Defina quais menus cada tipo de usuário pode acessar. Administradores sempre têm acesso total.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {permLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[250px]">Menu</TableHead>
+                      <TableHead className="text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <Badge className="bg-blue-500">SDR</Badge>
+                        </div>
+                      </TableHead>
+                      <TableHead className="text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <Badge className="bg-green-500">Closer</Badge>
+                        </div>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {permissionsByRoute.map((perm) => (
+                      <TableRow key={perm.route_key}>
+                        <TableCell className="font-medium">
+                          {perm.route_label}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center">
+                            <Switch
+                              checked={perm.sdr}
+                              onCheckedChange={() => handlePermissionToggle(perm.route_key, 'sdr', perm.sdr)}
+                              disabled={permUpdating === `sdr-${perm.route_key}`}
+                            />
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center">
+                            <Switch
+                              checked={perm.closer}
+                              onCheckedChange={() => handlePermissionToggle(perm.route_key, 'closer', perm.closer)}
+                              disabled={permUpdating === `closer-${perm.route_key}`}
+                            />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {permissionsByRoute.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                          Nenhuma permissão configurada
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Modal de Edição */}
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>

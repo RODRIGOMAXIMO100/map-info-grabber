@@ -15,13 +15,13 @@ import {
   GitBranch,
   LogOut,
   ShieldCheck,
-  User,
   BarChart3,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeRefresh } from "@/hooks/useRealtimeSubscription";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   Sidebar,
   SidebarContent,
@@ -47,25 +47,44 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// SDR só tem acesso a: Dashboard, Chat, CRM, Lembretes
+// Mapeamento de rotas para chaves de permissão
+const routeKeyMap: Record<string, string> = {
+  '/dashboard': 'dashboard',
+  '/': 'prospeccao',
+  '/whatsapp/broadcast': 'broadcast',
+  '/whatsapp/chat': 'chat',
+  '/crm': 'crm',
+  '/lembretes': 'lembretes',
+  '/team-performance': 'equipe',
+  '/funnel-stages': 'funnel_stages',
+  '/crm/funnels': 'funnel_manager',
+  '/ai-config': 'ai_config',
+  '/ai-logs': 'ai_logs',
+  '/whatsapp/config': 'whatsapp_config',
+  '/anti-block': 'anti_block',
+  '/admin': 'admin',
+};
+
+// Items do menu principal
 const menuItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Prospecção", url: "/", icon: Search, adminOnly: true },
-  { title: "Broadcast", url: "/whatsapp/broadcast", icon: Send, adminOnly: true },
-  { title: "Chat", url: "/whatsapp/chat", icon: MessageSquare },
-  { title: "CRM", url: "/crm", icon: Users },
-  { title: "Lembretes", url: "/lembretes", icon: Bell },
-  { title: "Equipe", url: "/team-performance", icon: BarChart3, adminOnly: true },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, routeKey: "dashboard" },
+  { title: "Prospecção", url: "/", icon: Search, routeKey: "prospeccao" },
+  { title: "Broadcast", url: "/whatsapp/broadcast", icon: Send, routeKey: "broadcast" },
+  { title: "Chat", url: "/whatsapp/chat", icon: MessageSquare, routeKey: "chat" },
+  { title: "CRM", url: "/crm", icon: Users, routeKey: "crm" },
+  { title: "Lembretes", url: "/lembretes", icon: Bell, routeKey: "lembretes" },
+  { title: "Equipe", url: "/team-performance", icon: BarChart3, routeKey: "equipe" },
 ];
 
-// Configurações são apenas para admin
+// Configurações 
 const configItems = [
-  { title: "Fases do Funil", url: "/funnel-stages", icon: Layers },
-  { title: "Gerenciar Funis", url: "/crm/funnels", icon: GitBranch },
-  { title: "Agente IA", url: "/ai-config", icon: Bot },
-  { title: "Logs IA", url: "/ai-logs", icon: ScrollText },
-  { title: "WhatsApp", url: "/whatsapp/config", icon: Settings },
-  { title: "Anti-Bloqueio", url: "/anti-block", icon: Shield },
+  { title: "Administração", url: "/admin", icon: ShieldCheck, routeKey: "admin" },
+  { title: "Fases do Funil", url: "/funnel-stages", icon: Layers, routeKey: "funnel_stages" },
+  { title: "Gerenciar Funis", url: "/crm/funnels", icon: GitBranch, routeKey: "funnel_manager" },
+  { title: "Agente IA", url: "/ai-config", icon: Bot, routeKey: "ai_config" },
+  { title: "Logs IA", url: "/ai-logs", icon: ScrollText, routeKey: "ai_logs" },
+  { title: "WhatsApp", url: "/whatsapp/config", icon: Settings, routeKey: "whatsapp_config" },
+  { title: "Anti-Bloqueio", url: "/anti-block", icon: Shield, routeKey: "anti_block" },
 ];
 
 export function AppSidebar() {
@@ -73,6 +92,7 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const location = useLocation();
   const { profile, role, signOut, isAdmin } = useAuth();
+  const { hasAccess, loading: permLoading } = usePermissions();
   const [handoffCount, setHandoffCount] = useState(0);
   const [reminderCount, setReminderCount] = useState(0);
   const [aiActive, setAiActive] = useState(false);
@@ -148,6 +168,16 @@ export function AppSidebar() {
     await signOut();
   };
 
+  // Verificar se tem permissão para um item
+  const canAccessRoute = (routeKey: string) => {
+    if (isAdmin) return true;
+    if (permLoading) return false;
+    return hasAccess(routeKey);
+  };
+
+  // Verificar se tem pelo menos um item de configuração acessível
+  const hasAnyConfigAccess = configItems.some(item => canAccessRoute(item.routeKey));
+
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="p-4">
@@ -169,8 +199,8 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => {
-                // Skip admin-only items for non-admins
-                if ('adminOnly' in item && item.adminOnly && !isAdmin) {
+                // Verifica permissão dinâmica
+                if (!canAccessRoute(item.routeKey)) {
                   return null;
                 }
                 return (
@@ -207,46 +237,36 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Configurações para admin e closer (oculto para SDR e enquanto carrega) */}
-        {(role === 'admin' || role === 'closer') && (
+        {/* Configurações - mostra se tiver acesso a pelo menos um item */}
+        {hasAnyConfigAccess && (
           <SidebarGroup>
             <SidebarGroupLabel>Configurações</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive("/admin")}
-                    tooltip="Administração"
-                  >
-                    <NavLink
-                      to="/admin"
-                      className="flex items-center gap-2"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
-                    >
-                      <ShieldCheck className="h-4 w-4" />
-                      {!collapsed && <span>Administração</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                {configItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive(item.url)}
-                      tooltip={item.title}
-                    >
-                      <NavLink
-                        to={item.url}
-                        className="flex items-center gap-2"
-                        activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                {configItems.map((item) => {
+                  // Verifica permissão dinâmica
+                  if (!canAccessRoute(item.routeKey)) {
+                    return null;
+                  }
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive(item.url)}
+                        tooltip={item.title}
                       >
-                        <item.icon className="h-4 w-4" />
-                        {!collapsed && <span>{item.title}</span>}
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                        <NavLink
+                          to={item.url}
+                          className="flex items-center gap-2"
+                          activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                        >
+                          <item.icon className="h-4 w-4" />
+                          {!collapsed && <span>{item.title}</span>}
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
