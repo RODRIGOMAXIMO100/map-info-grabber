@@ -207,8 +207,8 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Configurações para admin e closer (oculto apenas para SDR) */}
-        {role !== 'sdr' && (
+        {/* Configurações para admin e closer (oculto para SDR e enquanto carrega) */}
+        {(role === 'admin' || role === 'closer') && (
           <SidebarGroup>
             <SidebarGroupLabel>Configurações</SidebarGroupLabel>
             <SidebarGroupContent>
