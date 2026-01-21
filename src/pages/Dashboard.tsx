@@ -514,36 +514,35 @@ export default function Dashboard() {
         </TabsContent>
 
         {/* ============ TAB: TÉCNICO ============ */}
-        <TabsContent value="tecnico" className="space-y-6 mt-6">
+        <TabsContent value="tecnico" className="space-y-5 mt-6">
           
           {/* ====== SEÇÃO 1: MONITORAMENTO WHATSAPP ====== */}
-          <section>
+          <section className="space-y-3">
             <SectionHeader 
               icon={Smartphone} 
               title="Instâncias WhatsApp" 
-              description="Status de conexão e envios em tempo real"
+              description="Conexão e envios em tempo real"
             />
-            <div className="grid gap-4 lg:grid-cols-3">
-              <div className="lg:col-span-1">
-                <InstanceStatusPanel />
-              </div>
-              <div className="lg:col-span-2">
-                <InstanceMonitor 
-                  startDate={startDate}
-                  endDate={endDate}
-                />
-              </div>
-            </div>
+            
+            {/* Status Panel inline */}
+            <InstanceStatusPanel />
+            
+            {/* Monitor compacto */}
+            <InstanceMonitor 
+              startDate={startDate}
+              endDate={endDate}
+              compact
+            />
           </section>
 
           {/* ====== SEÇÃO 2: INTELIGÊNCIA ARTIFICIAL ====== */}
-          <section>
+          <section className="space-y-3">
             <SectionHeader 
               icon={Bot} 
               title="Inteligência Artificial" 
-              description="Desempenho e atividade do agente IA"
+              description="Desempenho do agente IA"
             />
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-2">
               {selectedFunnelId && (
                 <AIMetricsCard 
                   data={dashboardData.aiMetrics}
@@ -562,11 +561,11 @@ export default function Dashboard() {
 
           {/* ====== SEÇÃO 3: EVOLUÇÃO DO FUNIL ====== */}
           {selectedFunnelId && (
-            <section>
+            <section className="space-y-3">
               <SectionHeader 
                 icon={TrendingUp} 
                 title="Evolução do Funil" 
-                description="Distribuição de leads por etapa ao longo do tempo"
+                description="Leads por etapa ao longo do tempo"
               />
               <FunnelEvolutionChart 
                 funnelId={selectedFunnelId}

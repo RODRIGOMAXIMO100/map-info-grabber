@@ -57,9 +57,10 @@ interface RecentLog {
 interface InstanceMonitorProps {
   startDate?: Date;
   endDate?: Date;
+  compact?: boolean;
 }
 
-export default function InstanceMonitor({ startDate, endDate }: InstanceMonitorProps) {
+export default function InstanceMonitor({ startDate, endDate, compact = false }: InstanceMonitorProps) {
   const [instanceStats, setInstanceStats] = useState<InstanceStats[]>([]);
   const [pieData, setPieData] = useState<{ name: string; value: number; color: string }[]>([]);
   const [hourlyData, setHourlyData] = useState<HourlyData[]>([]);
@@ -239,96 +240,99 @@ export default function InstanceMonitor({ startDate, endDate }: InstanceMonitorP
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Monitor de Instâncias
-          </h2>
-          <p className="text-sm text-muted-foreground">Distribuição e status em tempo real</p>
+      {/* Compact Summary Bar */}
+      <Card className="p-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span className="font-medium">{totalSentToday}</span>
+              <span className="text-muted-foreground">enviadas</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <XCircle className="h-4 w-4 text-destructive" />
+              <span className="font-medium">{totalFailedToday}</span>
+              <span className="text-muted-foreground">falhas</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">{totalPending}</span>
+              <span className="text-muted-foreground">pendentes</span>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Taxa de sucesso: <span className="font-medium text-foreground">{totalSentToday + totalFailedToday > 0 ? Math.round((totalSentToday / (totalSentToday + totalFailedToday)) * 100) : 100}%</span>
+          </div>
         </div>
-        <div className="flex gap-4 text-sm">
-          <div className="flex items-center gap-1">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <span>{totalSentToday} enviadas</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <XCircle className="h-4 w-4 text-destructive" />
-            <span>{totalFailedToday} falhas</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <span>{totalPending} pendentes</span>
-          </div>
-        </div>
-      </div>
+      </Card>
 
-      {/* Cards de Instâncias */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {instanceStats.map((instance) => (
-          <Card key={instance.id} className="relative overflow-hidden">
-            <div 
-              className="absolute top-0 left-0 w-1 h-full" 
-              style={{ backgroundColor: instance.color }}
-            />
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Smartphone className="h-4 w-4" />
-                  {instance.name}
-                </CardTitle>
-                <Badge variant={instance.isActive ? "default" : "secondary"}>
-                  {instance.isActive ? 'Ativo' : 'Inativo'}
-                </Badge>
-              </div>
-              <CardDescription className="font-mono text-xs">
-                {instance.phone}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <div className="text-lg font-bold text-green-600">{instance.sentToday}</div>
-                  <div className="text-xs text-muted-foreground">Enviadas</div>
+      {/* Cards de Instâncias - only show if not compact */}
+      {!compact && (
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {instanceStats.map((instance) => (
+            <Card key={instance.id} className="relative overflow-hidden">
+              <div 
+                className="absolute top-0 left-0 w-1 h-full" 
+                style={{ backgroundColor: instance.color }}
+              />
+              <CardHeader className="pb-2 pt-3 px-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Smartphone className="h-3.5 w-3.5" />
+                    {instance.name}
+                  </CardTitle>
+                  <Badge variant={instance.isActive ? "default" : "secondary"} className="text-xs px-1.5 py-0">
+                    {instance.isActive ? 'Ativo' : 'Inativo'}
+                  </Badge>
                 </div>
-                <div>
-                  <div className="text-lg font-bold text-destructive">{instance.failedToday}</div>
-                  <div className="text-xs text-muted-foreground">Falhas</div>
+                <CardDescription className="font-mono text-xs">
+                  {instance.phone}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 px-3 pb-3">
+                <div className="grid grid-cols-3 gap-1 text-center">
+                  <div>
+                    <div className="text-base font-bold text-green-600">{instance.sentToday}</div>
+                    <div className="text-[10px] text-muted-foreground">Enviadas</div>
+                  </div>
+                  <div>
+                    <div className="text-base font-bold text-destructive">{instance.failedToday}</div>
+                    <div className="text-[10px] text-muted-foreground">Falhas</div>
+                  </div>
+                  <div>
+                    <div className="text-base font-bold text-muted-foreground">{instance.pending}</div>
+                    <div className="text-[10px] text-muted-foreground">Pendentes</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-lg font-bold text-muted-foreground">{instance.pending}</div>
-                  <div className="text-xs text-muted-foreground">Pendentes</div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span>Taxa de sucesso</span>
+                    <span>{instance.successRate}%</span>
+                  </div>
+                  <Progress value={instance.successRate} className="h-1.5" />
                 </div>
-              </div>
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span>Taxa de sucesso</span>
-                  <span>{instance.successRate}%</span>
-                </div>
-                <Progress value={instance.successRate} className="h-2" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Gráficos */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2">
         {/* Gráfico de Pizza */}
-        <Card>
-          <CardHeader>
+        <Card className="p-3">
+          <CardHeader className="p-0 pb-2">
             <CardTitle className="text-sm">Distribuição de Envios</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
+          <CardContent className="p-0">
+            <ResponsiveContainer width="100%" height={compact ? 150 : 180}>
               <PieChart>
                 <Pie
                   data={pieData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
+                  innerRadius={compact ? 35 : 45}
+                  outerRadius={compact ? 55 : 70}
                   paddingAngle={2}
                   dataKey="value"
                   label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
@@ -345,18 +349,18 @@ export default function InstanceMonitor({ startDate, endDate }: InstanceMonitorP
         </Card>
 
         {/* Gráfico de Barras por Hora */}
-        <Card>
-          <CardHeader>
+        <Card className="p-3">
+          <CardHeader className="p-0 pb-2">
             <CardTitle className="text-sm">Envios por Hora</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
+          <CardContent className="p-0">
+            <ResponsiveContainer width="100%" height={compact ? 150 : 180}>
               <BarChart data={hourlyData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
+                <XAxis dataKey="hour" tick={{ fontSize: 9 }} interval={compact ? 3 : 1} />
+                <YAxis tick={{ fontSize: 9 }} width={25} />
                 <Tooltip />
-                <Legend />
+                {!compact && <Legend wrapperStyle={{ fontSize: '11px' }} />}
                 {instanceStats.map((instance) => (
                   <Bar 
                     key={instance.id}
@@ -372,57 +376,57 @@ export default function InstanceMonitor({ startDate, endDate }: InstanceMonitorP
       </div>
 
       {/* Tabela de Últimos Envios */}
-      <Card>
-        <CardHeader>
+      <Card className="p-3">
+        <CardHeader className="p-0 pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Send className="h-4 w-4" />
             Últimos Envios
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {recentLogs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <Send className="h-8 w-8 mb-2" />
-              <p>Nenhum envio no período</p>
+            <div className="flex flex-col items-center justify-center py-4 text-muted-foreground">
+              <Send className="h-6 w-6 mb-1" />
+              <p className="text-sm">Nenhum envio no período</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Telefone</TableHead>
-                  <TableHead>Instância</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Horário</TableHead>
+                  <TableHead className="text-xs py-2">Telefone</TableHead>
+                  <TableHead className="text-xs py-2">Instância</TableHead>
+                  <TableHead className="text-xs py-2">Status</TableHead>
+                  <TableHead className="text-xs py-2">Horário</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentLogs.map((log) => (
+                {recentLogs.slice(0, compact ? 5 : 10).map((log) => (
                   <TableRow key={log.id}>
-                    <TableCell className="font-mono text-sm">{log.phone}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
+                    <TableCell className="font-mono text-xs py-1.5">{log.phone}</TableCell>
+                    <TableCell className="py-1.5">
+                      <div className="flex items-center gap-1.5">
                         <div 
-                          className="h-2 w-2 rounded-full" 
+                          className="h-2 w-2 rounded-full flex-shrink-0" 
                           style={{ backgroundColor: log.instanceColor }}
                         />
-                        <span className="text-sm">{log.instanceName}</span>
+                        <span className="text-xs truncate">{log.instanceName}</span>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-1.5">
                       {log.status === 'sent' ? (
-                        <Badge variant="default" className="bg-green-500 hover:bg-green-600">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Enviado
+                        <Badge variant="default" className="bg-green-500 hover:bg-green-600 text-[10px] px-1.5 py-0">
+                          <CheckCircle className="h-2.5 w-2.5 mr-0.5" />
+                          OK
                         </Badge>
                       ) : (
-                        <Badge variant="destructive">
-                          <AlertCircle className="h-3 w-3 mr-1" />
-                          Falha
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                          <AlertCircle className="h-2.5 w-2.5 mr-0.5" />
+                          Erro
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {log.sent_at ? new Date(log.sent_at).toLocaleTimeString('pt-BR') : '-'}
+                    <TableCell className="text-xs text-muted-foreground py-1.5">
+                      {log.sent_at ? new Date(log.sent_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}
                     </TableCell>
                   </TableRow>
                 ))}
