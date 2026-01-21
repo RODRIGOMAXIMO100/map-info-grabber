@@ -107,15 +107,20 @@ serve(async (req) => {
           const data = await response.json();
           
           // Parse response to determine connection status
-          // UAZAPI typically returns something like { connected: true } or { state: 'open' }
+          // UAZAPI returns nested format: { status: { checked_instance: { connection_status: 'connected' } } }
           const isConnected = 
+            // Legacy/simple formats
             data.connected === true ||
             data.state === 'open' ||
             data.state === 'connected' ||
             data.status === 'connected' ||
             data.status === 'open' ||
             data.instance?.state === 'open' ||
-            data.instance?.connected === true;
+            data.instance?.connected === true ||
+            // UAZAPI nested format
+            data.status?.checked_instance?.connection_status === 'connected' ||
+            data.status?.checked_instance?.is_healthy === true ||
+            data.status?.server_status === 'running';
 
           status = isConnected ? 'connected' : 'disconnected';
           details = {
