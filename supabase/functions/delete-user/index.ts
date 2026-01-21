@@ -71,7 +71,50 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    // Deletar do auth.users (cascade deleta profile e role automaticamente)
+    // Limpar referências ao usuário antes de deletar
+    // Desassociar conversas
+    await supabaseAdmin
+      .from('whatsapp_conversations')
+      .update({ assigned_to: null, transferred_by: null })
+      .or(`assigned_to.eq.${userId},transferred_by.eq.${userId}`)
+
+    // Limpar mensagens enviadas pelo usuário (setar como null)
+    await supabaseAdmin
+      .from('whatsapp_messages')
+      .update({ sent_by_user_id: null })
+      .eq('sent_by_user_id', userId)
+
+    // Remover de funnel_users
+    await supabaseAdmin
+      .from('crm_funnel_users')
+      .delete()
+      .eq('user_id', userId)
+
+    // Desassociar broadcasts
+    await supabaseAdmin
+      .from('broadcast_lists')
+      .update({ assigned_to: null })
+      .eq('assigned_to', userId)
+
+    // Deletar logs de atividade
+    await supabaseAdmin
+      .from('user_activity_logs')
+      .delete()
+      .eq('user_id', userId)
+
+    // Deletar role
+    await supabaseAdmin
+      .from('user_roles')
+      .delete()
+      .eq('user_id', userId)
+
+    // Deletar profile
+    await supabaseAdmin
+      .from('profiles')
+      .delete()
+      .eq('user_id', userId)
+
+    // Agora deletar do auth.users
     const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)
 
     if (error) {
