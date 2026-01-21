@@ -453,27 +453,35 @@ export default function WhatsAppChat() {
         config_id: selectedConversation.config_id,
       },
     }).then(({ data, error }) => {
-      if (data?.disconnected) {
-        // Marcar como falha
+      // Handle edge function errors (including 400 responses)
+      if (error || data?.error) {
+        console.error('Error sending message:', error || data);
         setMessages(prev => prev.map(m => 
           m.id === tempId ? { ...m, status: 'failed' } : m
         ));
-        toast({
-          title: `WhatsApp Desconectado: ${data.instance_name || 'Instância'}`,
-          description: 'Acesse o painel UAZAPI e reconecte esta instância.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      if (error) {
-        console.error('Error sending message:', error);
-        setMessages(prev => prev.map(m => 
-          m.id === tempId ? { ...m, status: 'failed' } : m
-        ));
+        
+        // Check for specific error types
+        if (data?.invalid_number) {
+          toast({
+            title: 'Número Inválido',
+            description: data.error || 'Este número não está no WhatsApp.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        
+        if (data?.disconnected) {
+          toast({
+            title: `WhatsApp Desconectado: ${data.instance_name || 'Instância'}`,
+            description: 'Acesse o painel UAZAPI e reconecte esta instância.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        
         toast({
           title: 'Erro ao enviar',
-          description: error.message || 'Não foi possível enviar a mensagem.',
+          description: data?.error || error?.message || 'Não foi possível enviar a mensagem.',
           variant: 'destructive',
         });
         return;
