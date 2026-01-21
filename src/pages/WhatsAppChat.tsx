@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Send, Loader2, Search, Bot, BotOff, Phone, MessageSquareOff, Mail, Clock, Filter, User, Users, Megaphone, Shuffle, ArrowRightLeft, WifiOff, Archive, AlertTriangle, Check, CheckCheck, AlertCircle, UserCheck, UserPlus, Smile } from 'lucide-react';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
@@ -113,16 +113,27 @@ export default function WhatsAppChat() {
     loadConversations();
     loadLabels();
     
-    // Set up resize observer for virtualized lists
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.target === conversationListRef.current) {
-          setConversationListHeight(entry.contentRect.height);
-        }
-        if (entry.target === messageListRef.current) {
-          setMessageListHeight(entry.contentRect.height);
-        }
+  }, []);
+
+  // Use useLayoutEffect for accurate height measurement before paint
+  useLayoutEffect(() => {
+    const updateHeights = () => {
+      if (conversationListRef.current) {
+        const rect = conversationListRef.current.getBoundingClientRect();
+        setConversationListHeight(rect.height);
       }
+      if (messageListRef.current) {
+        const rect = messageListRef.current.getBoundingClientRect();
+        setMessageListHeight(rect.height);
+      }
+    };
+
+    // Initial measurement
+    updateHeights();
+
+    // Set up resize observer for virtualized lists
+    const resizeObserver = new ResizeObserver(() => {
+      updateHeights();
     });
     
     if (conversationListRef.current) {
@@ -132,8 +143,24 @@ export default function WhatsAppChat() {
       resizeObserver.observe(messageListRef.current);
     }
     
-    return () => resizeObserver.disconnect();
-  }, []);
+    // Also listen to window resize
+    window.addEventListener('resize', updateHeights);
+    
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateHeights);
+    };
+  }, [selectedConversation?.id]);
+
+  // Recalculate message list height when messages change
+  useLayoutEffect(() => {
+    if (messageListRef.current) {
+      const rect = messageListRef.current.getBoundingClientRect();
+      if (rect.height > 0) {
+        setMessageListHeight(rect.height);
+      }
+    }
+  }, [messages.length]);
 
   // Centralized realtime subscription for conversations
   useRealtimeSubscription(
@@ -1444,7 +1471,7 @@ export default function WhatsAppChat() {
           </div>
 
           {/* Chat Panel - Flex grow to fill remaining space */}
-          <div className="flex-1 h-full flex flex-col bg-background">
+          <div className="flex-1 h-full flex flex-col min-h-0 bg-background">
             {selectedConversation ? (
                 <>
                   {/* Chat Header - Compact */}
@@ -1618,7 +1645,7 @@ export default function WhatsAppChat() {
                   </div>
 
                   {/* Messages - Virtualized */}
-                  <div ref={messageListRef} className="flex-1 overflow-hidden">
+                  <div ref={messageListRef} className="flex-1 overflow-hidden min-h-0">
                     <VirtualizedMessageList
                       messages={messages}
                       height={messageListHeight}
