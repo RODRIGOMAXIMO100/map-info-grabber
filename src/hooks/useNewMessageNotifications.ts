@@ -3,43 +3,70 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatMessagePreview } from '@/components/whatsapp/MessageContent';
 
-// Generate cash register "ca-ching" sound using Web Audio API
+// Generate realistic cash register "ca-ching" sound using Web Audio API
 const playMoneySound = () => {
   try {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const gainNode = audioContext.createGain();
-    gainNode.connect(audioContext.destination);
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-
-    // First "ca" note
-    const osc1 = audioContext.createOscillator();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(800, audioContext.currentTime);
-    osc1.connect(gainNode);
-    osc1.start(audioContext.currentTime);
-    osc1.stop(audioContext.currentTime + 0.1);
-
-    // Second "ching" note (higher pitch)
-    const osc2 = audioContext.createOscillator();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(1200, audioContext.currentTime + 0.12);
-    osc2.connect(gainNode);
-    osc2.start(audioContext.currentTime + 0.12);
-    osc2.stop(audioContext.currentTime + 0.3);
-
-    // Third harmonic for richer sound
-    const osc3 = audioContext.createOscillator();
-    osc3.type = 'triangle';
-    osc3.frequency.setValueAtTime(1600, audioContext.currentTime + 0.12);
-    const gain3 = audioContext.createGain();
-    gain3.gain.setValueAtTime(0.15, audioContext.currentTime);
-    gain3.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.35);
-    osc3.connect(gain3);
-    gain3.connect(audioContext.destination);
-    osc3.start(audioContext.currentTime + 0.12);
-    osc3.stop(audioContext.currentTime + 0.35);
+    
+    // Layer 1: Metallic coin/bell sound
+    const bell = audioContext.createOscillator();
+    const bellGain = audioContext.createGain();
+    bell.type = 'sine';
+    bell.frequency.setValueAtTime(2500, audioContext.currentTime);
+    bell.frequency.exponentialRampToValueAtTime(1800, audioContext.currentTime + 0.15);
+    bellGain.gain.setValueAtTime(0.3, audioContext.currentTime);
+    bellGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    bell.connect(bellGain);
+    bellGain.connect(audioContext.destination);
+    bell.start(audioContext.currentTime);
+    bell.stop(audioContext.currentTime + 0.5);
+    
+    // Layer 2: Lower harmonic (drawer opening)
+    const drawer = audioContext.createOscillator();
+    const drawerGain = audioContext.createGain();
+    drawer.type = 'triangle';
+    drawer.frequency.setValueAtTime(300, audioContext.currentTime + 0.05);
+    drawer.frequency.exponentialRampToValueAtTime(150, audioContext.currentTime + 0.2);
+    drawerGain.gain.setValueAtTime(0.2, audioContext.currentTime + 0.05);
+    drawerGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.25);
+    drawer.connect(drawerGain);
+    drawerGain.connect(audioContext.destination);
+    drawer.start(audioContext.currentTime + 0.05);
+    drawer.stop(audioContext.currentTime + 0.25);
+    
+    // Layer 3: Bright "ching" finale
+    const ching = audioContext.createOscillator();
+    const chingGain = audioContext.createGain();
+    ching.type = 'sine';
+    ching.frequency.setValueAtTime(3200, audioContext.currentTime + 0.1);
+    chingGain.gain.setValueAtTime(0.25, audioContext.currentTime + 0.1);
+    chingGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.6);
+    ching.connect(chingGain);
+    chingGain.connect(audioContext.destination);
+    ching.start(audioContext.currentTime + 0.1);
+    ching.stop(audioContext.currentTime + 0.6);
+    
+    // Layer 4: Short white noise burst (mechanical impact)
+    const bufferSize = Math.floor(audioContext.sampleRate * 0.05);
+    const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+    const noise = audioContext.createBufferSource();
+    const noiseGain = audioContext.createGain();
+    const noiseFilter = audioContext.createBiquadFilter();
+    noiseFilter.type = 'highpass';
+    noiseFilter.frequency.value = 3000;
+    noise.buffer = noiseBuffer;
+    noiseGain.gain.setValueAtTime(0.1, audioContext.currentTime);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(audioContext.destination);
+    noise.start(audioContext.currentTime);
   } catch (error) {
     console.warn('Could not play notification sound:', error);
   }
@@ -108,12 +135,10 @@ export function useNewMessageNotifications() {
     }
 
     const leadName = convInfo.name || convInfo.phone;
-    const messagePreview = message.content 
-      ? (message.content.length > 50 ? message.content.slice(0, 50) + '...' : message.content)
-      : (message.message_type === 'audio' ? '🎵 Áudio' : 
-         message.message_type === 'image' ? '📷 Imagem' :
-         message.message_type === 'video' ? '🎥 Vídeo' :
-         message.message_type === 'document' ? '📄 Documento' : '📨 Nova mensagem');
+    const formattedPreview = formatMessagePreview(message.content, message.message_type);
+    const messagePreview = formattedPreview 
+      ? (formattedPreview.length > 50 ? formattedPreview.slice(0, 50) + '...' : formattedPreview)
+      : '📨 Nova mensagem';
 
     // Play cash register sound
     playMoneySound();
