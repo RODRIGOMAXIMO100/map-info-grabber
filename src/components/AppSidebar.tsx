@@ -47,16 +47,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// SDR só tem acesso a: Dashboard, Chat, CRM, Lembretes
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Prospecção", url: "/", icon: Search },
-  { title: "Broadcast", url: "/whatsapp/broadcast", icon: Send },
+  { title: "Prospecção", url: "/", icon: Search, adminOnly: true },
+  { title: "Broadcast", url: "/whatsapp/broadcast", icon: Send, adminOnly: true },
   { title: "Chat", url: "/whatsapp/chat", icon: MessageSquare },
   { title: "CRM", url: "/crm", icon: Users },
   { title: "Lembretes", url: "/lembretes", icon: Bell },
   { title: "Equipe", url: "/team-performance", icon: BarChart3, adminOnly: true },
 ];
 
+// Configurações são apenas para admin
 const configItems = [
   { title: "Fases do Funil", url: "/funnel-stages", icon: Layers },
   { title: "Gerenciar Funis", url: "/crm/funnels", icon: GitBranch },
@@ -205,11 +207,12 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Configurações</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {isAdmin && (
+        {/* Configurações apenas para admin */}
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Configurações</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
@@ -226,28 +229,28 @@ export function AppSidebar() {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              )}
-              {configItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(item.url)}
-                    tooltip={item.title}
-                  >
-                    <NavLink
-                      to={item.url}
-                      className="flex items-center gap-2"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                {configItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive(item.url)}
+                      tooltip={item.title}
                     >
-                      <item.icon className="h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                      <NavLink
+                        to={item.url}
+                        className="flex items-center gap-2"
+                        activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {!collapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4 space-y-3">

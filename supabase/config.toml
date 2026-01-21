@@ -65,3 +65,9 @@ verify_jwt = false
 
 [functions.configure-webhook]
 verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.update-user]
+verify_jwt = false

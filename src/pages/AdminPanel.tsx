@@ -4,10 +4,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { Loader2, Shield, Users, UserCheck, UserX, RefreshCw } from 'lucide-react';
+import { Loader2, Shield, Users, UserCheck, UserX, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 
 interface UserWithRole {
@@ -21,10 +25,22 @@ interface UserWithRole {
 }
 
 const AdminPanel = () => {
-  const { isAdmin, loading: authLoading } = useAuth();
+  const { isAdmin, loading: authLoading, user: currentUser } = useAuth();
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  
+  // Estado para modal de edição
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+  
+  // Estado para modal de confirmação de exclusão
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<UserWithRole | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
@@ -110,6 +126,74 @@ const AdminPanel = () => {
       toast.error('Erro ao atualizar papel');
     } finally {
       setUpdating(null);
+    }
+  };
+
+  const handleEditClick = (user: UserWithRole) => {
+    setEditingUser(user);
+    setEditName(user.full_name);
+    setEditEmail(''); // Email não é carregado do profile, usuário precisa digitar novo
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
+
+    try {
+      setSaving(true);
+
+      const { data, error } = await supabase.functions.invoke('update-user', {
+        body: {
+          userId: editingUser.user_id,
+          newName: editName !== editingUser.full_name ? editName : undefined,
+          newEmail: editEmail.trim() || undefined,
+        }
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success('Usuário atualizado com sucesso!');
+      setEditModalOpen(false);
+      loadUsers();
+    } catch (error: unknown) {
+      console.error('Error updating user:', error);
+      const message = error instanceof Error ? error.message : 'Erro ao atualizar usuário';
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteClick = (user: UserWithRole) => {
+    setDeletingUser(user);
+    setDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingUser) return;
+
+    try {
+      setDeleting(true);
+
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: {
+          userId: deletingUser.user_id
+        }
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success('Usuário deletado com sucesso!');
+      setDeleteModalOpen(false);
+      loadUsers();
+    } catch (error: unknown) {
+      console.error('Error deleting user:', error);
+      const message = error instanceof Error ? error.message : 'Erro ao deletar usuário';
+      toast.error(message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -207,6 +291,7 @@ const AdminPanel = () => {
                   <TableHead>Nome</TableHead>
                   <TableHead>Papel Atual</TableHead>
                   <TableHead>Data de Cadastro</TableHead>
+                  <TableHead>Alterar Papel</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -222,7 +307,7 @@ const AdminPanel = () => {
                     <TableCell>
                       {new Date(user.created_at).toLocaleDateString('pt-BR')}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell>
                       <Select
                         value={user.role || 'none'}
                         onValueChange={(value) => handleRoleChange(user.user_id, value)}
@@ -243,11 +328,33 @@ const AdminPanel = () => {
                         </SelectContent>
                       </Select>
                     </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditClick(user)}
+                          title="Editar usuário"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteClick(user)}
+                          disabled={user.user_id === currentUser?.id}
+                          title={user.user_id === currentUser?.id ? "Você não pode deletar a si mesmo" : "Deletar usuário"}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {users.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                       Nenhum usuário encontrado
                     </TableCell>
                   </TableRow>
@@ -257,6 +364,77 @@ const AdminPanel = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Modal de Edição */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Usuário</DialogTitle>
+            <DialogDescription>
+              Atualize o nome ou email do usuário
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="editName">Nome</Label>
+              <Input
+                id="editName"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Nome completo"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editEmail">Novo Email (opcional)</Label>
+              <Input
+                id="editEmail"
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="novo@email.com"
+              />
+              <p className="text-xs text-muted-foreground">
+                Deixe em branco para manter o email atual
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditModalOpen(false)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={saving || !editName.trim()}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação de Exclusão */}
+      <AlertDialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja deletar o usuário <strong>{deletingUser?.full_name}</strong>?
+              <br />
+              <br />
+              Esta ação não pode ser desfeita. Todos os dados associados a este usuário serão removidos permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Deletar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
