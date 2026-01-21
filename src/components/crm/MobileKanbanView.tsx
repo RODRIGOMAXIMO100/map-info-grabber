@@ -1,6 +1,15 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useState } from 'react';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
+import { ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { LeadCard } from './LeadCard';
 import type { WhatsAppConversation } from '@/types/whatsapp';
 import type { CRMFunnelStage } from '@/types/crm';
@@ -53,7 +62,7 @@ export function MobileKanbanView({
 
   // Create tabs array - include unclassified only if there are items
   const tabs = [
-    ...(unclassified.length > 0 ? [{ id: 'unclassified', name: 'Não Class.', color: '#888', conversations: unclassified }] : []),
+    ...(unclassified.length > 0 ? [{ id: 'unclassified', name: 'Não Classificado', color: '#888', conversations: unclassified }] : []),
     ...stages.map(stage => ({
       id: stage.id,
       name: stage.name,
@@ -63,32 +72,119 @@ export function MobileKanbanView({
   ];
 
   const defaultTab = tabs[0]?.id || '';
+  const [activeTab, setActiveTab] = useState(defaultTab);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const currentTabIndex = tabs.findIndex(t => t.id === activeTab);
+  const currentTab = tabs[currentTabIndex] || tabs[0];
+
+  const goToPrevStage = () => {
+    if (currentTabIndex > 0) {
+      setActiveTab(tabs[currentTabIndex - 1].id);
+    }
+  };
+
+  const goToNextStage = () => {
+    if (currentTabIndex < tabs.length - 1) {
+      setActiveTab(tabs[currentTabIndex + 1].id);
+    }
+  };
+
+  const handleSelectStage = (tabId: string) => {
+    setActiveTab(tabId);
+    setDrawerOpen(false);
+  };
 
   return (
-    <Tabs defaultValue={defaultTab} className="flex-1 flex flex-col overflow-hidden">
-      {/* Compact horizontal scrollable tabs */}
-      <div className="flex-shrink-0 border-b bg-muted/30 overflow-x-auto">
-        <TabsList className="inline-flex h-11 p-1 bg-transparent gap-1.5 w-max">
-          {tabs.map((tab) => (
-            <TabsTrigger
-              key={tab.id}
-              value={tab.id}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm whitespace-nowrap rounded-md shrink-0"
-              style={{ touchAction: 'manipulation' }}
-            >
-              <div
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: tab.color || '#888' }}
-              />
-              <span className="whitespace-nowrap">{tab.name}</span>
-              <Badge variant="secondary" className="h-4 min-w-[18px] px-1 text-[10px] shrink-0">
-                {tab.conversations.length}
-              </Badge>
-            </TabsTrigger>
-          ))}
-        </TabsList>
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+      {/* Stage Picker Bar */}
+      <div className="flex-shrink-0 border-b bg-background px-2 py-1.5 flex items-center gap-1">
+        {/* Previous Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          onClick={goToPrevStage}
+          disabled={currentTabIndex <= 0}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        {/* Current Stage Button - Opens Drawer */}
+        <Button
+          variant="outline"
+          className="flex-1 h-9 justify-between gap-2 px-3"
+          onClick={() => setDrawerOpen(true)}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: currentTab?.color || '#888' }}
+            />
+            <span className="truncate font-medium text-sm">
+              {currentTab?.name || 'Selecionar'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Badge variant="secondary" className="h-5 min-w-[20px] px-1.5 text-xs">
+              {currentTab?.conversations.length || 0}
+            </Badge>
+            <ChevronDown className="h-4 w-4 opacity-50" />
+          </div>
+        </Button>
+
+        {/* Next Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          onClick={goToNextStage}
+          disabled={currentTabIndex >= tabs.length - 1}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
       </div>
 
+      {/* Stage Selection Drawer */}
+      <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <DrawerContent className="max-h-[70vh]">
+          <DrawerHeader className="border-b pb-3">
+            <DrawerTitle>Selecionar Etapa</DrawerTitle>
+          </DrawerHeader>
+          <ScrollArea className="flex-1 p-2">
+            <div className="space-y-1">
+              {tabs.map((tab) => (
+                <Button
+                  key={tab.id}
+                  variant={tab.id === activeTab ? 'secondary' : 'ghost'}
+                  className="w-full justify-between h-12 px-3"
+                  onClick={() => handleSelectStage(tab.id)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-3 h-3 rounded-full shrink-0"
+                      style={{ backgroundColor: tab.color || '#888' }}
+                    />
+                    <span className="truncate text-sm font-medium">
+                      {tab.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant="outline" className="h-6 min-w-[24px] px-2 text-xs">
+                      {tab.conversations.length}
+                    </Badge>
+                    {tab.id === activeTab && (
+                      <Check className="h-4 w-4 text-primary" />
+                    )}
+                  </div>
+                </Button>
+              ))}
+            </div>
+          </ScrollArea>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Tab Contents */}
       {tabs.map((tab) => (
         <TabsContent
           key={tab.id}
