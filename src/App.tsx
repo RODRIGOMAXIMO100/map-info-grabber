@@ -59,25 +59,28 @@ const App = () => (
                   <AppLayout>
                     <Suspense fallback={<PageLoader />}>
                       <Routes>
-                        {/* Rotas públicas para todos os usuários autenticados */}
-                        <Route path="/dashboard" element={<Dashboard />} />
-                        <Route path="/whatsapp/chat" element={<WhatsAppChat />} />
-                        <Route path="/crm" element={<CRMKanban />} />
-                        <Route path="/lembretes" element={<Reminders />} />
+                        {/* Rotas com permissão dinâmica */}
+                        <Route path="/dashboard" element={<ProtectedRoute routeKey="dashboard"><Dashboard /></ProtectedRoute>} />
+                        <Route path="/whatsapp/chat" element={<ProtectedRoute routeKey="chat"><WhatsAppChat /></ProtectedRoute>} />
+                        <Route path="/crm" element={<ProtectedRoute routeKey="crm"><CRMKanban /></ProtectedRoute>} />
+                        <Route path="/lembretes" element={<ProtectedRoute routeKey="lembretes"><Reminders /></ProtectedRoute>} />
                         
-                        {/* Rotas apenas para admin */}
-                        <Route path="/" element={<ProtectedRoute requiredRole="admin"><Index /></ProtectedRoute>} />
-                        <Route path="/whatsapp/config" element={<ProtectedRoute requiredRole="admin"><WhatsAppConfig /></ProtectedRoute>} />
-                        <Route path="/whatsapp/broadcast" element={<ProtectedRoute requiredRole="admin"><BroadcastManager /></ProtectedRoute>} />
-                        <Route path="/whatsapp/broadcast/:id" element={<ProtectedRoute requiredRole="admin"><BroadcastDetails /></ProtectedRoute>} />
-                        <Route path="/crm/funnels" element={<ProtectedRoute requiredRole="admin"><FunnelManager /></ProtectedRoute>} />
-                        <Route path="/crm/funnels/:id/edit" element={<ProtectedRoute requiredRole="admin"><FunnelStageEditor /></ProtectedRoute>} />
-                        <Route path="/ai-config" element={<ProtectedRoute requiredRole="admin"><AIConfig /></ProtectedRoute>} />
-                        <Route path="/ai-logs" element={<ProtectedRoute requiredRole="admin"><AILogs /></ProtectedRoute>} />
-                        <Route path="/anti-block" element={<ProtectedRoute requiredRole="admin"><AntiBlockConfig /></ProtectedRoute>} />
-                        <Route path="/funnel-stages" element={<ProtectedRoute requiredRole="admin"><FunnelStagesManager /></ProtectedRoute>} />
-                        <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminPanel /></ProtectedRoute>} />
-                        <Route path="/team-performance" element={<ProtectedRoute requiredRole="admin"><TeamPerformance /></ProtectedRoute>} />
+                        {/* Rotas de configuração com permissão dinâmica */}
+                        <Route path="/" element={<ProtectedRoute routeKey="prospeccao"><Index /></ProtectedRoute>} />
+                        <Route path="/whatsapp/config" element={<ProtectedRoute routeKey="whatsapp_config"><WhatsAppConfig /></ProtectedRoute>} />
+                        <Route path="/whatsapp/broadcast" element={<ProtectedRoute routeKey="broadcast"><BroadcastManager /></ProtectedRoute>} />
+                        <Route path="/whatsapp/broadcast/:id" element={<ProtectedRoute routeKey="broadcast"><BroadcastDetails /></ProtectedRoute>} />
+                        <Route path="/crm/funnels" element={<ProtectedRoute routeKey="funnel_manager"><FunnelManager /></ProtectedRoute>} />
+                        <Route path="/crm/funnels/:id/edit" element={<ProtectedRoute routeKey="funnel_manager"><FunnelStageEditor /></ProtectedRoute>} />
+                        <Route path="/ai-config" element={<ProtectedRoute routeKey="ai_config"><AIConfig /></ProtectedRoute>} />
+                        <Route path="/ai-logs" element={<ProtectedRoute routeKey="ai_logs"><AILogs /></ProtectedRoute>} />
+                        <Route path="/anti-block" element={<ProtectedRoute routeKey="anti_block"><AntiBlockConfig /></ProtectedRoute>} />
+                        <Route path="/funnel-stages" element={<ProtectedRoute routeKey="funnel_stages"><FunnelStagesManager /></ProtectedRoute>} />
+                        <Route path="/team-performance" element={<ProtectedRoute routeKey="equipe"><TeamPerformance /></ProtectedRoute>} />
+                        
+                        {/* Admin sempre requer role admin */}
+                        <Route path="/admin" element={<ProtectedRoute routeKey="admin"><AdminPanel /></ProtectedRoute>} />
+                        
                         <Route path="*" element={<NotFound />} />
                       </Routes>
                     </Suspense>

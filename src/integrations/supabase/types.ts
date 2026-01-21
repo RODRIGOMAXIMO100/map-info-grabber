@@ -327,6 +327,36 @@ export type Database = {
         }
         Relationships: []
       }
+      role_permissions: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_allowed: boolean
+          role: Database["public"]["Enums"]["app_role"]
+          route_key: string
+          route_label: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_allowed?: boolean
+          role: Database["public"]["Enums"]["app_role"]
+          route_key: string
+          route_label: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_allowed?: boolean
+          role?: Database["public"]["Enums"]["app_role"]
+          route_key?: string
+          route_label?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       search_cache: {
         Row: {
           cache_key: string
