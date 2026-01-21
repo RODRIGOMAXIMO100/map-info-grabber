@@ -452,27 +452,43 @@ export default function WhatsAppChat() {
         media_type: mediaToSend?.type,
         config_id: selectedConversation.config_id,
       },
-    }).then(({ data, error }) => {
+    }).then(async ({ data, error }) => {
       // Handle edge function errors (including 400 responses)
       if (error || data?.error) {
-        console.error('Error sending message:', error || data);
+        // Mark message as failed
         setMessages(prev => prev.map(m => 
           m.id === tempId ? { ...m, status: 'failed' } : m
         ));
         
+        // Try to extract error details from FunctionsHttpError context
+        let errorData = data;
+        if (error && 'context' in error) {
+          try {
+            // FunctionsHttpError has the response body in context
+            const context = (error as { context?: { json?: () => Promise<unknown> } }).context;
+            if (context?.json) {
+              errorData = await context.json();
+            }
+          } catch (e) {
+            console.error('Failed to parse error context:', e);
+          }
+        }
+        
+        console.error('Error sending message:', errorData || error);
+        
         // Check for specific error types
-        if (data?.invalid_number) {
+        if (errorData?.invalid_number) {
           toast({
             title: 'Número Inválido',
-            description: data.error || 'Este número não está no WhatsApp.',
+            description: errorData.error || 'Este número não está no WhatsApp.',
             variant: 'destructive',
           });
           return;
         }
         
-        if (data?.disconnected) {
+        if (errorData?.disconnected || data?.disconnected) {
           toast({
-            title: `WhatsApp Desconectado: ${data.instance_name || 'Instância'}`,
+            title: `WhatsApp Desconectado: ${errorData?.instance_name || data?.instance_name || 'Instância'}`,
             description: 'Acesse o painel UAZAPI e reconecte esta instância.',
             variant: 'destructive',
           });
@@ -481,7 +497,7 @@ export default function WhatsAppChat() {
         
         toast({
           title: 'Erro ao enviar',
-          description: data?.error || error?.message || 'Não foi possível enviar a mensagem.',
+          description: errorData?.error || data?.error || error?.message || 'Não foi possível enviar a mensagem.',
           variant: 'destructive',
         });
         return;
@@ -492,7 +508,7 @@ export default function WhatsAppChat() {
         m.id === tempId ? { ...m, status: 'sent' } : m
       ));
     }).catch((err) => {
-      console.error('Error sending message:', err);
+      console.error('Error sending message (catch):', err);
       setMessages(prev => prev.map(m => 
         m.id === tempId ? { ...m, status: 'failed' } : m
       ));
