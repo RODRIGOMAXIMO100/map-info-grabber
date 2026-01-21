@@ -68,20 +68,20 @@ export function MobileKanbanView({
     <Tabs defaultValue={defaultTab} className="flex-1 flex flex-col overflow-hidden">
       {/* Compact horizontal scrollable tabs */}
       <div className="flex-shrink-0 border-b bg-muted/30 overflow-x-auto">
-        <TabsList className="inline-flex h-10 p-1 bg-transparent gap-1 w-max min-w-full">
+        <TabsList className="inline-flex h-11 p-1 bg-transparent gap-1.5 w-max">
           {tabs.map((tab) => (
             <TabsTrigger
               key={tab.id}
               value={tab.id}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm whitespace-nowrap rounded-md"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm whitespace-nowrap rounded-md shrink-0"
               style={{ touchAction: 'manipulation' }}
             >
               <div
-                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: tab.color || '#888' }}
               />
-              <span className="truncate max-w-[50px]">{tab.name}</span>
-              <Badge variant="secondary" className="h-4 min-w-[16px] px-1 text-[10px]">
+              <span className="whitespace-nowrap">{tab.name}</span>
+              <Badge variant="secondary" className="h-4 min-w-[18px] px-1 text-[10px] shrink-0">
                 {tab.conversations.length}
               </Badge>
             </TabsTrigger>
