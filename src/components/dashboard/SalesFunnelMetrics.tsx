@@ -41,13 +41,13 @@ export default function SalesFunnelMetrics({ funnelId, startDate, endDate }: Sal
       const start = startDate.toISOString();
       const end = endDate.toISOString();
 
-      // 1. Disparos (broadcasts enviados no período)
+      // 1. Disparos (broadcasts efetivamente enviados no período)
       const { count: disparosCount } = await supabase
         .from('whatsapp_queue')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'sent')
-        .gte('created_at', start)
-        .lte('created_at', end);
+        .gte('processed_at', start)
+        .lte('processed_at', end);
 
       // 2. Oportunidades (leads que entraram no estágio "CALL DE VENDA/OPORTUNIDADE" - stage_order 3)
       // Primeiro, buscar o ID do estágio de oportunidade
