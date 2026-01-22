@@ -100,7 +100,7 @@ export function QuickAddLeadModal({
       return;
     }
     if (!configId) {
-      setError('Selecione uma instância');
+      setError('Selecione uma instância de WhatsApp');
       return;
     }
 
