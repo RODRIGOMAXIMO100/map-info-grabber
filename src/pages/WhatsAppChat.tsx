@@ -23,6 +23,8 @@ import { LeadControlPanelCompact } from '@/components/whatsapp/LeadControlPanelC
 import { MessageContent, formatMessagePreview } from '@/components/whatsapp/MessageContent';
 import { MediaUploader, MediaPreview } from '@/components/whatsapp/MediaUploader';
 import { AudioRecorder } from '@/components/whatsapp/AudioRecorder';
+import { QuickRepliesPanel } from '@/components/whatsapp/QuickRepliesPanel';
+import { useQuickReplies } from '@/hooks/useQuickReplies';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -97,6 +99,11 @@ export default function WhatsAppChat() {
   
   // Emoji picker state
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  
+  // Quick replies hook
+  const { findByShortcut, filterByQuery } = useQuickReplies();
+  const [shortcutMatches, setShortcutMatches] = useState<ReturnType<typeof filterByQuery>>([]);
+  const [showShortcutDropdown, setShowShortcutDropdown] = useState(false);
   
   // Cache for assigned user names
   const [assignedUserNames, setAssignedUserNames] = useState<Record<string, string>>({});
@@ -1693,23 +1700,78 @@ export default function WhatsAppChat() {
                         </PopoverContent>
                       </Popover>
                       
+                      {/* Quick Replies Panel */}
+                      <QuickRepliesPanel 
+                        onSelectReply={(content) => {
+                          setNewMessage(content);
+                          setShowShortcutDropdown(false);
+                        }}
+                      />
+                      
                       <div className="relative flex-1">
                         <Textarea
                           placeholder={selectedConversation.phone_invalid 
                             ? "Número inválido - não é possível enviar mensagens" 
-                            : "Digite sua mensagem..."}
+                            : "Digite sua mensagem... (/ para atalhos)"}
                           value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setNewMessage(value);
+                            
+                            // Detect shortcut pattern: starts with / and has text after
+                            if (value.startsWith('/') && value.length > 1) {
+                              const shortcutQuery = value.slice(1);
+                              const matches = filterByQuery(shortcutQuery);
+                              setShortcutMatches(matches);
+                              setShowShortcutDropdown(matches.length > 0);
+                            } else {
+                              setShowShortcutDropdown(false);
+                            }
+                          }}
                           disabled={sending || selectedConversation.phone_invalid}
                           className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2"
                           rows={1}
                           onKeyDown={(e) => {
+                            if (showShortcutDropdown && shortcutMatches.length > 0) {
+                              if (e.key === 'Tab' || e.key === 'Enter') {
+                                e.preventDefault();
+                                // Insert first match
+                                setNewMessage(shortcutMatches[0].content);
+                                setShowShortcutDropdown(false);
+                                return;
+                              }
+                              if (e.key === 'Escape') {
+                                setShowShortcutDropdown(false);
+                                return;
+                              }
+                            }
+                            
                             if (e.key === 'Enter' && !e.shiftKey) {
                               e.preventDefault();
                               handleSend();
                             }
                           }}
                         />
+                        
+                        {/* Shortcut autocomplete dropdown */}
+                        {showShortcutDropdown && shortcutMatches.length > 0 && (
+                          <div className="absolute bottom-full left-0 right-0 mb-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-auto z-50">
+                            {shortcutMatches.slice(0, 5).map((match) => (
+                              <button
+                                key={match.id}
+                                type="button"
+                                className="w-full px-3 py-2 text-left hover:bg-muted flex items-center gap-2 text-sm"
+                                onClick={() => {
+                                  setNewMessage(match.content);
+                                  setShowShortcutDropdown(false);
+                                }}
+                              >
+                                <span className="font-medium text-primary">/{match.shortcut || match.title}</span>
+                                <span className="text-muted-foreground truncate">{match.title}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <Button 
                         type="submit" 
