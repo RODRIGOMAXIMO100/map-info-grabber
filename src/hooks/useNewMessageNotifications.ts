@@ -20,7 +20,7 @@ export function useNewMessageNotifications() {
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
   const notifiedIds = useRef<Set<string>>(new Set());
-  const conversationCache = useRef<Map<string, { name: string | null; phone: string; muted_until: string | null; assigned_to: string | null }>>(new Map());
+  const conversationCache = useRef<Map<string, { name: string | null; phone: string; muted_until: string | null; assigned_to: string | null; is_group: boolean | null }>>(new Map());
 
   // Fetch conversation info when needed
   const getConversationInfo = useCallback(async (conversationId: string) => {
@@ -30,7 +30,7 @@ export function useNewMessageNotifications() {
 
     const { data } = await supabase
       .from('whatsapp_conversations')
-      .select('name, phone, muted_until, assigned_to')
+      .select('name, phone, muted_until, assigned_to, is_group')
       .eq('id', conversationId)
       .single();
 
@@ -39,7 +39,7 @@ export function useNewMessageNotifications() {
       return data;
     }
 
-    return { name: null, phone: 'Desconhecido', muted_until: null, assigned_to: null };
+    return { name: null, phone: 'Desconhecido', muted_until: null, assigned_to: null, is_group: null };
   }, []);
 
   // Handle incoming message notification
@@ -61,6 +61,11 @@ export function useNewMessageNotifications() {
 
     // Get conversation info
     const convInfo = await getConversationInfo(message.conversation_id);
+    
+    // Skip notifications for groups
+    if (convInfo.is_group || convInfo.phone?.includes('@g.us')) {
+      return;
+    }
     
     // Check if user has permission to see this conversation
     if (!isAdmin && user) {
