@@ -513,10 +513,11 @@ serve(async (req) => {
     // Isso resolve duplicatas causadas por formatos diferentes (5531997776075 vs 553197776075)
     let existingConv = null;
     
-    // Normalizar telefone para matching flexível
+    // Normalizar telefone para matching flexível (últimos 8 dígitos)
+    // Isso resolve duplicatas causadas pelo dígito 9 em celulares brasileiros
     const phoneDigits = senderPhone.replace(/\D/g, '');
-    const last9Digits = phoneDigits.slice(-9);
-    console.log(`[Phone Normalize] Original: ${senderPhone}, Digits: ${phoneDigits}, Last9: ${last9Digits}`);
+    const last8Digits = phoneDigits.slice(-8);
+    console.log(`[Phone Normalize] Original: ${senderPhone}, Digits: ${phoneDigits}, Last8: ${last8Digits}`);
     
     // Primeiro: buscar conversa específica desta instância usando LIKE com últimos 9 dígitos
     // PRIORIZAR conversas ativas sobre arquivadas para evitar mensagens caindo em duplicatas arquivadas
@@ -525,13 +526,13 @@ serve(async (req) => {
         .from('whatsapp_conversations')
         .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead, status')
         .eq('config_id', configId)
-        .like('phone', `%${last9Digits}`)
+        .like('phone', `%${last8Digits}`)
         .order('status', { ascending: true })  // 'active' vem antes de 'archived'
         .order('last_message_at', { ascending: false })
         .limit(1);
       
       existingConv = specificConvs?.[0] || null;
-      console.log(`[Conversation] Looking for phone like %${last9Digits} + config_id=${configId}: ${existingConv ? `FOUND (${existingConv.phone}, status=${existingConv.status})` : 'NOT FOUND'}`);
+      console.log(`[Conversation] Looking for phone like %${last8Digits} + config_id=${configId}: ${existingConv ? `FOUND (${existingConv.phone}, status=${existingConv.status})` : 'NOT FOUND'}`);
     }
     
     // Se não encontrou conversa específica, verificar se existe conversa órfã (sem config_id)
@@ -540,7 +541,7 @@ serve(async (req) => {
         .from('whatsapp_conversations')
         .select('id, tags, unread_count, ai_paused, config_id, phone, avatar_url, name, origin, last_lead_message_at, funnel_stage, is_crm_lead, status')
         .is('config_id', null)
-        .like('phone', `%${last9Digits}`)
+        .like('phone', `%${last8Digits}`)
         .order('status', { ascending: true })  // 'active' vem antes de 'archived'
         .order('last_message_at', { ascending: false })
         .limit(1);
@@ -549,7 +550,7 @@ serve(async (req) => {
       
       if (orphanConv && configId) {
         // Adotar a conversa órfã para esta instância
-        console.log(`[Conversation] Found orphan conversation ${orphanConv.id} for %${last9Digits}, adopting to config_id=${configId}`);
+        console.log(`[Conversation] Found orphan conversation ${orphanConv.id} for %${last8Digits}, adopting to config_id=${configId}`);
         await supabase
           .from('whatsapp_conversations')
           .update({ config_id: configId })
