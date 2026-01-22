@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Search, Plus, Edit2, Trash2, Zap, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -116,13 +117,13 @@ export function QuickRepliesPanel({ onSelectReply }: QuickRepliesPanelProps) {
               <h4 className="font-medium text-sm">Respostas Rápidas</h4>
               <div className="flex gap-1">
                 <Button
-                  variant="ghost"
+                  variant={isManaging ? "secondary" : "ghost"}
                   size="icon"
-                  className="h-7 w-7"
+                  className={cn("h-7 w-7", isManaging && "bg-primary/20 text-primary")}
                   onClick={() => setIsManaging(!isManaging)}
                   title={isManaging ? 'Sair do modo edição' : 'Gerenciar respostas'}
                 >
-                  <Settings className="h-4 w-4" />
+                  <Settings className={cn("h-4 w-4 transition-transform", isManaging && "animate-spin")} />
                 </Button>
                 <Button
                   variant="ghost"
@@ -148,6 +149,13 @@ export function QuickRepliesPanel({ onSelectReply }: QuickRepliesPanelProps) {
               />
             </div>
           </div>
+
+          {isManaging && (
+            <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2">
+              <Edit2 className="h-3 w-3" />
+              Modo edição ativo - clique no lápis para editar
+            </div>
+          )}
 
           <ScrollArea className="h-64">
             {loading ? (
