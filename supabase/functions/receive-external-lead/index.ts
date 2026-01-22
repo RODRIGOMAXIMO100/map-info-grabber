@@ -12,6 +12,7 @@ interface LeadPayload {
   name?: string;
   funnel_id?: string;
   stage_id?: string;
+  config_id?: string;
   origin?: string;
   notes?: string;
   city?: string;
@@ -257,6 +258,24 @@ serve(async (req) => {
         }
       }
 
+      // Get default WhatsApp instance for API leads (instance 8248)
+      let configId = body.config_id;
+      if (!configId) {
+        const { data: defaultInstance } = await supabase
+          .from('whatsapp_config')
+          .select('id')
+          .eq('instance_phone', '5531995118248')
+          .eq('is_active', true)
+          .single();
+        
+        if (defaultInstance) {
+          configId = defaultInstance.id;
+          console.log(`[Lead] Auto-assigned default instance: ${configId}`);
+        } else {
+          console.log('[Lead] Warning: No default instance found for API leads');
+        }
+      }
+
       // Create new lead
       const newLead = {
         phone: normalizedPhone,
@@ -269,6 +288,7 @@ serve(async (req) => {
         utm_data: utmData,
         crm_funnel_id: funnelId || null,
         funnel_stage: stageId || null,
+        config_id: configId || null,
         is_crm_lead: true,
         ai_paused: false,
         status: 'active',
