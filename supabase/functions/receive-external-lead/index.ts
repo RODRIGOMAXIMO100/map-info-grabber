@@ -227,7 +227,22 @@ serve(async (req) => {
         }
       }
 
-      // Get first stage of funnel if stage not provided
+      // Validate that stage_id is a valid stage for the funnel (not the funnel id itself)
+      if (funnelId && stageId) {
+        const { data: validStage } = await supabase
+          .from('crm_funnel_stages')
+          .select('id')
+          .eq('id', stageId)
+          .eq('funnel_id', funnelId)
+          .single();
+        
+        if (!validStage) {
+          console.log(`[Lead] Invalid stage_id: ${stageId} is not a valid stage for funnel ${funnelId}`);
+          stageId = undefined; // Reset to get first stage
+        }
+      }
+
+      // Get first stage of funnel if stage not provided or invalid
       if (funnelId && !stageId) {
         const { data: firstStage } = await supabase
           .from('crm_funnel_stages')

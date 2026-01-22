@@ -473,10 +473,20 @@ export default function CRMKanban() {
     }
     
     try {
-      await supabase
+      const { error } = await supabase
         .from('whatsapp_conversations')
         .update(updateData)
         .eq('id', convId);
+
+      if (error) {
+        console.error('Erro ao mover lead:', error);
+        toast({
+          title: 'Erro ao mover lead',
+          description: error.message || 'Não foi possível mover o lead. Tente novamente.',
+          variant: 'destructive',
+        });
+        return;
+      }
 
       if (isLostStage) {
         toast({
