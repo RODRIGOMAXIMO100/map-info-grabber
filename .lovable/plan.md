@@ -1,61 +1,87 @@
 
-
-## Plano: Corrigir Políticas RLS da Tabela crm_funnels
+## Plano: Adicionar Edição de Nome/Descrição do Funil
 
 ### Problema Identificado
-A tabela `crm_funnels` não possui políticas RLS para INSERT, UPDATE e DELETE. Seu usuário é admin, mas sem as políticas correspondentes, o banco de dados bloqueia qualquer tentativa de criar/editar/excluir funis.
+O botão "Editar" (ícone de lápis) na página de Gerenciar Funis leva para a página de edição de **etapas**, mas não permite editar o **nome** ou **descrição** do próprio funil. Atualmente, essas informações só podem ser definidas na criação.
 
-### Solução
-Criar políticas RLS que permitem usuários com role `admin` gerenciar funis.
+### Solução Proposta
+Adicionar campos editáveis para nome e descrição do funil na página `FunnelStageEditor`, com um botão de salvar que atualiza a tabela `crm_funnels`.
 
 ---
 
-### Migração SQL a Ser Aplicada
+### Alterações Necessárias
 
-```sql
--- Política para permitir admins criarem funis
-CREATE POLICY "Admins can insert funnels"
-ON public.crm_funnels
-FOR INSERT
-TO authenticated
-WITH CHECK (has_role(auth.uid(), 'admin'::app_role));
+#### 1. Modificar `FunnelStageEditor.tsx`
 
--- Política para permitir admins atualizarem funis
-CREATE POLICY "Admins can update funnels"
-ON public.crm_funnels
-FOR UPDATE
-TO authenticated
-USING (has_role(auth.uid(), 'admin'::app_role))
-WITH CHECK (has_role(auth.uid(), 'admin'::app_role));
+**Adicionar estados para edição do funil:**
+```typescript
+const [funnelName, setFunnelName] = useState('');
+const [funnelDescription, setFunnelDescription] = useState('');
+```
 
--- Política para permitir admins excluírem funis
-CREATE POLICY "Admins can delete funnels"
-ON public.crm_funnels
-FOR DELETE
-TO authenticated
-USING (has_role(auth.uid(), 'admin'::app_role));
+**Inicializar os valores quando o funil carregar:**
+```typescript
+setFunnelName(funnelResult.data.name);
+setFunnelDescription(funnelResult.data.description || '');
+```
+
+**Adicionar seção de edição do funil no topo da página:**
+- Campo de Input para o nome do funil
+- Campo de Textarea para a descrição (opcional)
+
+**Modificar `handleSaveAll` para incluir update do funil:**
+```typescript
+await supabase
+  .from('crm_funnels')
+  .update({ 
+    name: funnelName.trim(), 
+    description: funnelDescription.trim() || null 
+  })
+  .eq('id', id);
 ```
 
 ---
 
-### O Que Será Feito
+### UI Proposta
 
-1. **Aplicar a migração SQL** usando a ferramenta de migração do banco de dados
-2. Nenhuma alteração de código é necessária - o `FunnelManager.tsx` já está correto
+```text
+┌─────────────────────────────────────────────────────────┐
+│ ← [Voltar]          Editar Funil         [💾 Salvar]    │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  📝 Informações do Funil                                │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Nome do Funil                                    │   │
+│  │ [FUNIL AQUISIÇÃO___________________________]    │   │
+│  │                                                  │   │
+│  │ Descrição (opcional)                             │   │
+│  │ [___________________________________________]   │   │
+│  │ [___________________________________________]   │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  📊 Etapas do Funil                                     │
+│  [1] [🔵] [Novo_____________] [🤖 IA] [🗑️]             │
+│  [2] [🟡] [Em Andamento_____] [👤 Manual] [🗑️]         │
+│  [3] [🟢] [Fechado__________] [👤 Manual] [🗑️]         │
+│                                                         │
+│  [+ Adicionar Etapa]                                    │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Arquivos a Modificar
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/pages/FunnelStageEditor.tsx` | Adicionar campos de edição de nome/descrição e incluir no save |
 
 ---
 
 ### Resultado Esperado
 
-Após a migração:
-- Admins poderão criar novos funis ✅
-- Admins poderão editar funis existentes ✅
-- Admins poderão excluir funis (exceto o padrão, que é bloqueado no código) ✅
-- SDRs e Closers continuarão apenas visualizando funis aos quais foram atribuídos
-
----
-
-### Nota Técnica
-
-A função `has_role()` já existe no banco e é `SECURITY DEFINER`, evitando problemas de recursão infinita em políticas RLS.
-
+Após a implementação:
+- O admin poderá editar o nome do funil diretamente na página de edição ✅
+- O admin poderá editar/adicionar uma descrição ao funil ✅
+- O botão "Salvar Alterações" salvará tanto as mudanças do funil quanto das etapas ✅
+- A RLS já está configurada para permitir UPDATE por admins ✅
