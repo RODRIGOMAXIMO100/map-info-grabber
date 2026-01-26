@@ -19,6 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeRefresh } from '@/hooks/useRealtimeSubscription';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { useReminderNotifications } from '@/hooks/useReminderNotifications';
@@ -35,12 +36,15 @@ type ReminderGroup = {
 export default function Reminders() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, isAdmin } = useAuth();
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Enable notifications
+  // Enable notifications - filter by user for non-admins
   useReminderNotifications({
     conversations,
+    userId: user?.id,
+    isAdmin,
     onReminderTriggered: (conv) => {
       navigate(`/whatsapp/chat?lead=${conv.id}`);
     },
@@ -57,11 +61,18 @@ export default function Reminders() {
 
   const loadReminders = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('whatsapp_conversations')
         .select('*')
         .not('reminder_at', 'is', null)
         .order('reminder_at', { ascending: true });
+
+      // Non-admins only see reminders they created
+      if (!isAdmin && user?.id) {
+        query = query.eq('reminder_created_by', user.id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setConversations(data || []);
@@ -77,7 +88,11 @@ export default function Reminders() {
     try {
       await supabase
         .from('whatsapp_conversations')
-        .update({ reminder_at: null, updated_at: new Date().toISOString() })
+        .update({ 
+          reminder_at: null, 
+          reminder_created_by: null, 
+          updated_at: new Date().toISOString() 
+        })
         .eq('id', conv.id);
 
       toast({ title: 'Lembrete concluído' });

@@ -746,6 +746,7 @@ export type Database = {
           phone_invalid: boolean | null
           pinned: boolean | null
           reminder_at: string | null
+          reminder_created_by: string | null
           site_sent: boolean | null
           status: string
           summary_updated_at: string | null
@@ -798,6 +799,7 @@ export type Database = {
           phone_invalid?: boolean | null
           pinned?: boolean | null
           reminder_at?: string | null
+          reminder_created_by?: string | null
           site_sent?: boolean | null
           status?: string
           summary_updated_at?: string | null
@@ -850,6 +852,7 @@ export type Database = {
           phone_invalid?: boolean | null
           pinned?: boolean | null
           reminder_at?: string | null
+          reminder_created_by?: string | null
           site_sent?: boolean | null
           status?: string
           summary_updated_at?: string | null
