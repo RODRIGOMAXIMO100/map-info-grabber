@@ -15,13 +15,32 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Loader2, UserCheck, Send } from 'lucide-react';
+import { Loader2, UserCheck, Send, GitFork, GitBranch } from 'lucide-react';
 
 interface UserInfo {
   user_id: string;
   full_name: string;
   role?: 'admin' | 'sdr' | 'closer' | null;
+}
+
+interface FunnelOption {
+  id: string;
+  name: string;
+  is_default: boolean | null;
+}
+
+interface StageOption {
+  id: string;
+  name: string;
+  color: string | null;
 }
 
 interface TransferUserModalProps {
@@ -41,7 +60,7 @@ export const TransferUserModal = ({
   currentAssignedTo,
   onTransferComplete,
 }: TransferUserModalProps) => {
-  const { user, session, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [transferring, setTransferring] = useState(false);
@@ -51,17 +70,39 @@ export const TransferUserModal = ({
     'Sua conversa foi transferida para outro atendente. Em breve você será atendido!'
   );
 
+  // Funnel/Stage states
+  const [funnels, setFunnels] = useState<FunnelOption[]>([]);
+  const [stages, setStages] = useState<StageOption[]>([]);
+  const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(null);
+  const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
+  const [loadingStages, setLoadingStages] = useState(false);
+
   useEffect(() => {
     if (open) {
       loadUsers();
+      loadFunnels();
+      // Reset funnel/stage selection when modal opens
+      setSelectedFunnelId(null);
+      setSelectedStageId(null);
+      setStages([]);
     }
   }, [open]);
+
+  // Load stages when funnel changes
+  useEffect(() => {
+    if (selectedFunnelId) {
+      loadStages(selectedFunnelId);
+      setSelectedStageId(null);
+    } else {
+      setStages([]);
+      setSelectedStageId(null);
+    }
+  }, [selectedFunnelId]);
 
   const loadUsers = async () => {
     try {
       setLoading(true);
 
-      // Busca TODOS os perfis cadastrados (não depende de user_roles)
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('user_id, full_name');
@@ -74,12 +115,10 @@ export const TransferUserModal = ({
         return;
       }
 
-      // Busca roles opcionalmente para exibir badge
       const { data: roles } = await supabase
         .from('user_roles')
         .select('user_id, role');
 
-      // Monta lista excluindo usuário logado e o atualmente atribuído
       const userList: UserInfo[] = profiles
         .filter(p => p.user_id !== user?.id && p.user_id !== currentAssignedTo)
         .map(profile => {
@@ -100,12 +139,45 @@ export const TransferUserModal = ({
     }
   };
 
+  const loadFunnels = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('crm_funnels')
+        .select('id, name, is_default')
+        .order('is_default', { ascending: false })
+        .order('name');
+
+      if (error) throw error;
+      setFunnels(data || []);
+    } catch (error) {
+      console.error('Error loading funnels:', error);
+    }
+  };
+
+  const loadStages = async (funnelId: string) => {
+    try {
+      setLoadingStages(true);
+      const { data, error } = await supabase
+        .from('crm_funnel_stages')
+        .select('id, name, color')
+        .eq('funnel_id', funnelId)
+        .order('stage_order');
+
+      if (error) throw error;
+      setStages(data || []);
+    } catch (error) {
+      console.error('Error loading stages:', error);
+    } finally {
+      setLoadingStages(false);
+    }
+  };
+
   const handleTransfer = async () => {
     console.log('[TransferUserModal] === INÍCIO TRANSFERÊNCIA ===');
     console.log('[TransferUserModal] conversationId:', conversationId);
     console.log('[TransferUserModal] selectedUserId:', selectedUserId);
-    console.log('[TransferUserModal] user:', user?.id, user?.email);
-    console.log('[TransferUserModal] authLoading:', authLoading);
+    console.log('[TransferUserModal] selectedFunnelId:', selectedFunnelId);
+    console.log('[TransferUserModal] selectedStageId:', selectedStageId);
 
     if (authLoading) {
       toast.error('Carregando sua sessão… tente novamente em alguns segundos.');
@@ -123,7 +195,13 @@ export const TransferUserModal = ({
       return;
     }
 
-    // Força refresh da sessão antes de qualquer operação (evita token expirado)
+    // If funnel is selected, stage must also be selected
+    if (selectedFunnelId && !selectedStageId) {
+      toast.error('Selecione a etapa do funil');
+      return;
+    }
+
+    // Refresh session
     console.log('[TransferUserModal] Refreshing session...');
     const refreshResult = await supabase.auth.refreshSession();
     console.log('[TransferUserModal] Refresh result:', refreshResult.error?.message || 'OK');
@@ -134,7 +212,6 @@ export const TransferUserModal = ({
     console.log('[TransferUserModal] Session check:', {
       hasSession,
       sessionError: sessionError?.message,
-      tokenExp: sessionData?.session?.expires_at,
     });
 
     if (!hasSession) {
@@ -145,7 +222,7 @@ export const TransferUserModal = ({
     try {
       setTransferring(true);
 
-      // IMPORTANTE: Buscar phone/config_id ANTES do update (enquanto ainda temos permissão)
+      // Fetch phone/config_id BEFORE update
       let conversationData: { phone: string; config_id: string | null } | null = null;
       if (sendNotification) {
         const { data, error: fetchError } = await supabase
@@ -163,16 +240,25 @@ export const TransferUserModal = ({
         conversationData = data;
       }
 
-      // Update conversation assignment
-      // IMPORTANTE: não fazemos `select()` aqui porque após transferir o usuário pode perder
-      // permissão de SELECT (e o PostgREST pode falhar ao tentar retornar a linha atualizada).
+      // Build update data
+      const updateData: Record<string, unknown> = {
+        assigned_to: selectedUserId,
+        assigned_at: new Date().toISOString(),
+        transferred_by: user.id,
+      };
+
+      // Add funnel and stage if selected
+      if (selectedFunnelId) {
+        updateData.crm_funnel_id = selectedFunnelId;
+        if (selectedStageId) {
+          updateData.funnel_stage = selectedStageId;
+          updateData.funnel_stage_changed_at = new Date().toISOString();
+        }
+      }
+
       const { error: updateError } = await supabase
         .from('whatsapp_conversations')
-        .update({
-          assigned_to: selectedUserId,
-          assigned_at: new Date().toISOString(),
-          transferred_by: user.id,
-        })
+        .update(updateData)
         .eq('id', conversationId);
 
       if (updateError) {
@@ -184,8 +270,6 @@ export const TransferUserModal = ({
           const errorDetails = [
             updateError.message,
             updateError.code && `Código: ${updateError.code}`,
-            updateError.details && `Detalhes: ${updateError.details}`,
-            updateError.hint && `Dica: ${updateError.hint}`,
           ]
             .filter(Boolean)
             .join(' | ');
@@ -197,7 +281,7 @@ export const TransferUserModal = ({
         return;
       }
 
-      // Send notification if enabled (usando dados pré-buscados)
+      // Send notification if enabled
       if (sendNotification && conversationData?.config_id) {
         try {
           await supabase.functions.invoke('whatsapp-send-message', {
@@ -209,34 +293,31 @@ export const TransferUserModal = ({
           });
         } catch (notifyError) {
           console.error('Error sending notification:', notifyError);
-          // Não bloquear a transferência por causa da notificação
           toast.warning('Conversa transferida, mas não foi possível enviar a notificação');
         }
       }
 
       const selectedUser = users.find(u => u.user_id === selectedUserId);
-      toast.success(`Conversa transferida para ${selectedUser?.full_name}`);
+      const selectedStage = stages.find(s => s.id === selectedStageId);
+      
+      let successMessage = `Conversa transferida para ${selectedUser?.full_name}`;
+      if (selectedStage) {
+        successMessage += ` na etapa "${selectedStage.name}"`;
+      }
+      
+      toast.success(successMessage);
       onTransferComplete();
       onOpenChange(false);
     } catch (error: unknown) {
       console.error('Error transferring conversation:', error);
-      const supabaseError = error as { message?: string; code?: string; details?: string; hint?: string };
-      const errorDetails = [
-        supabaseError.message || 'Erro desconhecido',
-        supabaseError.code && `Código: ${supabaseError.code}`,
-        supabaseError.details && `Detalhes: ${supabaseError.details}`,
-        supabaseError.hint && `Dica: ${supabaseError.hint}`,
-      ]
-        .filter(Boolean)
-        .join(' | ');
-
-      toast.error(`Erro ao transferir: ${errorDetails}`);
+      const supabaseError = error as { message?: string; code?: string };
+      toast.error(`Erro ao transferir: ${supabaseError.message || 'Erro desconhecido'}`);
     } finally {
       setTransferring(false);
     }
   };
 
-  const getRoleBadge = (role: string) => {
+  const getRoleBadge = (role: string | null | undefined) => {
     switch (role) {
       case 'admin':
         return <Badge className="bg-red-500 hover:bg-red-600 text-xs">Admin</Badge>;
@@ -251,7 +332,7 @@ export const TransferUserModal = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserCheck className="h-5 w-5" />
@@ -273,12 +354,13 @@ export const TransferUserModal = ({
             </p>
           ) : (
             <>
+              {/* User Selection */}
               <div className="space-y-2">
                 <Label>Selecione o vendedor</Label>
                 <RadioGroup
                   value={selectedUserId}
                   onValueChange={setSelectedUserId}
-                  className="space-y-2"
+                  className="space-y-2 max-h-40 overflow-y-auto"
                 >
                   {users.map((u) => (
                     <div
@@ -298,6 +380,71 @@ export const TransferUserModal = ({
                 </RadioGroup>
               </div>
 
+              {/* Funnel Selection */}
+              <div className="space-y-2 pt-2 border-t">
+                <Label className="flex items-center gap-2">
+                  <GitFork className="h-4 w-4" />
+                  Funil (opcional)
+                </Label>
+                <Select
+                  value={selectedFunnelId || 'keep'}
+                  onValueChange={(value) => setSelectedFunnelId(value === 'keep' ? null : value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Manter funil atual" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="keep">Manter funil atual</SelectItem>
+                    {funnels.map((funnel) => (
+                      <SelectItem key={funnel.id} value={funnel.id}>
+                        {funnel.name} {funnel.is_default && '(padrão)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Stage Selection */}
+              {selectedFunnelId && (
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <GitBranch className="h-4 w-4" />
+                    Etapa do Funil
+                  </Label>
+                  {loadingStages ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Carregando etapas...
+                    </div>
+                  ) : stages.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhuma etapa encontrada</p>
+                  ) : (
+                    <Select
+                      value={selectedStageId || ''}
+                      onValueChange={setSelectedStageId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a etapa" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stages.map((stage) => (
+                          <SelectItem key={stage.id} value={stage.id}>
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="w-3 h-3 rounded-full flex-shrink-0" 
+                                style={{ backgroundColor: stage.color || '#6366f1' }} 
+                              />
+                              {stage.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
+
+              {/* Notification */}
               <div className="space-y-3 pt-2 border-t">
                 <div className="flex items-center space-x-2">
                   <Checkbox
@@ -329,7 +476,14 @@ export const TransferUserModal = ({
           </Button>
           <Button
             onClick={handleTransfer}
-            disabled={authLoading || !user || !selectedUserId || transferring || users.length === 0}
+            disabled={
+              authLoading || 
+              !user || 
+              !selectedUserId || 
+              transferring || 
+              users.length === 0 ||
+              (selectedFunnelId && !selectedStageId)
+            }
             title={!user ? 'Faça login para transferir' : undefined}
           >
             {transferring ? (
