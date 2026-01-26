@@ -90,6 +90,8 @@ export default function CRMKanban() {
   // Reminder notifications
   useReminderNotifications({
     conversations,
+    userId: user?.id,
+    isAdmin,
     onReminderTriggered: (conv) => {
       setSelectedLead(conv);
       setSheetOpen(true);
@@ -534,7 +536,11 @@ export default function CRMKanban() {
     try {
       await supabase
         .from('whatsapp_conversations')
-        .update({ reminder_at: date.toISOString(), updated_at: new Date().toISOString() })
+        .update({ 
+          reminder_at: date.toISOString(), 
+          reminder_created_by: user?.id,
+          updated_at: new Date().toISOString() 
+        })
         .eq('id', reminderModal.lead.id);
 
       toast({

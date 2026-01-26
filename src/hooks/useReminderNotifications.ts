@@ -27,12 +27,16 @@ const playNotificationSound = () => {
 
 interface UseReminderNotificationsOptions {
   conversations: WhatsAppConversation[];
+  userId?: string;
+  isAdmin?: boolean;
   onReminderTriggered?: (conv: WhatsAppConversation) => void;
   checkIntervalMs?: number;
 }
 
 export function useReminderNotifications({
   conversations,
+  userId,
+  isAdmin,
   onReminderTriggered,
   checkIntervalMs = 60000, // Check every minute
 }: UseReminderNotificationsOptions) {
@@ -55,6 +59,9 @@ export function useReminderNotifications({
     conversations.forEach((conv) => {
       if (!conv.reminder_at) return;
       if (notifiedIds.current.has(conv.id)) return;
+      
+      // Non-admins only get notifications for reminders they created
+      if (!isAdmin && userId && conv.reminder_created_by !== userId) return;
 
       const reminderTime = new Date(conv.reminder_at).getTime();
       

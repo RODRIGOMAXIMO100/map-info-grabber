@@ -38,6 +38,7 @@ export interface WhatsAppConversation {
   crm_funnel_id?: string | null;
   dna_id?: string;
   reminder_at?: string;
+  reminder_created_by?: string | null;
   estimated_value?: number;
   closed_value?: number | null;
   custom_tags?: string[];
