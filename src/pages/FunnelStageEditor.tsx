@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -40,6 +41,8 @@ export default function FunnelStageEditor() {
   const { toast } = useToast();
 
   const [funnel, setFunnel] = useState<CRMFunnel | null>(null);
+  const [funnelName, setFunnelName] = useState('');
+  const [funnelDescription, setFunnelDescription] = useState('');
   const [stages, setStages] = useState<CRMFunnelStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -62,6 +65,8 @@ export default function FunnelStageEditor() {
       if (stagesResult.error) throw stagesResult.error;
 
       setFunnel(funnelResult.data);
+      setFunnelName(funnelResult.data.name);
+      setFunnelDescription(funnelResult.data.description || '');
       setStages(stagesResult.data || []);
     } catch (error) {
       console.error('Error loading funnel:', error);
@@ -108,8 +113,22 @@ export default function FunnelStageEditor() {
   };
 
   const handleSaveAll = async () => {
+    if (!funnelName.trim()) {
+      toast({ title: 'Nome do funil é obrigatório', variant: 'destructive' });
+      return;
+    }
+
     setSaving(true);
     try {
+      // Update funnel name and description
+      await supabase
+        .from('crm_funnels')
+        .update({
+          name: funnelName.trim(),
+          description: funnelDescription.trim() || null,
+        })
+        .eq('id', id);
+
       // Update all stages
       for (let i = 0; i < stages.length; i++) {
         const stage = stages[i];
@@ -209,8 +228,8 @@ export default function FunnelStageEditor() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">{funnel.name}</h1>
-            <p className="text-muted-foreground">Edite as etapas deste funil</p>
+            <h1 className="text-2xl font-bold">Editar Funil</h1>
+            <p className="text-muted-foreground">Edite as informações e etapas do funil</p>
           </div>
         </div>
         <Button onClick={handleSaveAll} disabled={saving} className="gap-2">
@@ -218,6 +237,34 @@ export default function FunnelStageEditor() {
           Salvar Alterações
         </Button>
       </div>
+
+      {/* Funnel Info Card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">📝 Informações do Funil</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="funnel-name">Nome do Funil</Label>
+            <Input
+              id="funnel-name"
+              value={funnelName}
+              onChange={(e) => setFunnelName(e.target.value)}
+              placeholder="Ex: Funil de Aquisição"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="funnel-description">Descrição (opcional)</Label>
+            <Textarea
+              id="funnel-description"
+              value={funnelDescription}
+              onChange={(e) => setFunnelDescription(e.target.value)}
+              placeholder="Descreva o objetivo deste funil..."
+              rows={2}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Stages List */}
       <div className="space-y-3">
