@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, X, MapPin, Building2, Map, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, X, MapPin, Building2, ChevronDown, ChevronUp, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,9 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Slider } from '@/components/ui/slider';
+import { Label } from '@/components/ui/label';
 import { Location, BRAZILIAN_STATES } from '@/types/business';
-import { getCitiesByState, getTotalCitiesForState, formatPopulation } from '@/data/brazilianCities';
+import { useToast } from '@/hooks/use-toast';
 
 interface LocationSelectorProps {
   locations: Location[];
@@ -22,23 +22,10 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
   const [state, setState] = useState('');
   const [multipleCities, setMultipleCities] = useState('');
   const [bulkState, setBulkState] = useState('');
-  const [stateWideState, setStateWideState] = useState('');
-  const [cityCount, setCityCount] = useState([10]);
   const [isExpanded, setIsExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<'badges' | 'compact'>('badges');
-
-  const maxCities = useMemo(() => {
-    return stateWideState ? getTotalCitiesForState(stateWideState) : 50;
-  }, [stateWideState]);
-
-  const selectedCities = useMemo(() => {
-    if (!stateWideState) return [];
-    return getCitiesByState(stateWideState, cityCount[0]);
-  }, [stateWideState, cityCount]);
-
-  const totalPopulation = useMemo(() => {
-    return selectedCities.reduce((sum, c) => sum + c.population, 0);
-  }, [selectedCities]);
+  
+  const { toast } = useToast();
 
   // Agrupar localizações por estado
   const groupedLocations = useMemo(() => {
@@ -74,26 +61,44 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
     }
   };
 
-  const handleAddStateWide = () => {
-    if (stateWideState && selectedCities.length > 0) {
-      const existingCities = new Set(
-        locations
-          .filter(l => l.state === stateWideState)
-          .map(l => l.city.toLowerCase())
-      );
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split(/[\r\n]+/).filter(l => l.trim());
       
-      let addedCount = 0;
-      selectedCities.forEach(cityData => {
-        if (!existingCities.has(cityData.city.toLowerCase())) {
-          onAdd({ city: cityData.city, state: stateWideState });
-          addedCount++;
+      let added = 0;
+      lines.forEach(line => {
+        const parts = line.split(/[,;]/).map(p => p.trim());
+        if (parts.length >= 2 && parts[1].length === 2) {
+          // Formato: cidade, UF
+          onAdd({ city: parts[0], state: parts[1].toUpperCase() });
+          added++;
+        } else if (bulkState && parts[0]) {
+          // Apenas cidade, usa estado selecionado
+          onAdd({ city: parts[0], state: bulkState });
+          added++;
         }
       });
-
-      if (addedCount === 0) {
-        console.log('Todas as cidades selecionadas já estão na lista');
+      
+      if (added > 0) {
+        toast({
+          title: 'Cidades importadas',
+          description: `${added} cidades adicionadas do arquivo.`,
+        });
+      } else {
+        toast({
+          title: 'Nenhuma cidade importada',
+          description: 'Verifique o formato do arquivo (cidade, UF ou selecione um estado).',
+          variant: 'destructive',
+        });
       }
-    }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -134,7 +139,7 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
   return (
     <div className="space-y-4">
       <Tabs defaultValue="single" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="single" className="gap-1.5 text-xs sm:text-sm">
             <Building2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Uma cidade</span>
@@ -144,11 +149,6 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
             <MapPin className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Várias cidades</span>
             <span className="sm:hidden">Várias</span>
-          </TabsTrigger>
-          <TabsTrigger value="state" className="gap-1.5 text-xs sm:text-sm">
-            <Map className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Estado inteiro</span>
-            <span className="sm:hidden">Estado</span>
           </TabsTrigger>
         </TabsList>
 
@@ -187,7 +187,7 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
 
         <TabsContent value="multiple" className="space-y-3 mt-3">
           <Textarea
-            placeholder="Separe por vírgula ou linha:&#10;São Paulo, Campinas, Santos&#10;ou uma por linha"
+            placeholder="Cole as cidades aqui (uma por linha ou separadas por vírgula):&#10;São Paulo&#10;Campinas&#10;Santos&#10;&#10;Ou no formato: cidade, UF"
             value={multipleCities}
             onChange={(e) => setMultipleCities(e.target.value)}
             className="min-h-[100px] text-base"
@@ -215,72 +215,33 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
               Adicionar todas
             </Button>
           </div>
-        </TabsContent>
-
-        <TabsContent value="state" className="space-y-4 mt-3">
-          <Select value={stateWideState} onValueChange={(val) => {
-            setStateWideState(val);
-            const max = getTotalCitiesForState(val);
-            setCityCount([Math.min(cityCount[0], max)]);
-          }}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Selecione o estado" />
-            </SelectTrigger>
-            <SelectContent className="bg-background border">
-              {BRAZILIAN_STATES.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.value} - {s.label} ({getTotalCitiesForState(s.value)} cidades)
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {stateWideState && (
-            <>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Quantidade de cidades:</span>
-                  <span className="font-medium">{cityCount[0]} cidades</span>
-                </div>
-                <Slider
-                  value={cityCount}
-                  onValueChange={setCityCount}
-                  min={5}
-                  max={maxCities}
-                  step={5}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>5</span>
-                  <span>{maxCities}</span>
-                </div>
-              </div>
-
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">População coberta:</span>
-                  <span className="font-medium text-primary">{formatPopulation(totalPopulation)} habitantes</span>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Maiores cidades: {selectedCities.slice(0, 3).map(c => c.city).join(', ')}
-                  {selectedCities.length > 3 && '...'}
-                </div>
-              </div>
-
-              <Button 
-                type="button" 
-                onClick={handleAddStateWide}
-                className="w-full gap-2"
+          
+          {/* File Upload */}
+          <div className="pt-2 border-t">
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                accept=".csv,.txt"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="city-file-upload"
+              />
+              <Label 
+                htmlFor="city-file-upload" 
+                className="cursor-pointer flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-muted transition-colors text-sm"
               >
-                <Map className="h-4 w-4" />
-                Adicionar {cityCount[0]} cidades de {stateWideState}
-              </Button>
-            </>
-          )}
+                <Upload className="h-4 w-4" />
+                Importar CSV/TXT
+              </Label>
+              <span className="text-xs text-muted-foreground">
+                Formato: cidade, UF ou apenas cidade (se UF selecionado acima)
+              </span>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 
-      {/* Área de cidades selecionadas - melhorada */}
+      {/* Área de cidades selecionadas */}
       <div className={`border rounded-md p-3 min-h-[120px] ${containerHeight} bg-muted/30 transition-all duration-200`}>
         {locations.length === 0 ? (
           <p className="text-muted-foreground text-sm text-center py-8">
