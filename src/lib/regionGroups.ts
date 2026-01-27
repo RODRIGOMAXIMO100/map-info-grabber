@@ -29,6 +29,8 @@ export function getRegionGroups(): RegionGroup[] {
 
 // Save a new region group
 export function saveRegionGroup(name: string, locations: Location[]): RegionGroup {
+  console.log('[regionGroups] saveRegionGroup chamado', { name, locationsCount: locations.length });
+  
   const groups = getRegionGroups();
   const now = new Date().toISOString();
   
@@ -41,7 +43,13 @@ export function saveRegionGroup(name: string, locations: Location[]): RegionGrou
   };
   
   groups.push(newGroup);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
+  
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
+    console.log('[regionGroups] Grupo salvo no localStorage com sucesso:', newGroup.id);
+  } catch (error) {
+    console.error('[regionGroups] Erro ao salvar no localStorage:', error);
+  }
   
   return newGroup;
 }
