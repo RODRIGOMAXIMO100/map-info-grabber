@@ -24,6 +24,10 @@ export interface ApiUsageStats {
 
 // Limit concurrent requests
 const MAX_CONCURRENT = 3;
+const MAX_RETRIES = 2;
+const RETRY_DELAYS = [1000, 3000]; // 1s, 3s
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function runWithConcurrency<T>(
   tasks: (() => Promise<T>)[],
@@ -61,54 +65,91 @@ export function useBusinessSearch() {
   const [apiUsage, setApiUsage] = useState<ApiUsageStats>({ serper: 0, cache: 0, enriched: 0 });
   const abortController = useRef<AbortController | null>(null);
 
-  // Search a single location using Serper
-  const searchLocation = async (
+  // Search a single location with retry logic
+  const searchLocationWithRetry = async (
     keyword: string, 
     location: Location, 
     maxResults: number,
     useEnrichment: boolean
-  ): Promise<Business[]> => {
+  ): Promise<{ results: Business[]; fromCache: boolean }> => {
     
-    console.log(`[Serper] Searching ${location.city}`);
-    const { data, error: apiError } = await supabase.functions.invoke<SearchResult>('search-businesses-serpapi', {
-      body: { keyword, locations: [location], maxResults },
-    });
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.log(`[Serper] Searching ${location.city} (attempt ${attempt + 1})`);
+        
+        const { data, error: apiError } = await supabase.functions.invoke<SearchResult>('search-businesses-serpapi', {
+          body: { keyword, locations: [location], maxResults },
+        });
 
-    if (apiError) {
-      console.error(`[Serper] API error:`, apiError);
-      throw new Error(apiError.message || 'Erro na API Serper');
+        if (apiError) {
+          console.error(`[Serper] API error:`, apiError);
+          throw new Error(apiError.message || 'Erro na API Serper');
+        }
+
+        if (data?.errorCode === 'NO_CREDITS' || data?.errorCode === 'NO_API_KEY') {
+          throw new Error('Serper sem créditos ou chave inválida. Verifique sua API key.');
+        }
+
+        if (data?.errorCode === 'RATE_LIMIT') {
+          // For rate limit, always retry with longer delay
+          if (attempt < MAX_RETRIES) {
+            console.log(`[Serper] Rate limit hit, retrying in ${RETRY_DELAYS[attempt]}ms...`);
+            await sleep(RETRY_DELAYS[attempt] * 2); // Double delay for rate limit
+            continue;
+          }
+          throw new Error('Limite de requisições Serper atingido. Aguarde um momento.');
+        }
+
+        if (!data?.success) {
+          // Server errors - may be transient, worth retrying
+          if (attempt < MAX_RETRIES) {
+            console.log(`[Serper] Error for ${location.city}, retrying in ${RETRY_DELAYS[attempt]}ms...`);
+            await sleep(RETRY_DELAYS[attempt]);
+            continue;
+          }
+          console.error(`[Serper] Error after retries:`, data?.error);
+          return { results: [], fromCache: false };
+        }
+
+        const results = data.data || [];
+        console.log(`[Serper] Found ${results.length} results for ${location.city}`);
+
+        // Optionally enrich with Firecrawl
+        if (useEnrichment && results.length > 0) {
+          const enriched = await enrichResults(results);
+          return { results: enriched, fromCache: false };
+        }
+
+        return { results, fromCache: false };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        
+        // Check for network errors or timeouts that are worth retrying
+        const isRetryable = message.includes('network') || 
+                           message.includes('timeout') ||
+                           message.includes('fetch') ||
+                           message.includes('Rate limit');
+        
+        if (isRetryable && attempt < MAX_RETRIES) {
+          console.log(`[Serper] Retryable error for ${location.city}, attempt ${attempt + 1}/${MAX_RETRIES}: ${message}`);
+          await sleep(RETRY_DELAYS[attempt]);
+          continue;
+        }
+        
+        // Non-retryable error or max retries reached
+        console.error(`[Serper] Error for ${location.city}:`, message);
+        throw err;
+      }
     }
-
-    if (data?.errorCode === 'NO_CREDITS' || data?.errorCode === 'NO_API_KEY') {
-      throw new Error('Serper sem créditos ou chave inválida. Verifique sua API key.');
-    }
-
-    if (data?.errorCode === 'RATE_LIMIT') {
-      throw new Error('Limite de requisições Serper atingido. Aguarde um momento.');
-    }
-
-    if (!data?.success) {
-      console.error(`[Serper] Error:`, data?.error);
-      return [];
-    }
-
-    const results = data.data || [];
-    console.log(`[Serper] Found ${results.length} results for ${location.city}`);
-
-    // Optionally enrich with Firecrawl
-    if (useEnrichment && results.length > 0) {
-      return await enrichResults(results);
-    }
-
-    return results;
+    
+    return { results: [], fromCache: false };
   };
 
   // Enrich results using Firecrawl
   const enrichResults = async (businesses: Business[]): Promise<Business[]> => {
-    // Only enrich businesses that have websites but missing Instagram/email
     const toEnrich = businesses.filter(b => 
       b.website && (!b.instagram || !b.email)
-    ).slice(0, 20); // Limit to 20 to save Firecrawl credits
+    ).slice(0, 20);
 
     if (toEnrich.length === 0) return businesses;
 
@@ -127,7 +168,6 @@ export function useBusinessSearch() {
       });
 
       if (data?.success && data.data) {
-        // Merge enriched data back
         const enrichedMap = new Map(
           (data.data as Array<{ name: string; instagram?: string; email?: string; whatsapp?: string }>)
             .map((e) => [e.name, e])
@@ -221,7 +261,7 @@ export function useBusinessSearch() {
         return;
       }
 
-      // Fetch non-cached locations
+      // Fetch non-cached locations with retry
       if (tasksToFetch.length > 0) {
         setProgress({ 
           current: cacheResults.length - tasksToFetch.length, 
@@ -239,7 +279,7 @@ export function useBusinessSearch() {
           }));
 
           try {
-            const locationResults = await searchLocation(
+            const { results: locationResults, fromCache } = await searchLocationWithRetry(
               keyword, 
               location, 
               maxResultsPerCity,
@@ -247,11 +287,15 @@ export function useBusinessSearch() {
             );
 
             // Update usage stats
-            usage.serper++;
+            if (!fromCache) {
+              usage.serper++;
+            } else {
+              usage.cache++;
+            }
             setApiUsage({ ...usage });
 
             // Cache results if we got any
-            if (locationResults.length > 0) {
+            if (locationResults.length > 0 && !fromCache) {
               supabase.from('search_cache').insert({
                 cache_key: cacheKey,
                 search_type: 'google_maps',
@@ -271,8 +315,9 @@ export function useBusinessSearch() {
             return locationResults;
           } catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown error';
-            console.error(`[Serper] Error for ${location.city}:`, message);
-            setError(message);
+            console.error(`[Serper] Final error for ${location.city}:`, message);
+            // Don't set global error for individual city failures
+            // The search continues with other cities
             return [];
           }
         });

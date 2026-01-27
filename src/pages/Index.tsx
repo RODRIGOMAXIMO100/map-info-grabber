@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin, Award, Filter, Trash2, Globe, TrendingUp, AlertTriangle } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Star, Sparkles, Database, Mail, Facebook, Linkedin, Award, Filter, Trash2, Globe, TrendingUp, AlertTriangle, ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,9 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { LocationSelector } from '@/components/LocationSelector';
 import { ResultsTable } from '@/components/ResultsTable';
+import { SearchHistory, addSearchToHistory, type SavedSearch } from '@/components/prospecting/SearchHistory';
+import { SearchStats } from '@/components/prospecting/SearchStats';
 import { useBusinessSearch } from '@/hooks/useBusinessSearch';
 import { exportToCSV } from '@/lib/exportCsv';
 import { applyScoring } from '@/lib/leadScoring';
@@ -29,11 +32,15 @@ export default function Index() {
   const [filterEmailOnly, setFilterEmailOnly] = useState(false);
   const [filterSocialOnly, setFilterSocialOnly] = useState(false);
   const [filterHighQualityOnly, setFilterHighQualityOnly] = useState(false);
+  const [filterMobileOnly, setFilterMobileOnly] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [persistedResults, setPersistedResults] = useState<Business[]>([]);
   const [useEnrichment, setUseEnrichment] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [searchDuration, setSearchDuration] = useState<number | undefined>();
+  const searchStartTime = useRef<number | null>(null);
 
-  // Estimate total leads (only Google Maps now)
+  // Estimate total leads
   const estimatedLeads = useMemo(() => {
     return locations.length * maxResultsPerCity;
   }, [locations.length, maxResultsPerCity]);
@@ -76,6 +83,7 @@ export default function Index() {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEY_KEYWORD);
     setPersistedResults([]);
+    setSearchDuration(undefined);
     toast({
       title: 'Resultados limpos',
       description: 'Os resultados salvos foram removidos.',
@@ -105,17 +113,35 @@ export default function Index() {
     }
   }, [toast]);
 
+  // Import phone validation for mobile filter
+  const { validateBrazilianPhone } = useMemo(() => {
+    const validateBrazilianPhone = (phone: string | null | undefined) => {
+      if (!phone) return { isValid: false, isMobile: false };
+      const digits = phone.replace(/\D/g, '');
+      if (digits.startsWith('55') && digits.length > 11) {
+        const localDigits = digits.slice(2);
+        return {
+          isValid: localDigits.length >= 10 && localDigits.length <= 11,
+          isMobile: localDigits.length === 11 && localDigits[2] === '9',
+        };
+      }
+      return {
+        isValid: digits.length >= 10 && digits.length <= 11,
+        isMobile: digits.length === 11 && digits[2] === '9',
+      };
+    };
+    return { validateBrazilianPhone };
+  }, []);
+
   // Combine and deduplicate results with scoring
   const combinedResults = useMemo(() => {
     const mapsWithSource = mapsResults.map(r => ({ ...r, source: 'google_maps' as const }));
     let all: Business[] = [...mapsWithSource];
     
-    // Use persisted results if no current results
     if (all.length === 0 && persistedResults.length > 0) {
       all = persistedResults.map(r => ({ ...r, source: r.source || 'google_maps' as const }));
     }
     
-    // Deduplicate by phone or name similarity
     const unique = all.filter((item, index, self) => {
       if (item.phone) {
         const normalizedPhone = item.phone.replace(/\D/g, '');
@@ -151,11 +177,17 @@ export default function Index() {
     if (filterHighQualityOnly) {
       results = results.filter(r => (r.score || 0) >= 3);
     }
+    if (filterMobileOnly) {
+      results = results.filter(r => {
+        const validation = validateBrazilianPhone(r.phone);
+        return validation.isMobile;
+      });
+    }
     if (filterCategory && filterCategory !== 'all') {
       results = results.filter(r => r.category === filterCategory);
     }
     return results;
-  }, [combinedResults, filterWhatsAppOnly, filterEmailOnly, filterSocialOnly, filterHighQualityOnly, filterCategory]);
+  }, [combinedResults, filterWhatsAppOnly, filterEmailOnly, filterSocialOnly, filterHighQualityOnly, filterMobileOnly, filterCategory, validateBrazilianPhone]);
 
   const handleAddLocation = (location: Location) => {
     setLocations(prev => {
@@ -178,6 +210,16 @@ export default function Index() {
     setLocations(locations.filter((_, i) => i !== index));
   };
 
+  // Load search from history
+  const handleSelectHistory = (search: SavedSearch) => {
+    setKeyword(search.keyword);
+    setLocations(search.locations);
+    toast({
+      title: 'Busca carregada',
+      description: `"${search.keyword}" com ${search.locations.length} cidade(s)`,
+    });
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!keyword.trim()) {
@@ -197,8 +239,19 @@ export default function Index() {
       return;
     }
     
-    // Search Google Maps via Serper
+    searchStartTime.current = Date.now();
+    setSearchDuration(undefined);
+    
     await searchMaps(keyword, locations, maxResultsPerCity, totalMaxResults, useEnrichment);
+    
+    // Calculate duration
+    if (searchStartTime.current) {
+      const duration = Math.round((Date.now() - searchStartTime.current) / 1000);
+      setSearchDuration(duration);
+    }
+    
+    // Save to history
+    addSearchToHistory(keyword, locations, combinedResults.length);
     
     toast({
       title: 'Busca concluída!',
@@ -224,18 +277,7 @@ export default function Index() {
 
   const progressPercent = mapsProgress.total > 0 ? (mapsProgress.current / mapsProgress.total) * 100 : 0;
 
-  const stats = useMemo(() => ({
-    total: filteredResults.length,
-    whatsapp: filteredResults.filter(r => r.whatsapp).length,
-    email: filteredResults.filter(r => r.email).length,
-    instagram: filteredResults.filter(r => r.instagram).length,
-    facebook: filteredResults.filter(r => r.facebook).length,
-    linkedin: filteredResults.filter(r => r.linkedin).length,
-    highScore: filteredResults.filter(r => (r.score || 0) >= 4).length,
-  }), [filteredResults]);
-
-  // Calculate API usage totals
-  const totalApiCalls = apiUsage.serper + apiUsage.cache;
+  const activeFiltersCount = [filterWhatsAppOnly, filterEmailOnly, filterSocialOnly, filterHighQualityOnly, filterMobileOnly, filterCategory !== 'all'].filter(Boolean).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted/30 p-4 md:p-8">
@@ -270,7 +312,7 @@ export default function Index() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              Ordem de prioridade: Cache → Serper. Enriquecimento opcional com Firecrawl.
+              Ordem de prioridade: Cache → Serper. Retry automático em caso de falha.
             </p>
           </CardContent>
         </Card>
@@ -284,12 +326,16 @@ export default function Index() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSearch} className="space-y-4">
+              {/* Search History */}
+              <SearchHistory onSelect={handleSelectHistory} className="mb-2" />
+              
               <div>
                 <label className="text-sm font-medium mb-2 block">Palavra-chave</label>
                 <Input
                   placeholder="Ex: pizzaria, dentista, academia..."
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
+                  className="text-base"
                 />
               </div>
 
@@ -305,30 +351,26 @@ export default function Index() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Por cidade</label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={200}
-                      value={maxResultsPerCity}
-                      onChange={(e) => setMaxResultsPerCity(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
-                      className="w-full"
-                    />
-                  </div>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={maxResultsPerCity}
+                    onChange={(e) => setMaxResultsPerCity(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
+                    className="w-full"
+                  />
                 </div>
                 
                 <div>
                   <label className="text-sm font-medium mb-2 block">Limite total</label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={10000}
-                      value={totalMaxResults}
-                      onChange={(e) => setTotalMaxResults(Math.max(1, Math.min(10000, Number(e.target.value) || 100)))}
-                      className="w-full"
-                    />
-                  </div>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={totalMaxResults}
+                    onChange={(e) => setTotalMaxResults(Math.max(1, Math.min(10000, Number(e.target.value) || 100)))}
+                    className="w-full"
+                  />
                 </div>
               </div>
 
@@ -341,7 +383,7 @@ export default function Index() {
                       Enriquecer dados (Instagram/Email)
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Usa Firecrawl para extrair redes sociais dos sites (500 créditos/mês)
+                      Usa Firecrawl para extrair redes sociais dos sites
                     </p>
                   </div>
                   <Switch
@@ -352,79 +394,109 @@ export default function Index() {
                 </div>
               </div>
 
-              {/* Filters */}
-              <div className="space-y-3">
-                <label className="text-sm font-medium block">Filtros</label>
-                <div className="flex flex-wrap gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="whatsapp-filter"
-                      checked={filterWhatsAppOnly}
-                      onCheckedChange={setFilterWhatsAppOnly}
-                    />
-                    <Label htmlFor="whatsapp-filter" className="text-sm flex items-center gap-1.5">
-                      <MessageCircle className="h-4 w-4 text-green-600" />
-                      WhatsApp
-                    </Label>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="email-filter"
-                      checked={filterEmailOnly}
-                      onCheckedChange={setFilterEmailOnly}
-                    />
-                    <Label htmlFor="email-filter" className="text-sm flex items-center gap-1.5">
-                      <Mail className="h-4 w-4 text-orange-600" />
-                      Email
-                    </Label>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="social-filter"
-                      checked={filterSocialOnly}
-                      onCheckedChange={setFilterSocialOnly}
-                    />
-                    <Label htmlFor="social-filter" className="text-sm flex items-center gap-1.5">
-                      <Facebook className="h-4 w-4 text-blue-600" />
-                      Redes Sociais
-                    </Label>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="quality-filter"
-                      checked={filterHighQualityOnly}
-                      onCheckedChange={setFilterHighQualityOnly}
-                    />
-                    <Label htmlFor="quality-filter" className="text-sm flex items-center gap-1.5">
-                      <Award className="h-4 w-4 text-yellow-600" />
-                      Alta Qualidade
-                    </Label>
-                  </div>
-                </div>
-                
-                {/* Category filter */}
-                <div className="flex items-center gap-3">
-                  <Filter className="h-4 w-4 text-muted-foreground" />
-                  <Select value={filterCategory} onValueChange={setFilterCategory}>
-                    <SelectTrigger className="w-[220px]">
-                      <SelectValue placeholder="Filtrar por categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas as categorias</SelectItem>
-                      {categories.length > 0 ? (
-                        categories.map(cat => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="none" disabled>Sem categorias disponíveis</SelectItem>
+              {/* Collapsible Filters */}
+              <Collapsible open={showAdvancedFilters} onOpenChange={setShowAdvancedFilters}>
+                <CollapsibleTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    type="button"
+                    className="w-full justify-between text-muted-foreground hover:text-foreground"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Settings2 className="h-4 w-4" />
+                      Filtros avançados
+                      {activeFiltersCount > 0 && (
+                        <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                          {activeFiltersCount}
+                        </Badge>
                       )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+                    </span>
+                    {showAdvancedFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-4 pt-4">
+                  <div className="flex flex-wrap gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="whatsapp-filter"
+                        checked={filterWhatsAppOnly}
+                        onCheckedChange={setFilterWhatsAppOnly}
+                      />
+                      <Label htmlFor="whatsapp-filter" className="text-sm flex items-center gap-1.5">
+                        <MessageCircle className="h-4 w-4 text-green-600" />
+                        WhatsApp
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="email-filter"
+                        checked={filterEmailOnly}
+                        onCheckedChange={setFilterEmailOnly}
+                      />
+                      <Label htmlFor="email-filter" className="text-sm flex items-center gap-1.5">
+                        <Mail className="h-4 w-4 text-orange-600" />
+                        Email
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="social-filter"
+                        checked={filterSocialOnly}
+                        onCheckedChange={setFilterSocialOnly}
+                      />
+                      <Label htmlFor="social-filter" className="text-sm flex items-center gap-1.5">
+                        <Facebook className="h-4 w-4 text-blue-600" />
+                        Redes Sociais
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="quality-filter"
+                        checked={filterHighQualityOnly}
+                        onCheckedChange={setFilterHighQualityOnly}
+                      />
+                      <Label htmlFor="quality-filter" className="text-sm flex items-center gap-1.5">
+                        <Award className="h-4 w-4 text-yellow-600" />
+                        Alta Qualidade
+                      </Label>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="mobile-filter"
+                        checked={filterMobileOnly}
+                        onCheckedChange={setFilterMobileOnly}
+                      />
+                      <Label htmlFor="mobile-filter" className="text-sm flex items-center gap-1.5">
+                        📱 Apenas Celulares
+                      </Label>
+                    </div>
+                  </div>
+                  
+                  {/* Category filter */}
+                  <div className="flex items-center gap-3">
+                    <Filter className="h-4 w-4 text-muted-foreground" />
+                    <Select value={filterCategory} onValueChange={setFilterCategory}>
+                      <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder="Filtrar por categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as categorias</SelectItem>
+                        {categories.length > 0 ? (
+                          categories.map(cat => (
+                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="none" disabled>Sem categorias disponíveis</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               {/* Estimation */}
               {locations.length > 0 && (
@@ -460,7 +532,7 @@ export default function Index() {
                   disabled={filteredResults.length === 0 || isLoading}
                 >
                   <Download className="h-4 w-4 mr-2" />
-                  Exportar CSV
+                  CSV
                 </Button>
                 {(combinedResults.length > 0 || persistedResults.length > 0) && (
                   <Button
@@ -512,7 +584,6 @@ export default function Index() {
                     </p>
                   )}
                   
-                  {/* Progress indicators */}
                   <div className="flex items-center justify-center gap-4 mt-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <Globe className="h-3 w-3 text-blue-500" />
@@ -546,46 +617,32 @@ export default function Index() {
           </Card>
         )}
 
+        {/* Search Stats Dashboard */}
+        {filteredResults.length > 0 && !isLoading && (
+          <SearchStats 
+            results={filteredResults} 
+            apiUsage={apiUsage}
+            searchDuration={searchDuration}
+          />
+        )}
+
         {(filteredResults.length > 0 || isLoading) && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 Resultados
-                {stats.highScore > 0 && (
+                {filteredResults.filter(r => (r.score || 0) >= 4).length > 0 && (
                   <Badge variant="secondary" className="ml-2">
                     <Star className="h-3 w-3 mr-1 text-yellow-500" />
-                    {stats.highScore} alta qualidade
+                    {filteredResults.filter(r => (r.score || 0) >= 4).length} alta qualidade
                   </Badge>
                 )}
               </CardTitle>
               <CardDescription>
-                {stats.total} lead{stats.total !== 1 ? 's' : ''} encontrado{stats.total !== 1 ? 's' : ''}
+                {filteredResults.length} lead{filteredResults.length !== 1 ? 's' : ''} 
+                {combinedResults.length !== filteredResults.length && ` (de ${combinedResults.length} total)`}
                 {isLoading && ' (buscando mais...)'}
               </CardDescription>
-              {stats.total > 0 && (
-                <div className="flex flex-wrap gap-3 mt-3 text-sm">
-                  <Badge variant="outline" className="gap-1.5">
-                    <MessageCircle className="h-3.5 w-3.5 text-green-500" />
-                    {stats.whatsapp} WhatsApp
-                  </Badge>
-                  <Badge variant="outline" className="gap-1.5">
-                    <Mail className="h-3.5 w-3.5 text-orange-500" />
-                    {stats.email} Email
-                  </Badge>
-                  <Badge variant="outline" className="gap-1.5">
-                    <Instagram className="h-3.5 w-3.5 text-pink-500" />
-                    {stats.instagram} Instagram
-                  </Badge>
-                  <Badge variant="outline" className="gap-1.5">
-                    <Facebook className="h-3.5 w-3.5 text-blue-500" />
-                    {stats.facebook} Facebook
-                  </Badge>
-                  <Badge variant="outline" className="gap-1.5">
-                    <Linkedin className="h-3.5 w-3.5 text-sky-500" />
-                    {stats.linkedin} LinkedIn
-                  </Badge>
-                </div>
-              )}
             </CardHeader>
             <CardContent>
               <ResultsTable results={filteredResults} />
