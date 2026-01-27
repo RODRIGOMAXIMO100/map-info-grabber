@@ -1,78 +1,82 @@
 
+# Plano: Corrigir Enriquecimento de Instagram na Prospecção
 
-# Plano: Limpar CRM e Chat do Luiz Otavio
+## Problema Identificado
 
-## Resumo dos Dados a Serem Afetados
+O sistema usa cache de 7 dias para economizar créditos de API. Quando você pesquisou com "Enriquecer dados" ativado, os resultados vieram do cache de uma pesquisa anterior que foi feita **sem** enriquecimento.
 
-| Item | Quantidade |
-|------|------------|
-| Conversas atribuídas ao Luiz | **239** |
-| Total de mensagens nessas conversas | **2.399** |
-| Usuário | LUIZ OTAVIO (Closer) |
-| User ID | `8c2d85a0-2390-4ee0-b108-82661d0b6057` |
+Os dados no cache já mostram que 7 de 10 pizzarias têm website, mas nenhuma tem Instagram porque o Firecrawl nunca foi chamado.
 
 ---
 
-## Ação Proposta
+## Solução Proposta
 
-Executar as seguintes operações no banco de dados:
+### Opção Escolhida: Cache Key Separado para Enriquecimento
 
-### 1. Deletar todas as mensagens das conversas do Luiz
+Criar uma cache key diferente quando o enriquecimento está ativado, assim:
+- `serper_pizzaria_viçosa_MG_100` → Busca básica (sem enriquecer)
+- `serper_pizzaria_viçosa_MG_100_enriched` → Busca com enriquecimento
 
-```sql
-DELETE FROM whatsapp_messages 
-WHERE conversation_id IN (
-  SELECT id FROM whatsapp_conversations 
-  WHERE assigned_to = '8c2d85a0-2390-4ee0-b108-82661d0b6057'
-);
+Isso garante que:
+1. Pesquisas básicas continuam rápidas (cache funciona normal)
+2. Pesquisas com enriquecimento sempre rodam o Firecrawl
+3. Resultados enriquecidos são salvos separadamente no cache
+
+---
+
+## Alterações Necessárias
+
+### 1. Modificar geração de cache key (useBusinessSearch.ts)
+
+Adicionar parâmetro de enriquecimento na função `generateCacheKey`:
+
+```typescript
+function generateCacheKey(keyword: string, city: string, state: string, maxResults: number, enriched: boolean): string {
+  const suffix = enriched ? '_enriched' : '';
+  return `serper_${keyword.toLowerCase().trim()}_${city.toLowerCase()}_${state}_${maxResults}${suffix}`;
+}
 ```
 
-### 2. Deletar histórico de movimentação de funil
+### 2. Atualizar chamadas de cache
 
-```sql
-DELETE FROM funnel_stage_history 
-WHERE conversation_id IN (
-  SELECT id FROM whatsapp_conversations 
-  WHERE assigned_to = '8c2d85a0-2390-4ee0-b108-82661d0b6057'
-);
-```
+Passar o parâmetro `useEnrichment` para todas as chamadas que geram ou consultam cache.
 
-### 3. Deletar as conversas/leads
+### 3. Limpar cache antigo (opcional)
 
-```sql
-DELETE FROM whatsapp_conversations 
-WHERE assigned_to = '8c2d85a0-2390-4ee0-b108-82661d0b6057';
-```
+Sugerir ao usuário limpar o cache para forçar nova busca com enriquecimento.
 
-### 4. Limpar logs de atividade do Luiz
+---
 
-```sql
-DELETE FROM user_activity_logs 
-WHERE user_id = '8c2d85a0-2390-4ee0-b108-82661d0b6057';
+## Fluxo Corrigido
+
+```text
+Usuário ativa "Enriquecer dados" ✓
+       ↓
+Gera cache key: "serper_pizzaria_viçosa_MG_100_enriched"
+       ↓
+Cache não encontrado (key diferente)
+       ↓
+Serper busca 10 resultados
+       ↓
+Firecrawl enriquece 7 com website
+       ↓
+Retorna com Instagram/Email preenchidos
+       ↓
+Salva no cache com key "_enriched"
 ```
 
 ---
 
-## Resultado Final
+## Arquivos a Modificar
 
-Após a execução:
-- **0** conversas atribuídas ao Luiz
-- **0** mensagens nas conversas do Luiz
-- **0** leads no CRM do Luiz
-- **0** logs de atividade do Luiz
-- O usuário Luiz continua existindo no sistema (pode receber novas conversas)
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/hooks/useBusinessSearch.ts` | Atualizar `generateCacheKey()` e chamadas |
 
 ---
 
-## Aviso Importante
+## Resultado Esperado
 
-Esta ação é **IRREVERSÍVEL**. Todos os dados serão permanentemente deletados do banco de dados.
-
-Se preferir **preservar os leads mas apenas desatribuir** do Luiz (deixando para outro vendedor pegar), podemos fazer isso também.
-
----
-
-## Execução
-
-Usarei a ferramenta de inserção/deleção de dados para executar esses comandos SQL em sequência.
-
+- Próxima pesquisa com enriquecimento vai ignorar cache antigo
+- Firecrawl será chamado para scrape dos websites
+- Instagram e Email serão extraídos e exibidos nos resultados
