@@ -1,138 +1,181 @@
 
-## Plano: Corrigir Erros e Limpar Prospecção
+## Plano: Simplificar Prospecção - Apenas Google Maps
 
-### Problema Principal Identificado
+### O que será removido
 
-Os logs do PostgreSQL mostram erros repetidos:
-```
-"new row for relation \"search_cache\" violates check constraint \"search_cache_search_type_check\""
-```
+1. **Busca por Instagram** - Remover completamente a funcionalidade de pesquisa de perfis do Instagram
+2. **Aba "Estado inteiro"** - Remover pois não funciona bem (só tem 10-30 cidades por estado)
+3. **Seletor de fonte** (Maps / Instagram / Ambos) - Não será mais necessário
 
-**Causa:** A constraint na tabela `search_cache` só permite os valores `'google_maps'` ou `'instagram'` para o campo `search_type`. Porém, o código em `useBusinessSearch.ts` (linha 257) está tentando inserir `search_type: 'serper'`, que viola essa constraint.
+### O que será adicionado
 
----
-
-### Alterações Necessárias
-
-#### 1. Migração SQL - Corrigir Constraint
-
-Atualizar a constraint para aceitar `'google_maps'`, que é o valor correto para buscas via Serper (pois os resultados vêm do Google Maps):
-
-```sql
--- Remover constraint antiga
-ALTER TABLE public.search_cache 
-DROP CONSTRAINT IF EXISTS search_cache_search_type_check;
-
--- Adicionar constraint corrigida (google_maps e instagram)
-ALTER TABLE public.search_cache 
-ADD CONSTRAINT search_cache_search_type_check 
-CHECK (search_type IN ('google_maps', 'instagram'));
-
--- Limpar entradas inválidas do cache (se houver)
-DELETE FROM public.search_cache 
-WHERE search_type NOT IN ('google_maps', 'instagram');
-```
-
-#### 2. Corrigir `useBusinessSearch.ts`
-
-Mudar `search_type: 'serper'` para `search_type: 'google_maps'`:
-
-```typescript
-// Linha 257 - ANTES:
-search_type: 'serper',
-
-// DEPOIS:
-search_type: 'google_maps',
-```
-
-#### 3. Melhorias Adicionais no Hook
-
-**Tratar erro silencioso no cache insert:**
-O `.then()` na linha 264 não trata erros do insert. Melhorar para:
-```typescript
-supabase.from('search_cache').insert({...})
-  .then(({ error }) => {
-    if (error) {
-      console.error(`[Cache] Erro ao salvar ${location.city}:`, error.message);
-    } else {
-      console.log(`[Cache] Salvo ${location.city} (${locationResults.length})`);
-    }
-  });
-```
-
-#### 4. Limpeza no `Index.tsx`
-
-**4.1 Remover console.logs excessivos:**
-- Linha 63: `console.log(`Loaded ${parsed.length} persisted results`);` → Remover
-- Manter apenas logs de erro
-
-**4.2 Melhorar mensagem de erro:**
-Atualmente, erros são mostrados em um Card vermelho simples. Adicionar mais contexto:
-```typescript
-{error && (
-  <Card className="border-destructive bg-destructive/5">
-    <CardContent className="pt-6">
-      <div className="flex items-center gap-3">
-        <AlertTriangle className="h-5 w-5 text-destructive" />
-        <div>
-          <p className="font-medium text-destructive">Erro na busca</p>
-          <p className="text-sm text-muted-foreground">{error}</p>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-)}
-```
-
-**4.3 Limpar cache corretamente:**
-A função `clearDatabaseCache` (linha 113-133) usa uma lógica estranha que deleta entradas com expire menor que 1 ano no futuro. Simplificar:
-```typescript
-const { error } = await supabase
-  .from('search_cache')
-  .delete()
-  .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
-```
-
-#### 5. Melhorias no Edge Function `search-businesses-serpapi`
-
-**5.1 Adicionar tratamento para erro 500:**
-```typescript
-if (response.status >= 500) {
-  console.error(`[Serper] Server error for ${location.city}`);
-  continue; // Skip this city, try next
-}
-```
-
-**5.2 Adicionar timeout:**
-```typescript
-const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
-const response = await fetch('https://google.serper.dev/places', {
-  // ... options
-  signal: controller.signal,
-});
-clearTimeout(timeout);
-```
+1. **Upload de CSV/TXT** - Permitir subir arquivo com lista de cidades
+2. **Indicador de fonte mais claro** - Mudar badge de "Maps" para "Google"
 
 ---
 
 ### Arquivos a Modificar
 
-| Arquivo | Alteração |
-|---------|-----------|
-| Migração SQL | Recriar constraint com valores corretos |
-| `src/hooks/useBusinessSearch.ts` | Corrigir `search_type` de 'serper' → 'google_maps', melhorar error handling |
-| `src/pages/Index.tsx` | Limpar console.logs, melhorar UI de erro, corrigir clearDatabaseCache |
-| `supabase/functions/search-businesses-serpapi/index.ts` | Adicionar timeout e melhor error handling |
+#### 1. `src/pages/Index.tsx`
+
+Remover toda lógica do Instagram:
+
+```typescript
+// REMOVER:
+- import { useInstagramSearch, InstagramResult } from '@/hooks/useInstagramSearch';
+- type SearchSource = 'maps' | 'instagram' | 'both';
+- const [searchSource, setSearchSource] = useState<SearchSource>('both');
+- const { search: searchInstagram, ... } = useInstagramSearch();
+- Toda lógica de conversão de resultados Instagram
+- Tabs de seleção de fonte (Maps/Instagram/Ambos)
+- Referências a instagramLoading, instagramProgress, isScraping
+- Estatística "fromInstagram"
+```
+
+Simplificar cálculos:
+
+```typescript
+// Antes:
+const estimatedLeads = locations.length * maxResultsPerCity * sources;
+
+// Depois:
+const estimatedLeads = locations.length * maxResultsPerCity;
+```
+
+Simplificar busca:
+
+```typescript
+// Antes:
+const promises: Promise<void>[] = [];
+if (searchSource === 'maps' || searchSource === 'both') { ... }
+if (searchSource === 'instagram' || searchSource === 'both') { ... }
+
+// Depois:
+await searchMaps(keyword, locations, maxResultsPerCity, totalMaxResults, useEnrichment);
+```
+
+#### 2. `src/components/LocationSelector.tsx`
+
+Remover aba "Estado inteiro" e adicionar upload de arquivo:
+
+```typescript
+// Remover TabsTrigger "state" e TabsContent "state"
+
+// Adicionar na aba "multiple":
+<div className="space-y-3 mt-3">
+  <Textarea ... />
+  
+  {/* Novo: Upload de arquivo */}
+  <div className="flex items-center gap-2">
+    <input
+      type="file"
+      accept=".csv,.txt"
+      onChange={handleFileUpload}
+      className="hidden"
+      id="city-file-upload"
+    />
+    <Label 
+      htmlFor="city-file-upload" 
+      className="cursor-pointer flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-muted"
+    >
+      <Upload className="h-4 w-4" />
+      Importar CSV/TXT
+    </Label>
+  </div>
+</div>
+```
+
+Lógica do upload:
+
+```typescript
+const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const text = event.target?.result as string;
+    const lines = text.split(/[\r\n]+/).filter(l => l.trim());
+    
+    let added = 0;
+    lines.forEach(line => {
+      const parts = line.split(/[,;]/).map(p => p.trim());
+      if (parts.length >= 2 && parts[1].length === 2) {
+        // Formato: cidade, UF
+        onAdd({ city: parts[0], state: parts[1].toUpperCase() });
+        added++;
+      } else if (bulkState && parts[0]) {
+        // Apenas cidade, usa estado selecionado
+        onAdd({ city: parts[0], state: bulkState });
+        added++;
+      }
+    });
+    
+    toast({
+      title: 'Cidades importadas',
+      description: `${added} cidades adicionadas do arquivo.`,
+    });
+  };
+  reader.readAsText(file);
+  e.target.value = ''; // Reset input
+};
+```
+
+#### 3. `src/components/ResultsTable.tsx`
+
+Mudar badge de fonte para maior clareza:
+
+```typescript
+// Antes:
+{business.source === 'google_maps' ? (
+  <><Map className="h-3 w-3" /> Maps</>
+) : (
+  <><Instagram className="h-3 w-3" /> IG</>
+)}
+
+// Depois:
+{business.source === 'google_maps' && (
+  <><Map className="h-3 w-3" /> Google</>
+)}
+```
+
+#### 4. Arquivos que podem ser deletados (opcional)
+
+Estes arquivos não serão mais usados pela prospecção:
+
+| Arquivo | Motivo |
+|---------|--------|
+| `src/hooks/useInstagramSearch.ts` | Hook de busca do Instagram |
+| `supabase/functions/search-instagram/index.ts` | Edge function de busca IG |
+| `supabase/functions/scrape-whatsapp/index.ts` | Scraping de perfis IG |
+
+**Nota:** Podemos manter esses arquivos por enquanto caso você queira reativar no futuro.
 
 ---
 
-### Resultado Esperado
+### Interface Final
 
-Após as correções:
-- Cache de busca funcionará corretamente (sem erros de constraint)
-- Buscas repetidas serão mais rápidas (cache funcionando)
-- Erros serão exibidos de forma mais clara ao usuário
-- Logs mais limpos no console do navegador
-- Maior resiliência a falhas temporárias da API Serper
+**Antes (3 abas + seletor de fonte):**
+```
+[Uma cidade] [Várias cidades] [Estado inteiro]
+
+Fontes: [Google Maps] [Instagram] [Ambos]
+```
+
+**Depois (2 abas, simples):**
+```
+[Uma cidade] [Várias cidades]
+
+Cole as cidades ou importe um arquivo CSV/TXT
+[📎 Importar CSV/TXT]
+```
+
+---
+
+### Resultado
+
+- Interface mais limpa e direta
+- Sem confusão sobre fontes de busca
+- Permite subir centenas de cidades de uma vez
+- Remove código não utilizado
+- Mantém apenas a busca que funciona (Google Maps via Serper)
