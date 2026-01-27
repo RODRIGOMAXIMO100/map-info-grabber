@@ -65,18 +65,31 @@ serve(async (req) => {
       const query = `${keyword} em ${location.city}, ${location.state}`;
       console.log(`[Serper] Searching: ${query}`);
 
-      const response = await fetch('https://google.serper.dev/places', {
-        method: 'POST',
-        headers: {
-          'X-API-KEY': SERPER_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          q: query,
-          gl: 'br',
-          hl: 'pt-br',
-        }),
-      });
+      // Create abort controller with 15s timeout
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      let response: Response;
+      try {
+        response = await fetch('https://google.serper.dev/places', {
+          method: 'POST',
+          headers: {
+            'X-API-KEY': SERPER_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            q: query,
+            gl: 'br',
+            hl: 'pt-br',
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+      } catch (err) {
+        clearTimeout(timeout);
+        console.error(`[Serper] Timeout/error for ${location.city}:`, err);
+        continue; // Skip this city, try next
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -104,6 +117,12 @@ serve(async (req) => {
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
+        }
+        
+        // Handle 500+ - Server errors, skip to next city
+        if (response.status >= 500) {
+          console.error(`[Serper] Server error for ${location.city}, skipping`);
+          continue;
         }
         
         continue;

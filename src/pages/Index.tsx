@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin, Award, Filter, Trash2, Globe, TrendingUp } from 'lucide-react';
+import { Search, Download, Loader2, MapPin, CheckCircle2, MessageCircle, Instagram, Star, Map, Sparkles, Zap, Database, Mail, Facebook, Linkedin, Award, Filter, Trash2, Globe, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,14 +60,13 @@ export default function Index() {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setPersistedResults(parsed);
-          console.log(`Loaded ${parsed.length} persisted results`);
         }
       }
       if (savedKeyword) {
         setKeyword(savedKeyword);
       }
-    } catch (e) {
-      console.error('Failed to load persisted results:', e);
+    } catch {
+      // Silently fail on localStorage errors
     }
   }, []);
 
@@ -115,7 +114,7 @@ export default function Index() {
       const { error } = await supabase
         .from('search_cache')
         .delete()
-        .lt('expires_at', new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString());
+        .neq('id', '00000000-0000-0000-0000-000000000000');
       
       if (error) throw error;
       
@@ -123,8 +122,7 @@ export default function Index() {
         title: 'Cache limpo',
         description: 'O cache do banco foi limpo. Novas buscas trarão dados frescos.',
       });
-    } catch (e) {
-      console.error('Failed to clear cache:', e);
+    } catch {
       toast({
         title: 'Erro',
         description: 'Falha ao limpar o cache.',
@@ -623,9 +621,15 @@ export default function Index() {
         )}
 
         {error && (
-          <Card className="border-destructive">
+          <Card className="border-destructive bg-destructive/5">
             <CardContent className="pt-6">
-              <p className="text-destructive">{error}</p>
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-destructive">Erro na busca</p>
+                  <p className="text-sm text-muted-foreground">{error}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
