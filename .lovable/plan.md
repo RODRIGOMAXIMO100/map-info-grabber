@@ -1,72 +1,75 @@
 
-# Plano: Corrigir Visibilidade de Lembretes para Luiz
 
-## Problema Identificado
+# Plano: Corrigir Criacao de Grupos de Cidades
 
-O lembrete agendado para o lead "Euripedes Cavalcante" tem `reminder_created_by = NULL`. Isso acontece porque:
+## Problema Investigado
 
-1. A coluna `reminder_created_by` foi adicionada em 26/01/2026
-2. O lembrete foi criado ou atualizado sem preencher este campo
-3. O sistema filtra lembretes onde `reminder_created_by = user_id` para nao-admins
-4. Como o campo esta vazio, Luiz nao consegue ver o lembrete que criou
+Analisei o codigo e identifiquei possiveis causas:
+
+1. **O formulario de criacao pode estar conflitando** com o formulario pai da pagina de prospecao
+2. **O estado nao esta sendo preservado** quando o usuario troca de aba
+3. **Falta feedback visual** para orientar o usuario no fluxo correto
 
 ---
 
 ## Solucao Proposta
 
-### 1. Correcao Imediata: Atribuir o lembrete ao Luiz
+### 1. Adicionar Logs de Debug Temporarios
 
-Executar uma query para preencher o `reminder_created_by` do lembrete existente com o ID do Luiz (ja que ele e o usuario atribuido ao lead).
-
-```sql
-UPDATE whatsapp_conversations 
-SET reminder_created_by = '8c2d85a0-2390-4ee0-b108-82661d0b6057'
-WHERE id = '52f6ab3b-f136-4bb0-b829-c658599df238'
-AND reminder_at IS NOT NULL;
-```
-
-### 2. Correcao de Codigo: Evitar Futuros Problemas
-
-#### A) Corrigir `handleRemoveReminder` no CRMKanban.tsx
-
-Quando remover um lembrete, limpar tambem o `reminder_created_by`:
+Adicionar `console.log` para verificar se as funcoes estao sendo chamadas corretamente:
 
 ```typescript
-// Linha 565 de CRMKanban.tsx
-.update({ 
-  reminder_at: null, 
-  reminder_created_by: null,  // Adicionar esta linha
-  updated_at: new Date().toISOString() 
-})
+// Em RegionGroupSelector.tsx
+const handleCreateGroup = () => {
+  console.log('handleCreateGroup chamado');
+  console.log('currentLocations:', currentLocations);
+  console.log('newGroupName:', newGroupName);
+  // ... resto do codigo
+};
 ```
 
-#### B) Corrigir `handleRemoveReminder` no WhatsAppChat.tsx
+### 2. Prevenir Submit do Form Pai
 
-Mesmo ajuste para consistencia:
+Adicionar `e.preventDefault()` e `e.stopPropagation()` no handler do Enter:
 
 ```typescript
-// Linha 618-620 de WhatsAppChat.tsx
-.update({ 
-  reminder_at: null, 
-  reminder_created_by: null,  // Adicionar esta linha
-  updated_at: new Date().toISOString() 
-})
+// Linha 157 de RegionGroupSelector.tsx
+onKeyDown={(e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    e.stopPropagation();
+    handleCreateGroup();
+  }
+}}
 ```
 
-#### C) Fallback de Seguranca na Query de Lembretes
+### 3. Adicionar Feedback Visual Melhor
 
-Modificar a logica de filtro para tambem considerar lembretes onde `assigned_to = user_id` como alternativa, caso `reminder_created_by` esteja vazio:
+Melhorar a mensagem quando nao ha cidades selecionadas:
 
 ```typescript
-// Em Reminders.tsx, linha 71-73
-if (!isAdmin && user?.id) {
-  query = query.or(`reminder_created_by.eq.${user.id},and(reminder_created_by.is.null,assigned_to.eq.${user.id})`);
+// Na area de criacao de grupo
+{isCreating && currentLocations.length === 0 && (
+  <div className="text-xs text-amber-600 mt-2">
+    Adicione cidades nas abas "Uma cidade" ou "Varias cidades" primeiro
+  </div>
+)}
+```
+
+### 4. Verificar Persistencia do LocalStorage
+
+Garantir que o localStorage esta funcionando no ambiente:
+
+```typescript
+// Em regionGroups.ts - adicionar log
+export function saveRegionGroup(name: string, locations: Location[]): RegionGroup {
+  console.log('saveRegionGroup chamado', { name, locations });
+  const groups = getRegionGroups();
+  // ... resto
+  console.log('Grupo salvo no localStorage');
+  return newGroup;
 }
 ```
-
-Isso garante que:
-- Lembretes criados pelo usuario sao visiveis (comportamento normal)
-- Lembretes sem criador mas atribuidos ao usuario tambem aparecem (fallback para dados antigos)
 
 ---
 
@@ -74,31 +77,47 @@ Isso garante que:
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/pages/CRMKanban.tsx` | Adicionar `reminder_created_by: null` no `handleRemoveReminder` |
-| `src/pages/WhatsAppChat.tsx` | Adicionar `reminder_created_by: null` no `handleRemoveReminder` |
-| `src/pages/Reminders.tsx` | Adicionar fallback para `assigned_to` quando `reminder_created_by` for null |
-| `src/hooks/useReminderNotifications.ts` | Adicionar mesma logica de fallback para notificacoes |
+| `src/components/prospecting/RegionGroupSelector.tsx` | Prevenir propagacao de eventos, melhorar feedback |
+| `src/lib/regionGroups.ts` | Adicionar logs de debug |
 
 ---
 
-## Fluxo Corrigido
+## Fluxo Correto para Criar Grupos
+
+O usuario precisa seguir este fluxo:
 
 ```text
-Lembrete sem criador definido?
-       |
-       +-- reminder_created_by = user_id? --> Mostra
-       |
-       +-- reminder_created_by IS NULL 
-           AND assigned_to = user_id? --> Mostra (fallback)
-       |
-       +-- Nenhuma condicao? --> Nao mostra
+1. Aba "Uma cidade" ou "Varias cidades"
+   -> Adicionar cidades (ex: Vicosa, Uba, Muriae)
+   -> Cidades aparecem na area abaixo das abas
+
+2. Aba "Grupos"
+   -> Clicar em "Novo Grupo"
+   -> Digitar nome (ex: "Zona da Mata MG")
+   -> Clicar no botao de confirmar (check)
+
+3. Grupo criado e salvo no localStorage
+   -> Aparece na lista de grupos salvos
 ```
+
+---
+
+## Teste Sugerido
+
+Apos as correcoes, pedir ao usuario para:
+
+1. Abrir o Console do navegador (F12)
+2. Adicionar 2-3 cidades na aba "Uma cidade"
+3. Ir para aba "Grupos"
+4. Clicar em "Novo Grupo"
+5. Digitar um nome e confirmar
+6. Verificar os logs no console
 
 ---
 
 ## Resultado Esperado
 
-1. Luiz vera imediatamente o lembrete apos a correcao de dados
-2. Futuros lembretes serao rastreados corretamente
-3. Dados legados (sem criador) ainda serao visiveis para o vendedor atribuido
-4. Remocao de lembretes limpa ambos os campos para consistencia
+- Logs no console mostrarao o fluxo de execucao
+- O grupo sera criado e aparecera na lista
+- Se houver erro, o log indicara onde esta o problema
+
