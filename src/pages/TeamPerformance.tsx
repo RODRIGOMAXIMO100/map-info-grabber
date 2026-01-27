@@ -136,7 +136,7 @@ export default function TeamPerformance() {
       const { data: messages } = await supabase
         .from('whatsapp_messages')
         .select('conversation_id, created_at, sent_by_user_id')
-        .eq('direction', 'out')
+        .eq('direction', 'outgoing')
         .gte('created_at', startDate)
         .lte('created_at', endDate);
 
@@ -144,7 +144,7 @@ export default function TeamPerformance() {
       const { data: todayMessages } = await supabase
         .from('whatsapp_messages')
         .select('conversation_id, created_at, sent_by_user_id')
-        .eq('direction', 'out')
+        .eq('direction', 'outgoing')
         .gte('created_at', todayStart)
         .lte('created_at', todayEnd);
 
