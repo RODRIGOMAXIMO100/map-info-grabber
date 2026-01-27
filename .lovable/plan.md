@@ -1,108 +1,118 @@
 
+## Plano: Corrigir Erros e Limpar Prospecção
 
-## Plano: Lembretes Visíveis Apenas Para Quem Criou
+### Problema Principal Identificado
 
-### Problema Identificado
-Atualmente, os lembretes são armazenados apenas com o campo `reminder_at` na tabela `whatsapp_conversations`. **Não há registro de quem criou o lembrete**, então todos os usuários veem todos os lembretes do sistema.
+Os logs do PostgreSQL mostram erros repetidos:
+```
+"new row for relation \"search_cache\" violates check constraint \"search_cache_search_type_check\""
+```
 
-### Solução Proposta
-Adicionar um novo campo `reminder_created_by` na tabela `whatsapp_conversations` para rastrear o criador do lembrete, e filtrar a exibição para mostrar apenas lembretes criados pelo usuário logado.
+**Causa:** A constraint na tabela `search_cache` só permite os valores `'google_maps'` ou `'instagram'` para o campo `search_type`. Porém, o código em `useBusinessSearch.ts` (linha 257) está tentando inserir `search_type: 'serper'`, que viola essa constraint.
 
 ---
 
 ### Alterações Necessárias
 
-#### 1. Migração SQL - Adicionar Coluna
+#### 1. Migração SQL - Corrigir Constraint
+
+Atualizar a constraint para aceitar `'google_maps'`, que é o valor correto para buscas via Serper (pois os resultados vêm do Google Maps):
 
 ```sql
--- Adicionar coluna para rastrear quem criou o lembrete
-ALTER TABLE public.whatsapp_conversations 
-ADD COLUMN reminder_created_by uuid REFERENCES auth.users(id);
+-- Remover constraint antiga
+ALTER TABLE public.search_cache 
+DROP CONSTRAINT IF EXISTS search_cache_search_type_check;
 
--- Criar índice para melhorar performance de consultas
-CREATE INDEX idx_conversations_reminder_created_by 
-ON public.whatsapp_conversations(reminder_created_by);
+-- Adicionar constraint corrigida (google_maps e instagram)
+ALTER TABLE public.search_cache 
+ADD CONSTRAINT search_cache_search_type_check 
+CHECK (search_type IN ('google_maps', 'instagram'));
+
+-- Limpar entradas inválidas do cache (se houver)
+DELETE FROM public.search_cache 
+WHERE search_type NOT IN ('google_maps', 'instagram');
 ```
 
-#### 2. Atualizar Criação de Lembretes
+#### 2. Corrigir `useBusinessSearch.ts`
 
-**Arquivos a modificar:**
-- `src/pages/CRMKanban.tsx` - função `handleSaveReminder`
-- `src/pages/WhatsAppChat.tsx` - função `handleSaveReminder`
+Mudar `search_type: 'serper'` para `search_type: 'google_maps'`:
 
-**Lógica:**
-Ao salvar um lembrete, incluir o `user.id` no campo `reminder_created_by`:
 ```typescript
-await supabase
-  .from('whatsapp_conversations')
-  .update({ 
-    reminder_at: date.toISOString(),
-    reminder_created_by: user?.id,  // NOVO
-    updated_at: new Date().toISOString() 
-  })
-  .eq('id', conv.id);
+// Linha 257 - ANTES:
+search_type: 'serper',
+
+// DEPOIS:
+search_type: 'google_maps',
 ```
 
-#### 3. Filtrar Lembretes por Criador
+#### 3. Melhorias Adicionais no Hook
 
-**Arquivo:** `src/pages/Reminders.tsx`
-
-Modificar a query para filtrar por `reminder_created_by`:
+**Tratar erro silencioso no cache insert:**
+O `.then()` na linha 264 não trata erros do insert. Melhorar para:
 ```typescript
-const { user, isAdmin } = useAuth();
+supabase.from('search_cache').insert({...})
+  .then(({ error }) => {
+    if (error) {
+      console.error(`[Cache] Erro ao salvar ${location.city}:`, error.message);
+    } else {
+      console.log(`[Cache] Salvo ${location.city} (${locationResults.length})`);
+    }
+  });
+```
 
-let query = supabase
-  .from('whatsapp_conversations')
-  .select('*')
-  .not('reminder_at', 'is', null)
-  .order('reminder_at', { ascending: true });
+#### 4. Limpeza no `Index.tsx`
 
-// Admins veem todos, outros usuários só veem os próprios
-if (!isAdmin && user?.id) {
-  query = query.eq('reminder_created_by', user.id);
+**4.1 Remover console.logs excessivos:**
+- Linha 63: `console.log(`Loaded ${parsed.length} persisted results`);` → Remover
+- Manter apenas logs de erro
+
+**4.2 Melhorar mensagem de erro:**
+Atualmente, erros são mostrados em um Card vermelho simples. Adicionar mais contexto:
+```typescript
+{error && (
+  <Card className="border-destructive bg-destructive/5">
+    <CardContent className="pt-6">
+      <div className="flex items-center gap-3">
+        <AlertTriangle className="h-5 w-5 text-destructive" />
+        <div>
+          <p className="font-medium text-destructive">Erro na busca</p>
+          <p className="text-sm text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+)}
+```
+
+**4.3 Limpar cache corretamente:**
+A função `clearDatabaseCache` (linha 113-133) usa uma lógica estranha que deleta entradas com expire menor que 1 ano no futuro. Simplificar:
+```typescript
+const { error } = await supabase
+  .from('search_cache')
+  .delete()
+  .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+```
+
+#### 5. Melhorias no Edge Function `search-businesses-serpapi`
+
+**5.1 Adicionar tratamento para erro 500:**
+```typescript
+if (response.status >= 500) {
+  console.error(`[Serper] Server error for ${location.city}`);
+  continue; // Skip this city, try next
 }
 ```
 
-#### 4. Filtrar Notificações de Lembretes
-
-**Arquivo:** `src/hooks/useReminderNotifications.ts`
-
-Receber o `userId` como parâmetro e filtrar:
+**5.2 Adicionar timeout:**
 ```typescript
-interface UseReminderNotificationsOptions {
-  conversations: WhatsAppConversation[];
-  userId?: string;  // NOVO
-  isAdmin?: boolean;  // NOVO
-  onReminderTriggered?: (conv: WhatsAppConversation) => void;
-}
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
-// Dentro do checkReminders:
-conversations
-  .filter(conv => {
-    if (!conv.reminder_at) return false;
-    // Admins recebem todas notificações, outros só as próprias
-    if (!isAdmin && userId && conv.reminder_created_by !== userId) return false;
-    return true;
-  })
-  .forEach(...)
-```
-
-#### 5. Atualizar RemindersPanel (CRM)
-
-O `RemindersPanel` recebe as conversas já filtradas pelo CRM Kanban (que já filtra por `assigned_to`). Porém, para garantir consistência, o filtro de lembretes também deve considerar `reminder_created_by`.
-
-#### 6. Limpar ao Remover Lembrete
-
-Quando um lembrete é removido, também limpar o `reminder_created_by`:
-```typescript
-await supabase
-  .from('whatsapp_conversations')
-  .update({ 
-    reminder_at: null, 
-    reminder_created_by: null,  // NOVO
-    updated_at: new Date().toISOString() 
-  })
-  .eq('id', conv.id);
+const response = await fetch('https://google.serper.dev/places', {
+  // ... options
+  signal: controller.signal,
+});
+clearTimeout(timeout);
 ```
 
 ---
@@ -111,29 +121,18 @@ await supabase
 
 | Arquivo | Alteração |
 |---------|-----------|
-| Migração SQL | Adicionar coluna `reminder_created_by` |
-| `src/pages/CRMKanban.tsx` | Salvar `user.id` ao criar lembrete |
-| `src/pages/WhatsAppChat.tsx` | Salvar `user.id` ao criar lembrete |
-| `src/pages/Reminders.tsx` | Filtrar lembretes por `reminder_created_by` |
-| `src/hooks/useReminderNotifications.ts` | Filtrar notificações por criador |
-| `src/types/whatsapp.ts` | Adicionar tipo `reminder_created_by` |
+| Migração SQL | Recriar constraint com valores corretos |
+| `src/hooks/useBusinessSearch.ts` | Corrigir `search_type` de 'serper' → 'google_maps', melhorar error handling |
+| `src/pages/Index.tsx` | Limpar console.logs, melhorar UI de erro, corrigir clearDatabaseCache |
+| `supabase/functions/search-businesses-serpapi/index.ts` | Adicionar timeout e melhor error handling |
 
 ---
 
-### Comportamento Final
+### Resultado Esperado
 
-| Usuário | Vê Lembretes |
-|---------|--------------|
-| Admin | Todos os lembretes do sistema |
-| SDR/Closer | Apenas lembretes que ELE criou |
-
----
-
-### Nota Técnica
-
-Lembretes existentes (criados antes desta mudança) terão `reminder_created_by = null`. Opcionalmente, podemos:
-1. **Ignorar lembretes antigos** para não-admins (mais restritivo)
-2. **Mostrar lembretes antigos** para todos até que sejam recriados (mais permissivo)
-
-A opção 1 é mais segura para privacidade.
-
+Após as correções:
+- Cache de busca funcionará corretamente (sem erros de constraint)
+- Buscas repetidas serão mais rápidas (cache funcionando)
+- Erros serão exibidos de forma mais clara ao usuário
+- Logs mais limpos no console do navegador
+- Maior resiliência a falhas temporárias da API Serper
