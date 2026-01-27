@@ -279,13 +279,9 @@ export function ResultsTable({ results }: ResultsTableProps) {
                   </Badge>
                 )}
                 
-                {business.source && (
+                {business.source === 'google_maps' && (
                   <Badge variant="outline" className="text-xs gap-1">
-                    {business.source === 'google_maps' ? (
-                      <><Map className="h-3 w-3" /> Maps</>
-                    ) : (
-                      <><Instagram className="h-3 w-3" /> IG</>
-                    )}
+                    <Map className="h-3 w-3" /> Google
                   </Badge>
                 )}
                 

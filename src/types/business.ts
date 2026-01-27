@@ -15,7 +15,7 @@ export interface Business {
   place_id: string;
   whatsapp?: string;
   instagram?: string;
-  source?: 'google_maps' | 'instagram';
+  source?: 'google_maps';
   score?: number;
   email?: string;
   facebook?: string;

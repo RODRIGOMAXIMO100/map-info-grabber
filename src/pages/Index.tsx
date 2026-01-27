@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -13,13 +12,10 @@ import { useToast } from '@/hooks/use-toast';
 import { LocationSelector } from '@/components/LocationSelector';
 import { ResultsTable } from '@/components/ResultsTable';
 import { useBusinessSearch } from '@/hooks/useBusinessSearch';
-import { useInstagramSearch, InstagramResult } from '@/hooks/useInstagramSearch';
 import { exportToCSV } from '@/lib/exportCsv';
 import { applyScoring } from '@/lib/leadScoring';
 import { Location, Business } from '@/types/business';
 import { supabase } from '@/integrations/supabase/client';
-
-type SearchSource = 'maps' | 'instagram' | 'both';
 
 const STORAGE_KEY = 'prospecting_results';
 const STORAGE_KEY_KEYWORD = 'prospecting_keyword';
@@ -29,7 +25,6 @@ export default function Index() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [maxResultsPerCity, setMaxResultsPerCity] = useState(20);
   const [totalMaxResults, setTotalMaxResults] = useState(100);
-  const [searchSource, setSearchSource] = useState<SearchSource>('both');
   const [filterWhatsAppOnly, setFilterWhatsAppOnly] = useState(false);
   const [filterEmailOnly, setFilterEmailOnly] = useState(false);
   const [filterSocialOnly, setFilterSocialOnly] = useState(false);
@@ -38,18 +33,14 @@ export default function Index() {
   const [persistedResults, setPersistedResults] = useState<Business[]>([]);
   const [useEnrichment, setUseEnrichment] = useState(false);
 
-  // Estimate total leads
+  // Estimate total leads (only Google Maps now)
   const estimatedLeads = useMemo(() => {
-    const sources = searchSource === 'both' ? 2 : 1;
-    return locations.length * maxResultsPerCity * sources;
-  }, [locations.length, maxResultsPerCity, searchSource]);
+    return locations.length * maxResultsPerCity;
+  }, [locations.length, maxResultsPerCity]);
   
-  const { search: searchMaps, cancel: cancelMaps, results: mapsResults, isLoading: mapsLoading, error: mapsError, progress: mapsProgress, apiUsage } = useBusinessSearch();
-  const { search: searchInstagram, scrapeProfiles, results: instagramResults, isLoading: instagramLoading, isScraping, error: instagramError, progress: instagramProgress } = useInstagramSearch();
+  const { search: searchMaps, cancel: cancelMaps, results: mapsResults, isLoading, error, progress: mapsProgress, apiUsage } = useBusinessSearch();
   
   const { toast } = useToast();
-
-  const isLoading = mapsLoading || instagramLoading;
 
   // Load persisted results on mount
   useEffect(() => {
@@ -72,30 +63,13 @@ export default function Index() {
 
   // Persist results when they change
   useEffect(() => {
-    if (mapsResults.length > 0 || instagramResults.length > 0) {
+    if (mapsResults.length > 0) {
       const mapsWithSource = mapsResults.map(r => ({ ...r, source: 'google_maps' as const }));
-      const convertedIg: Business[] = instagramResults.map(ig => ({
-        name: ig.name,
-        address: `${ig.city}, ${ig.state}`,
-        phone: ig.phone || '',
-        website: ig.profileUrl,
-        rating: null,
-        reviews: null,
-        city: ig.city,
-        state: ig.state,
-        place_id: `ig_${ig.username}`,
-        whatsapp: ig.whatsapp,
-        instagram: ig.instagram,
-        source: 'instagram' as const,
-        score: ig.score,
-      }));
-      
-      const all = [...mapsWithSource, ...convertedIg];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(mapsWithSource));
       localStorage.setItem(STORAGE_KEY_KEYWORD, keyword);
-      setPersistedResults(all);
+      setPersistedResults(mapsWithSource);
     }
-  }, [mapsResults, instagramResults, keyword]);
+  }, [mapsResults, keyword]);
 
   // Clear persisted results
   const clearPersistedResults = useCallback(() => {
@@ -131,33 +105,14 @@ export default function Index() {
     }
   }, [toast]);
 
-  // Convert Instagram results to Business format for unified display
-  const convertedInstagramResults: Business[] = useMemo(() => {
-    return instagramResults.map(ig => ({
-      name: ig.name,
-      address: `${ig.city}, ${ig.state}`,
-      phone: ig.phone || '',
-      website: ig.profileUrl,
-      rating: null,
-      reviews: null,
-      city: ig.city,
-      state: ig.state,
-      place_id: `ig_${ig.username}`,
-      whatsapp: ig.whatsapp,
-      instagram: ig.instagram,
-      source: 'instagram' as const,
-      score: ig.score,
-    }));
-  }, [instagramResults]);
-
   // Combine and deduplicate results with scoring
   const combinedResults = useMemo(() => {
     const mapsWithSource = mapsResults.map(r => ({ ...r, source: 'google_maps' as const }));
-    let all = [...mapsWithSource, ...convertedInstagramResults];
+    let all: Business[] = [...mapsWithSource];
     
     // Use persisted results if no current results
     if (all.length === 0 && persistedResults.length > 0) {
-      all = persistedResults;
+      all = persistedResults.map(r => ({ ...r, source: r.source || 'google_maps' as const }));
     }
     
     // Deduplicate by phone or name similarity
@@ -170,7 +125,7 @@ export default function Index() {
     });
     
     return applyScoring(unique).sort((a, b) => (b.score || 0) - (a.score || 0));
-  }, [mapsResults, convertedInstagramResults, persistedResults]);
+  }, [mapsResults, persistedResults]);
 
   // Extract unique categories
   const categories = useMemo(() => {
@@ -242,18 +197,8 @@ export default function Index() {
       return;
     }
     
-    // Search based on selected sources with total limit
-    const promises: Promise<void>[] = [];
-    
-    if (searchSource === 'maps' || searchSource === 'both') {
-      promises.push(searchMaps(keyword, locations, maxResultsPerCity, totalMaxResults, useEnrichment));
-    }
-    
-    if (searchSource === 'instagram' || searchSource === 'both') {
-      promises.push(searchInstagram(keyword, locations, maxResultsPerCity, totalMaxResults));
-    }
-    
-    await Promise.all(promises);
+    // Search Google Maps via Serper
+    await searchMaps(keyword, locations, maxResultsPerCity, totalMaxResults, useEnrichment);
     
     toast({
       title: 'Busca concluída!',
@@ -277,9 +222,7 @@ export default function Index() {
     });
   };
 
-  const currentProgress = mapsLoading ? mapsProgress : instagramProgress;
-  const progressPercent = currentProgress.total > 0 ? (currentProgress.current / currentProgress.total) * 100 : 0;
-  const showScrapingIndicator = isScraping;
+  const progressPercent = mapsProgress.total > 0 ? (mapsProgress.current / mapsProgress.total) * 100 : 0;
 
   const stats = useMemo(() => ({
     total: filteredResults.length,
@@ -288,12 +231,8 @@ export default function Index() {
     instagram: filteredResults.filter(r => r.instagram).length,
     facebook: filteredResults.filter(r => r.facebook).length,
     linkedin: filteredResults.filter(r => r.linkedin).length,
-    fromMaps: filteredResults.filter(r => r.source === 'google_maps').length,
-    fromInstagram: filteredResults.filter(r => r.source === 'instagram').length,
     highScore: filteredResults.filter(r => (r.score || 0) >= 4).length,
   }), [filteredResults]);
-
-  const error = mapsError || instagramError;
 
   // Calculate API usage totals
   const totalApiCalls = apiUsage.serper + apiUsage.cache;
@@ -307,7 +246,7 @@ export default function Index() {
             <h1 className="text-3xl font-bold">Prospecção Inteligente</h1>
           </div>
           <p className="text-muted-foreground">
-            Busque leads no Google Maps e Instagram com extração automática de WhatsApp
+            Busque leads no Google Maps com extração automática de WhatsApp
           </p>
         </div>
 
@@ -317,7 +256,7 @@ export default function Index() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-green-600" />
-                <span className="font-medium text-green-700 dark:text-green-400">Serper API Ativo</span>
+                <span className="font-medium text-green-700 dark:text-green-400">Google Maps via Serper</span>
               </div>
               <div className="flex flex-wrap gap-3 text-sm">
                 <Badge variant="outline" className="gap-1.5 border-blue-500/50 text-blue-600">
@@ -340,7 +279,7 @@ export default function Index() {
           <CardHeader>
             <CardTitle>Parâmetros de Busca</CardTitle>
             <CardDescription>
-              Configure sua busca multi-fonte para encontrar leads qualificados
+              Configure sua busca para encontrar leads qualificados no Google Maps
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -352,26 +291,6 @@ export default function Index() {
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                 />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Fontes de Busca</label>
-                <Tabs value={searchSource} onValueChange={(v) => setSearchSource(v as SearchSource)} className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="maps" className="flex items-center gap-2">
-                      <Map className="h-4 w-4" />
-                      Google Maps
-                    </TabsTrigger>
-                    <TabsTrigger value="instagram" className="flex items-center gap-2">
-                      <Instagram className="h-4 w-4" />
-                      Instagram
-                    </TabsTrigger>
-                    <TabsTrigger value="both" className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      Ambos
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
               </div>
 
               <div>
@@ -580,18 +499,11 @@ export default function Index() {
               <div className="flex flex-col items-center gap-4">
                 <div className="relative">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  {showScrapingIndicator && (
-                    <Zap className="h-4 w-4 text-yellow-500 absolute -top-1 -right-1 animate-pulse" />
-                  )}
                 </div>
                 <div className="text-center space-y-1">
-                  <p className="font-medium">
-                    {mapsLoading && !instagramLoading && 'Buscando no Google Maps...'}
-                    {instagramLoading && !isScraping && 'Buscando perfis no Instagram...'}
-                    {isScraping && 'Extraindo WhatsApp dos perfis...'}
-                  </p>
+                  <p className="font-medium">Buscando no Google Maps...</p>
                   <p className="text-sm text-muted-foreground">
-                    {currentProgress.currentCity}
+                    {mapsProgress.currentCity}
                   </p>
                   {combinedResults.length > 0 && (
                     <p className="text-sm text-green-600 dark:text-green-400 mt-2 flex items-center justify-center gap-1">
@@ -671,10 +583,6 @@ export default function Index() {
                   <Badge variant="outline" className="gap-1.5">
                     <Linkedin className="h-3.5 w-3.5 text-sky-500" />
                     {stats.linkedin} LinkedIn
-                  </Badge>
-                  <Badge variant="outline" className="gap-1.5">
-                    <Map className="h-3.5 w-3.5 text-blue-500" />
-                    {stats.fromMaps} do Maps
                   </Badge>
                 </div>
               )}
