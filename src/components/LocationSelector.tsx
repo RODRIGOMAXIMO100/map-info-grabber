@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, X, MapPin, Building2, ChevronDown, ChevronUp, Upload } from 'lucide-react';
+import { Plus, X, MapPin, Building2, ChevronDown, ChevronUp, Upload, Folder } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Location, BRAZILIAN_STATES } from '@/types/business';
 import { useToast } from '@/hooks/use-toast';
+import { RegionGroupSelector } from '@/components/prospecting/RegionGroupSelector';
 
 interface LocationSelectorProps {
   locations: Location[];
@@ -136,10 +137,23 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
       ? 'h-[220px]' 
       : 'h-[140px]';
 
+  // Handle loading a group
+  const handleLoadGroup = (groupLocations: Location[]) => {
+    groupLocations.forEach(loc => {
+      // Avoid duplicates
+      const exists = locations.some(
+        existing => existing.city.toLowerCase() === loc.city.toLowerCase() && existing.state === loc.state
+      );
+      if (!exists) {
+        onAdd(loc);
+      }
+    });
+  };
+
   return (
     <div className="space-y-4">
       <Tabs defaultValue="single" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="single" className="gap-1.5 text-xs sm:text-sm">
             <Building2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Uma cidade</span>
@@ -149,6 +163,11 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
             <MapPin className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Várias cidades</span>
             <span className="sm:hidden">Várias</span>
+          </TabsTrigger>
+          <TabsTrigger value="groups" className="gap-1.5 text-xs sm:text-sm">
+            <Folder className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Grupos</span>
+            <span className="sm:hidden">Grupos</span>
           </TabsTrigger>
         </TabsList>
 
@@ -238,6 +257,13 @@ export function LocationSelector({ locations, onAdd, onRemove }: LocationSelecto
               </span>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="groups" className="mt-3">
+          <RegionGroupSelector 
+            currentLocations={locations} 
+            onLoadGroup={handleLoadGroup} 
+          />
         </TabsContent>
       </Tabs>
 

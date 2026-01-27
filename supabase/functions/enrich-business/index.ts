@@ -33,6 +33,20 @@ function extractWhatsApp(phone: string | null): string {
   return `https://wa.me/${digits}`;
 }
 
+// Extract Instagram username directly from URL (when website IS an Instagram link)
+function extractInstagramFromUrl(url: string): string {
+  if (!url) return '';
+  const match = url.match(/instagram\.com\/([a-zA-Z0-9_.]+)/i);
+  if (match && match[1]) {
+    const username = match[1].replace(/[\/\?#].*$/, '');
+    // Exclude reserved paths
+    if (!['p', 'reel', 'reels', 'stories', 'tv', 'explore', 'accounts', 'direct'].includes(username.toLowerCase())) {
+      return `https://instagram.com/${username}`;
+    }
+  }
+  return '';
+}
+
 // Extract Instagram from text/html
 function extractInstagram(text: string): string {
   const patterns = [
@@ -113,6 +127,17 @@ serve(async (req) => {
 
     for (const business of businesses) {
       const enriched: any = { ...business };
+
+      // First, check if the website itself is an Instagram URL
+      if (business.website) {
+        const directInstagram = extractInstagramFromUrl(business.website);
+        if (directInstagram) {
+          enriched.instagram = directInstagram;
+          console.log(`[Enrich] Direct Instagram detected from URL: ${directInstagram}`);
+          enrichedResults.push(enriched);
+          continue; // Skip Firecrawl, already got Instagram
+        }
+      }
 
       // If we have a website and Firecrawl is available, scrape it
       if (business.website && FIRECRAWL_API_KEY && useFirecrawl) {
