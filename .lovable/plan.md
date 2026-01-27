@@ -1,75 +1,56 @@
 
+# Plano: Corrigir Dados Zerados na Pagina de Equipe
 
-# Plano: Corrigir Criacao de Grupos de Cidades
+## Problema Identificado
 
-## Problema Investigado
+A pagina de desempenho da equipe mostra todos os dados zerados porque a query de mensagens esta filtrando pelo valor errado.
 
-Analisei o codigo e identifiquei possiveis causas:
+| Valor na Query | Valor no Banco |
+|----------------|----------------|
+| `'out'` | `'outgoing'` |
 
-1. **O formulario de criacao pode estar conflitando** com o formulario pai da pagina de prospecao
-2. **O estado nao esta sendo preservado** quando o usuario troca de aba
-3. **Falta feedback visual** para orientar o usuario no fluxo correto
+A query busca por `direction = 'out'` mas o banco armazena `'outgoing'`. Resultado: **zero mensagens encontradas**.
+
+## Evidencias do Banco
+
+```text
+Mensagens existentes:
+- 923 mensagens 'outgoing'
+- 1917 mensagens 'incoming'
+
+Mensagens encontradas pela query atual:
+- 0 mensagens (porque busca por 'out')
+```
+
+## Problema Secundario: sent_by_user_id
+
+Todas as mensagens enviadas tem `sent_by_user_id = NULL`. Isso acontece porque a edge function `whatsapp-send-message` nao recebe nem salva o ID do usuario que enviou. O codigo atual usa um fallback para `assigned_to` da conversa, o que funciona, mas nao e preciso.
 
 ---
 
-## Solucao Proposta
+## Solucao
 
-### 1. Adicionar Logs de Debug Temporarios
+### 1. Corrigir Filtro de Direction (Correcao Principal)
 
-Adicionar `console.log` para verificar se as funcoes estao sendo chamadas corretamente:
-
-```typescript
-// Em RegionGroupSelector.tsx
-const handleCreateGroup = () => {
-  console.log('handleCreateGroup chamado');
-  console.log('currentLocations:', currentLocations);
-  console.log('newGroupName:', newGroupName);
-  // ... resto do codigo
-};
-```
-
-### 2. Prevenir Submit do Form Pai
-
-Adicionar `e.preventDefault()` e `e.stopPropagation()` no handler do Enter:
+Alterar as duas queries em `TeamPerformance.tsx` de:
 
 ```typescript
-// Linha 157 de RegionGroupSelector.tsx
-onKeyDown={(e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    e.stopPropagation();
-    handleCreateGroup();
-  }
-}}
+.eq('direction', 'out')
 ```
 
-### 3. Adicionar Feedback Visual Melhor
-
-Melhorar a mensagem quando nao ha cidades selecionadas:
+Para:
 
 ```typescript
-// Na area de criacao de grupo
-{isCreating && currentLocations.length === 0 && (
-  <div className="text-xs text-amber-600 mt-2">
-    Adicione cidades nas abas "Uma cidade" ou "Varias cidades" primeiro
-  </div>
-)}
+.eq('direction', 'outgoing')
 ```
 
-### 4. Verificar Persistencia do LocalStorage
+**Linhas afetadas**: 139 e 147
 
-Garantir que o localStorage esta funcionando no ambiente:
+### 2. (Opcional) Rastrear sent_by_user_id
 
-```typescript
-// Em regionGroups.ts - adicionar log
-export function saveRegionGroup(name: string, locations: Location[]): RegionGroup {
-  console.log('saveRegionGroup chamado', { name, locations });
-  const groups = getRegionGroups();
-  // ... resto
-  console.log('Grupo salvo no localStorage');
-  return newGroup;
-}
-```
+Para metricas mais precisas no futuro, podemos:
+- Passar o `user_id` do frontend para a edge function `whatsapp-send-message`
+- Salvar na coluna `sent_by_user_id` da mensagem
 
 ---
 
@@ -77,47 +58,27 @@ export function saveRegionGroup(name: string, locations: Location[]): RegionGrou
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/prospecting/RegionGroupSelector.tsx` | Prevenir propagacao de eventos, melhorar feedback |
-| `src/lib/regionGroups.ts` | Adicionar logs de debug |
+| `src/pages/TeamPerformance.tsx` | Trocar `'out'` por `'outgoing'` nas linhas 139 e 147 |
 
 ---
 
-## Fluxo Correto para Criar Grupos
+## Impacto Esperado
 
-O usuario precisa seguir este fluxo:
+Apos a correcao:
+- 923 mensagens serao encontradas
+- Metricas de mensagens, tempo ativo e conversas aparecerao corretamente
+- Ranking de vendedores funcionara
 
-```text
-1. Aba "Uma cidade" ou "Varias cidades"
-   -> Adicionar cidades (ex: Vicosa, Uba, Muriae)
-   -> Cidades aparecem na area abaixo das abas
+---
 
-2. Aba "Grupos"
-   -> Clicar em "Novo Grupo"
-   -> Digitar nome (ex: "Zona da Mata MG")
-   -> Clicar no botao de confirmar (check)
+## Correcao Simples
 
-3. Grupo criado e salvo no localStorage
-   -> Aparece na lista de grupos salvos
+A correcao e uma mudanca de duas linhas:
+
+```typescript
+// Linha 139: Query de mensagens no periodo
+.eq('direction', 'outgoing')  // era 'out'
+
+// Linha 147: Query de mensagens de hoje
+.eq('direction', 'outgoing')  // era 'out'
 ```
-
----
-
-## Teste Sugerido
-
-Apos as correcoes, pedir ao usuario para:
-
-1. Abrir o Console do navegador (F12)
-2. Adicionar 2-3 cidades na aba "Uma cidade"
-3. Ir para aba "Grupos"
-4. Clicar em "Novo Grupo"
-5. Digitar um nome e confirmar
-6. Verificar os logs no console
-
----
-
-## Resultado Esperado
-
-- Logs no console mostrarao o fluxo de execucao
-- O grupo sera criado e aparecera na lista
-- Se houver erro, o log indicara onde esta o problema
-
