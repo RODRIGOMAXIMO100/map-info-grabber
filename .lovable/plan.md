@@ -1,143 +1,104 @@
 
-# Plano: Corrigir Extração de Instagram + Grupos de Regiões
+# Plano: Corrigir Visibilidade de Lembretes para Luiz
 
-## Diagnóstico do Problema com Instagram
+## Problema Identificado
 
-Analisando os logs da ultima busca:
+O lembrete agendado para o lead "Euripedes Cavalcante" tem `reminder_created_by = NULL`. Isso acontece porque:
 
-| Empresa | Website | Resultado |
-|---------|---------|-----------|
-| Doce Sonho | zapesite.com.br/doce-sonho | Instagram encontrado |
-| Cantinho dos Sonhos | instagram.com/cantinhodossonhos_vicosa | Erro 403 (bloqueado) |
-
-### Causa Raiz
-
-1. **Funciona corretamente** quando o site e um dominio proprio - Firecrawl consegue scrape
-2. **Falha** quando o "website" e uma URL do Instagram - o Firecrawl nao consegue acessar Instagram diretamente (retorna 403)
-3. **Das 10 empresas encontradas**, apenas 2 tinham website para enriquecer
-4. Das 2, 1 era link direto do Instagram (que falha)
-
-### Solucao: Detectar URLs de Instagram antes de tentar scrape
-
-Modificar o edge function `enrich-business` para:
-1. Identificar se o website ja e um link do Instagram
-2. Se for, extrair o username diretamente da URL (sem chamar Firecrawl)
-3. Economiza creditos e evita erros 403
+1. A coluna `reminder_created_by` foi adicionada em 26/01/2026
+2. O lembrete foi criado ou atualizado sem preencher este campo
+3. O sistema filtra lembretes onde `reminder_created_by = user_id` para nao-admins
+4. Como o campo esta vazio, Luiz nao consegue ver o lembrete que criou
 
 ---
 
-## Nova Feature: Grupos de Regioes
+## Solucao Proposta
 
-### O que e
+### 1. Correcao Imediata: Atribuir o lembrete ao Luiz
 
-O usuario podera criar e salvar colecoes de cidades com um nome, exemplo:
-- "Zona da Mata MG" = Vicosa, Uba, Muriae, Cataguases
-- "Interior SP" = Campinas, Ribeirao Preto, Sorocaba, etc
+Executar uma query para preencher o `reminder_created_by` do lembrete existente com o ID do Luiz (ja que ele e o usuario atribuido ao lead).
 
-### Armazenamento
-
-**Opcao 1**: LocalStorage (mais simples, sem banco)
-- Prós: Rapido de implementar, funciona offline
-- Contras: Perdido se trocar de navegador/limpar dados
-
-**Opcao 2**: Tabela no banco (recomendado para persistencia)
-- Prós: Dados salvos permanentemente, sincroniza entre dispositivos
-- Contras: Requer migracao
-
-**Recomendado**: LocalStorage primeiro (implementacao rapida), com opcao futura de migrar para banco.
-
-### Interface
-
-```text
-+------------------------------------------+
-| [Grupos Salvos]          [+ Novo Grupo]  |
-+------------------------------------------+
-| Zona da Mata MG (5 cidades)    [Usar]    |
-| Interior SP (8 cidades)        [Usar]    |
-| Grande BH (12 cidades)         [Usar]    |
-+------------------------------------------+
+```sql
+UPDATE whatsapp_conversations 
+SET reminder_created_by = '8c2d85a0-2390-4ee0-b108-82661d0b6057'
+WHERE id = '52f6ab3b-f136-4bb0-b829-c658599df238'
+AND reminder_at IS NOT NULL;
 ```
 
-Botoes:
-- **Usar**: Carrega todas as cidades do grupo no seletor
-- **Editar**: Permite adicionar/remover cidades
-- **Excluir**: Remove o grupo
+### 2. Correcao de Codigo: Evitar Futuros Problemas
 
-### Fluxo de Criacao
+#### A) Corrigir `handleRemoveReminder` no CRMKanban.tsx
 
-1. Usuario adiciona cidades no seletor normalmente
-2. Clica em "Salvar como Grupo"
-3. Digita um nome (ex: "Zona da Mata MG")
-4. Grupo e salvo e aparece na lista
-
----
-
-## Alteracoes Necessarias
-
-### 1. Edge Function enrich-business (Instagram fix)
-
-Adicionar deteccao de URL do Instagram antes de tentar Firecrawl:
+Quando remover um lembrete, limpar tambem o `reminder_created_by`:
 
 ```typescript
-// Detectar se website ja e Instagram
-function extractInstagramFromUrl(url: string): string {
-  const match = url.match(/instagram\.com\/([a-zA-Z0-9_.]+)/i);
-  if (match && match[1]) {
-    return `https://instagram.com/${match[1]}`;
-  }
-  return '';
-}
+// Linha 565 de CRMKanban.tsx
+.update({ 
+  reminder_at: null, 
+  reminder_created_by: null,  // Adicionar esta linha
+  updated_at: new Date().toISOString() 
+})
+```
 
-// No loop de enriquecimento:
-if (business.website) {
-  // Checar se o proprio website e um link do Instagram
-  const directInstagram = extractInstagramFromUrl(business.website);
-  if (directInstagram) {
-    enriched.instagram = directInstagram;
-    // NAO chamar Firecrawl, economiza creditos
-  } else if (FIRECRAWL_API_KEY && useFirecrawl) {
-    // Scrape normal com Firecrawl
-  }
+#### B) Corrigir `handleRemoveReminder` no WhatsAppChat.tsx
+
+Mesmo ajuste para consistencia:
+
+```typescript
+// Linha 618-620 de WhatsAppChat.tsx
+.update({ 
+  reminder_at: null, 
+  reminder_created_by: null,  // Adicionar esta linha
+  updated_at: new Date().toISOString() 
+})
+```
+
+#### C) Fallback de Seguranca na Query de Lembretes
+
+Modificar a logica de filtro para tambem considerar lembretes onde `assigned_to = user_id` como alternativa, caso `reminder_created_by` esteja vazio:
+
+```typescript
+// Em Reminders.tsx, linha 71-73
+if (!isAdmin && user?.id) {
+  query = query.or(`reminder_created_by.eq.${user.id},and(reminder_created_by.is.null,assigned_to.eq.${user.id})`);
 }
 ```
 
-### 2. Novo Componente: RegionGroupSelector
-
-| Arquivo | Descricao |
-|---------|-----------|
-| `src/components/prospecting/RegionGroupSelector.tsx` | Componente para listar/criar/usar grupos |
-
-### 3. Integrar no LocationSelector
-
-Adicionar nova aba "Grupos Salvos" no TabsList do LocationSelector.
-
-### 4. LocalStorage Helper
-
-| Arquivo | Descricao |
-|---------|-----------|
-| `src/lib/regionGroups.ts` | Funcoes para salvar/carregar/deletar grupos |
+Isso garante que:
+- Lembretes criados pelo usuario sao visiveis (comportamento normal)
+- Lembretes sem criador mas atribuidos ao usuario tambem aparecem (fallback para dados antigos)
 
 ---
 
-## Arquivos a Modificar/Criar
+## Arquivos a Modificar
 
-| Arquivo | Acao | Descricao |
-|---------|------|-----------|
-| `supabase/functions/enrich-business/index.ts` | Modificar | Detectar Instagram em URLs |
-| `src/components/prospecting/RegionGroupSelector.tsx` | Criar | Componente de grupos |
-| `src/lib/regionGroups.ts` | Criar | Helpers de localStorage |
-| `src/components/LocationSelector.tsx` | Modificar | Adicionar aba de grupos |
+| Arquivo | Alteracao |
+|---------|-----------|
+| `src/pages/CRMKanban.tsx` | Adicionar `reminder_created_by: null` no `handleRemoveReminder` |
+| `src/pages/WhatsAppChat.tsx` | Adicionar `reminder_created_by: null` no `handleRemoveReminder` |
+| `src/pages/Reminders.tsx` | Adicionar fallback para `assigned_to` quando `reminder_created_by` for null |
+| `src/hooks/useReminderNotifications.ts` | Adicionar mesma logica de fallback para notificacoes |
+
+---
+
+## Fluxo Corrigido
+
+```text
+Lembrete sem criador definido?
+       |
+       +-- reminder_created_by = user_id? --> Mostra
+       |
+       +-- reminder_created_by IS NULL 
+           AND assigned_to = user_id? --> Mostra (fallback)
+       |
+       +-- Nenhuma condicao? --> Nao mostra
+```
 
 ---
 
 ## Resultado Esperado
 
-### Instagram Fix
-- URLs do Instagram serao detectadas automaticamente
-- Economiza creditos Firecrawl
-- Elimina erros 403
-
-### Grupos de Regioes
-- Usuario cria grupo "Zona da Mata MG" com 5 cidades
-- Proxima vez, clica em "Usar" e todas as 5 cidades sao carregadas
-- Nao precisa mais digitar cidade por cidade
+1. Luiz vera imediatamente o lembrete apos a correcao de dados
+2. Futuros lembretes serao rastreados corretamente
+3. Dados legados (sem criador) ainda serao visiveis para o vendedor atribuido
+4. Remocao de lembretes limpa ambos os campos para consistencia
