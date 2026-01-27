@@ -44,6 +44,10 @@ export function RegionGroupSelector({ currentLocations, onLoadGroup }: RegionGro
   }, []);
 
   const handleCreateGroup = () => {
+    console.log('[RegionGroupSelector] handleCreateGroup chamado');
+    console.log('[RegionGroupSelector] currentLocations:', currentLocations);
+    console.log('[RegionGroupSelector] newGroupName:', newGroupName);
+    
     if (!newGroupName.trim()) {
       toast({
         title: 'Nome obrigatório',
@@ -63,6 +67,7 @@ export function RegionGroupSelector({ currentLocations, onLoadGroup }: RegionGro
     }
 
     const newGroup = saveRegionGroup(newGroupName, currentLocations);
+    console.log('[RegionGroupSelector] Grupo criado:', newGroup);
     setGroups([...groups, newGroup]);
     setNewGroupName('');
     setIsCreating(false);
@@ -149,12 +154,24 @@ export function RegionGroupSelector({ currentLocations, onLoadGroup }: RegionGro
 
       {/* Create new group form */}
       {isCreating && (
-        <div className="flex gap-2 p-3 bg-muted/50 rounded-md border">
+        <div className="space-y-2">
+          {currentLocations.length === 0 && (
+            <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-md border border-amber-200 dark:border-amber-800">
+              ⚠️ Adicione cidades nas abas "Uma cidade" ou "Várias cidades" primeiro
+            </div>
+          )}
+          <div className="flex gap-2 p-3 bg-muted/50 rounded-md border">
           <Input
             placeholder="Nome do grupo (ex: Zona da Mata MG)"
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCreateGroup();
+              }
+            }}
             className="flex-1"
             autoFocus
           />
@@ -164,6 +181,7 @@ export function RegionGroupSelector({ currentLocations, onLoadGroup }: RegionGro
           <Button type="button" size="sm" variant="ghost" onClick={() => { setIsCreating(false); setNewGroupName(''); }}>
             <X className="h-4 w-4" />
           </Button>
+          </div>
         </div>
       )}
 
