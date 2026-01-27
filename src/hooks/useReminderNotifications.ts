@@ -60,8 +60,12 @@ export function useReminderNotifications({
       if (!conv.reminder_at) return;
       if (notifiedIds.current.has(conv.id)) return;
       
-      // Non-admins only get notifications for reminders they created
-      if (!isAdmin && userId && conv.reminder_created_by !== userId) return;
+      // Non-admins only get notifications for reminders they created OR where creator is null but assigned to them
+      if (!isAdmin && userId) {
+        const isCreator = conv.reminder_created_by === userId;
+        const isFallbackAssigned = !conv.reminder_created_by && conv.assigned_to === userId;
+        if (!isCreator && !isFallbackAssigned) return;
+      }
 
       const reminderTime = new Date(conv.reminder_at).getTime();
       
