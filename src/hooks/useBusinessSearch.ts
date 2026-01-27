@@ -53,8 +53,9 @@ async function runWithConcurrency<T>(
   return results;
 }
 
-function generateCacheKey(keyword: string, city: string, state: string, maxResults: number): string {
-  return `serper_${keyword.toLowerCase().trim()}_${city.toLowerCase()}_${state}_${maxResults}`;
+function generateCacheKey(keyword: string, city: string, state: string, maxResults: number, enriched: boolean = false): string {
+  const suffix = enriched ? '_enriched' : '';
+  return `serper_${keyword.toLowerCase().trim()}_${city.toLowerCase()}_${state}_${maxResults}${suffix}`;
 }
 
 export function useBusinessSearch() {
@@ -217,7 +218,7 @@ export function useBusinessSearch() {
 
       // Check cache for each location
       const cacheChecks = locations.map(async (location) => {
-        const cacheKey = generateCacheKey(keyword, location.city, location.state, maxResultsPerCity);
+        const cacheKey = generateCacheKey(keyword, location.city, location.state, maxResultsPerCity, useEnrichment);
         
         const { data: cached } = await supabase
           .from('search_cache')
@@ -269,7 +270,9 @@ export function useBusinessSearch() {
           currentCity: `Buscando ${tasksToFetch.length} cidade(s)...` 
         });
 
-        const fetchTasks = tasksToFetch.map(({ location, cacheKey }) => async () => {
+        const fetchTasks = tasksToFetch.map(({ location }) => async () => {
+          // Generate cache key with enrichment flag
+          const cacheKey = generateCacheKey(keyword, location.city, location.state, maxResultsPerCity, useEnrichment);
           if (abortController.current?.signal.aborted) return [];
           if (allResults.length >= totalMax) return [];
           
