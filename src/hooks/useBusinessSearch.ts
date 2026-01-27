@@ -254,14 +254,18 @@ export function useBusinessSearch() {
             if (locationResults.length > 0) {
               supabase.from('search_cache').insert({
                 cache_key: cacheKey,
-                search_type: 'serper',
+                search_type: 'google_maps',
                 keyword: keyword.toLowerCase().trim(),
                 city: location.city,
                 state: location.state,
                 results: locationResults as any,
                 result_count: locationResults.length,
                 expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-              }).then(() => console.log(`[Serper] Cached ${location.city} (${locationResults.length} results)`));
+              }).then(({ error }) => {
+                if (error) {
+                  console.error(`[Cache] Erro ao salvar ${location.city}:`, error.message);
+                }
+              });
             }
 
             return locationResults;
