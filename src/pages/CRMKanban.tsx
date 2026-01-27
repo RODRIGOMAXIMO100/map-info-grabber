@@ -562,7 +562,7 @@ export default function CRMKanban() {
     try {
       await supabase
         .from('whatsapp_conversations')
-        .update({ reminder_at: null, updated_at: new Date().toISOString() })
+        .update({ reminder_at: null, reminder_created_by: null, updated_at: new Date().toISOString() })
         .eq('id', targetLead.id);
 
       toast({ title: 'Lembrete removido' });

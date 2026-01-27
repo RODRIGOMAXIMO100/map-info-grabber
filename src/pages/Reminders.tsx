@@ -67,9 +67,9 @@ export default function Reminders() {
         .not('reminder_at', 'is', null)
         .order('reminder_at', { ascending: true });
 
-      // Non-admins only see reminders they created
+      // Non-admins see reminders they created OR where creator is null but assigned to them
       if (!isAdmin && user?.id) {
-        query = query.eq('reminder_created_by', user.id);
+        query = query.or(`reminder_created_by.eq.${user.id},and(reminder_created_by.is.null,assigned_to.eq.${user.id})`);
       }
 
       const { data, error } = await query;

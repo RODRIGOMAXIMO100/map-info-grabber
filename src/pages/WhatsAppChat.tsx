@@ -617,6 +617,7 @@ export default function WhatsAppChat() {
       .from('whatsapp_conversations')
       .update({ 
         reminder_at: null, 
+        reminder_created_by: null,
         updated_at: new Date().toISOString() 
       })
       .eq('id', selectedConversation.id);
