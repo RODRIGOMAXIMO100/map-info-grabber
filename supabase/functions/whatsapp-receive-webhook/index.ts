@@ -636,10 +636,13 @@ serve(async (req) => {
       }
 
       // Update name - for groups, update if currently generic "Grupo"
-      if (isGroup && senderName && existingConv.name === 'Grupo') {
+      // IMPORTANT: Only update name when message comes FROM the contact, not from our instance
+      // When isFromMe=true, senderName is the instance name, not the contact name
+      if (isGroup && senderName && existingConv.name === 'Grupo' && !isFromMe) {
         updateData.name = senderName;
         updateData.group_name = senderName;
-      } else if (!isGroup && senderName) {
+      } else if (!isGroup && senderName && !isFromMe) {
+        // Only update contact name when THEY send us a message
         updateData.name = senderName;
       }
       
@@ -734,8 +737,10 @@ serve(async (req) => {
         .from('whatsapp_conversations')
         .upsert({
           phone: senderPhone,
-          name: senderName || (isGroup ? 'Grupo' : null),
-          group_name: isGroup ? (senderName || null) : null,
+          // IMPORTANT: Only use senderName when message comes FROM the contact
+          // When isFromMe=true, senderName is the instance name (e.g., "Grazi"), not the contact
+          name: (!isFromMe && senderName) ? senderName : (isGroup ? 'Grupo' : null),
+          group_name: isGroup ? ((!isFromMe && senderName) ? senderName : null) : null,
           avatar_url: senderProfilePic || null,
           is_group: isGroup,
           tags: conversationTags,
