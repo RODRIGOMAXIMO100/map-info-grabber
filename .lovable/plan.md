@@ -1,65 +1,51 @@
 
-# Plano: Corrigir Validacao de Numeros Fixos no WhatsApp
+# Plano: Corrigir Nome do Contato Sendo Sobrescrito
 
 ## Problema Identificado
 
-A edge function `validate-phone-numbers` esta marcando automaticamente todos os numeros fixos como invalidos SEM verificar na API do WhatsApp:
+Quando o sistema envia mensagens, a UAZAPI retorna dados onde `senderName` e o nome em `payload.chat` referem-se à **instância que enviou**, não ao contato de destino.
 
-```typescript
-// Linhas 159-171 - validate-phone-numbers/index.ts
-if (isLandline) {
-  landlinePhones.push(phone);
-  invalidPhones.push(phone);  // PROBLEMA: Marca como invalido sem verificar!
-  return {
-    phone,
-    exists: false,
-    formattedNumber: null,
-    isLandline: true,
-    error: 'Numero fixo (sem WhatsApp)',
-  };
+**Exemplo do log:**
+```json
+{
+  "chatid": "553199486648@s.whatsapp.net",  // Victor (contato)
+  "senderName": "Grazi",                      // Instância (ERRADO!)
 }
 ```
 
-Isso contradiz a realidade: WhatsApp Business pode ser vinculado a numeros fixos.
+**Código problemático (linha 638-644):**
+```typescript
+} else if (!isGroup && senderName) {
+  updateData.name = senderName;  // Sobrescreve nome do contato com nome da instância
+}
+```
+
+Isso faz com que todos os contatos tenham o nome da instância ("Grazi") salvo.
 
 ---
 
 ## Solucao
 
-### Remover Skip Automatico de Numeros Fixos
+### Nao Atualizar Nome Quando Mensagem e Nossa (isFromMe)
 
-Alterar a logica para verificar TODOS os numeros na API do WhatsApp, independente de serem celulares ou fixos:
+Adicionar verificacao para nao atualizar o nome do contato quando a mensagem foi enviada pelo sistema.
 
 ```typescript
 // ANTES (incorreto)
-if (isLandline) {
-  invalidPhones.push(phone);
-  return { exists: false, isLandline: true };
+} else if (!isGroup && senderName) {
+  updateData.name = senderName;
 }
 
 // DEPOIS (correto)
-// Verificar na API mesmo que seja fixo - WhatsApp Business suporta fixos
-const result = await checkNumberOnWhatsApp(config.server_url, config.instance_token, phone);
-const isLandline = isLikelyLandline(phone);
-
-if (result.exists) {
-  validPhones.push(phone);
-} else {
-  invalidPhones.push(phone);
+} else if (!isGroup && senderName && !isFromMe) {
+  // Só atualiza nome quando mensagem vem DO CONTATO, não nossa
+  updateData.name = senderName;
 }
-
-return {
-  phone,
-  exists: result.exists,
-  formattedNumber: result.formattedNumber,
-  isLandline,  // Informacao visual apenas
-  error: result.error,
-};
 ```
 
-### Manter Classificacao Visual
+### Correcao Similar na Criacao de Novas Conversas
 
-A funcao `isLikelyLandline` continua util para exibir se o numero e fixo ou celular, mas NAO para pular a verificacao.
+Ao criar conversas novas a partir de mensagens nossas, nao usar o senderName (que sera da instancia).
 
 ---
 
@@ -67,46 +53,36 @@ A funcao `isLikelyLandline` continua util para exibir se o numero e fixo ou celu
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `supabase/functions/validate-phone-numbers/index.ts` | Remover skip de fixos (linhas 159-171) |
+| `supabase/functions/whatsapp-receive-webhook/index.ts` | Linhas 638-644 e criacao de conversa |
 
 ---
 
-## Fluxo Corrigido
+## Logica Corrigida
 
 ```text
-Lista de telefones
+Mensagem chegou
        |
-       v
-Para CADA numero (fixo ou celular):
+       +-- isFromMe = true (nossa mensagem)
+       |        |
+       |        +-- NAO atualizar nome
+       |        +-- senderName = nome da instancia (ignorar)
        |
-       v
-Verificar na API do WhatsApp (/contact/check)
-       |
-       +-- exists: true  --> Adicionar aos validos
-       |
-       +-- exists: false --> Adicionar aos invalidos
-       |
-       v
-Retornar com flag isLandline (apenas informativo)
+       +-- isFromMe = false (mensagem do contato)
+                |
+                +-- Atualizar nome com senderName
+                +-- senderName = nome real do contato
 ```
 
 ---
 
-## Impacto
+## Bonus: Corrigir Nomes Errados Existentes
 
-**Antes:**
-- Numero fixo (31) 3555-1234: Pulado, marcado como invalido automaticamente
-- Nao verifica se tem WhatsApp Business
-
-**Depois:**
-- Numero fixo (31) 3555-1234: Verificado na API
-- Se tiver WhatsApp Business: Marcado como valido
-- Se nao tiver: Marcado como invalido (mas apos verificacao real)
+Apos o deploy, posso rodar uma query para limpar os nomes "Grazi" que foram salvos incorretamente, identificando conversas onde o nome esta errado.
 
 ---
 
 ## Resultado Esperado
 
-- Todos os numeros serao verificados na API do WhatsApp
-- Numeros fixos com WhatsApp Business serao corretamente identificados como validos
-- A classificacao fixo/celular continua sendo exibida como informacao adicional
+- Mensagens enviadas pelo sistema nao sobrescrevem o nome do contato
+- Nomes dos contatos sao atualizados apenas quando ELES enviam mensagens
+- Contatos mantem seus nomes corretos (Victor, etc.)
