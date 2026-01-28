@@ -115,15 +115,23 @@ export function AppSidebar() {
     
     setHandoffCount(handoffs || 0);
 
-    // Contar lembretes vencidos ou de hoje
+    // Contar lembretes vencidos ou de hoje (filtrado por criador para não-admins)
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-    const { count: reminders } = await supabase
+    
+    let reminderQuery = supabase
       .from('whatsapp_conversations')
       .select('*', { count: 'exact', head: true })
       .not('reminder_at', 'is', null)
       .lte('reminder_at', today.toISOString());
+
+    // Non-admins only see reminders they created OR legacy ones assigned to them
+    const currentUser = (await supabase.auth.getUser()).data.user;
+    if (!isAdmin && currentUser?.id) {
+      reminderQuery = reminderQuery.or(`reminder_created_by.eq.${currentUser.id},and(reminder_created_by.is.null,assigned_to.eq.${currentUser.id})`);
+    }
     
+    const { count: reminders } = await reminderQuery;
     setReminderCount(reminders || 0);
 
     // Status da IA

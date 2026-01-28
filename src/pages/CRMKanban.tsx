@@ -46,7 +46,7 @@ interface BANTScore {
 
 export default function CRMKanban() {
   const { toast } = useToast();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, profile } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
@@ -532,6 +532,8 @@ export default function CRMKanban() {
 
   const handleSaveReminder = async (date: Date) => {
     if (!reminderModal.lead) return;
+
+    console.log('[CRM Reminder Save] User ID:', user?.id, 'Profile:', profile?.full_name, 'Lead:', reminderModal.lead.name);
 
     try {
       await supabase
