@@ -1,65 +1,81 @@
 
+# Plano: Corrigir Visibilidade de Lembretes - Badge e Verificacao
 
-# Plano: Corrigir Geracao de Link WhatsApp para Numeros Fixos
+## Problemas Identificados
 
-## Problema Identificado
-
-Nas edge functions `search-businesses-serpapi` e `search-businesses`, o codigo atual:
+### Problema 1: Badge no Sidebar
+O badge de lembretes no AppSidebar.tsx conta TODOS os lembretes sem filtrar por criador:
 
 ```typescript
-// Linha 30-35 de search-businesses-serpapi/index.ts
-function extractWhatsApp(phone: string | null): string {
-  if (!phone || !isMobileNumber(phone)) return '';  // PROBLEMA: Exclui fixos!
-  // ...
-}
+// AppSidebar.tsx linha 121-127 - ATUAL (incorreto)
+const { count: reminders } = await supabase
+  .from('whatsapp_conversations')
+  .select('*', { count: 'exact', head: true })
+  .not('reminder_at', 'is', null)
+  .lte('reminder_at', today.toISOString());
 ```
 
-Isso faz com que leads com numeros fixos aparecam SEM link do WhatsApp, mesmo que a empresa use WhatsApp Business vinculado ao fixo.
+Resultado: Todos os usuarios veem o mesmo contador de lembretes.
 
-## Realidade do Mercado
+### Problema 2: Dados no Banco
+O banco mostra que o lembrete foi criado por LUIZ:
+- reminder_created_by: LUIZ OTAVIO (8c2d85a0...)
+- assigned_to: RODRIGO POLITICA (1b9046d0...)
 
-- WhatsApp Business permite vincular numeros fixos
-- Muitas empresas usam o mesmo numero fixo para ligacoes e WhatsApp Business
-- Ao excluir fixos, estamos perdendo leads validos
+Se RODRIGO criou o lembrete, o ID deveria ser dele. Isso sugere que quando salvou, o user?.id estava errado.
 
 ---
 
 ## Solucao
 
-### 1. Gerar Link WhatsApp para TODOS os Numeros Validos
+### 1. Corrigir Badge no AppSidebar
 
-Alterar as funcoes `extractWhatsApp` nas duas edge functions:
+Filtrar lembretes por criador (para nao-admins):
 
 ```typescript
-// ANTES (incorreto)
-function extractWhatsApp(phone: string | null): string {
-  if (!phone || !isMobileNumber(phone)) return '';
-  // ...
+// DEPOIS (correto)
+let query = supabase
+  .from('whatsapp_conversations')
+  .select('*', { count: 'exact', head: true })
+  .not('reminder_at', 'is', null)
+  .lte('reminder_at', today.toISOString());
+
+// Non-admins only see reminders they created OR legacy ones assigned to them
+if (!isAdmin && user?.id) {
+  query = query.or(`reminder_created_by.eq.${user.id},and(reminder_created_by.is.null,assigned_to.eq.${user.id})`);
 }
 
-// DEPOIS (correto)
-function extractWhatsApp(phone: string | null): string {
-  if (!phone) return '';
-  let digits = phone.replace(/\D/g, '');
-  
-  // Validar comprimento minimo (DDD + numero)
-  if (digits.length < 10) return '';
-  
-  // Adicionar codigo do Brasil se nao presente
-  if (!digits.startsWith('55')) {
-    digits = '55' + digits;
-  }
-  
-  // Validar comprimento final (12-13 digitos para Brasil)
-  if (digits.length < 12 || digits.length > 13) return '';
-  
-  return `https://wa.me/${digits}`;
-}
+const { count: reminders } = await query;
 ```
 
-### 2. Manter Indicador de Tipo (Celular vs Fixo)
+### 2. Adicionar Log de Debug ao Salvar Lembrete
 
-A informacao de celular/fixo continua util para o usuario, mas nao deve impedir a geracao do link. A funcao `isMobileNumber` permanece para classificacao visual.
+Para verificar se o user?.id esta correto ao salvar:
+
+```typescript
+// CRMKanban.tsx - handleSaveReminder
+const handleSaveReminder = async (date: Date) => {
+  if (!reminderModal.lead) return;
+
+  console.log('[Reminder Save] User ID:', user?.id, 'Profile:', profile?.full_name);
+
+  try {
+    await supabase
+      .from('whatsapp_conversations')
+      .update({ 
+        reminder_at: date.toISOString(), 
+        reminder_created_by: user?.id, // Verificar se este valor esta correto
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', reminderModal.lead.id);
+    // ...
+  }
+};
+```
+
+### 3. Verificar AuthContext
+
+Garantir que user?.id vem da sessao ativa do Supabase Auth, nao de cache.
 
 ---
 
@@ -67,27 +83,33 @@ A informacao de celular/fixo continua util para o usuario, mas nao deve impedir 
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `supabase/functions/search-businesses-serpapi/index.ts` | Alterar `extractWhatsApp` (linhas 29-35) |
-| `supabase/functions/search-businesses/index.ts` | Alterar `extractWhatsApp` (linhas 36-56) |
+| `src/components/AppSidebar.tsx` | Filtrar badge de lembretes por criador |
+| `src/pages/CRMKanban.tsx` | Adicionar log ao salvar lembrete |
+| `src/pages/WhatsAppChat.tsx` | Adicionar log ao salvar lembrete |
 
 ---
 
-## Impacto
+## Fluxo Corrigido
 
-**Antes:**
-- Lead com fixo (31) 3555-1234: whatsapp = "" (vazio)
-- Aparece sem icone de WhatsApp
-
-**Depois:**
-- Lead com fixo (31) 3555-1234: whatsapp = "https://wa.me/553135551234"
-- Aparece COM icone de WhatsApp
-- Usuario pode tentar contato (se nao tiver WhatsApp, vai falhar no envio - melhor do que nao tentar)
+```text
+Usuario nao-admin logado
+       |
+       v
+AppSidebar conta lembretes
+       |
+       v
+Filtra: reminder_created_by = user.id
+    OR (creator null AND assigned_to = user.id)
+       |
+       v
+Badge mostra apenas SEUS lembretes
+```
 
 ---
 
 ## Resultado Esperado
 
-- Todos os leads com telefone valido terao link de WhatsApp gerado
-- A classificacao celular/fixo continua sendo exibida como informacao adicional
-- Usuarios poderao tentar contato via WhatsApp mesmo para numeros fixos
-
+Apos a correcao:
+- Badge no sidebar mostrara apenas lembretes criados pelo usuario logado
+- Logs ajudarao a identificar se ha problema ao capturar user?.id
+- Se o problema persistir, os logs mostrarao se o ID esta errado ao salvar
