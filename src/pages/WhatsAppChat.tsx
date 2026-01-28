@@ -297,7 +297,7 @@ export default function WhatsAppChat() {
           last_message_at, last_message_preview, unread_count,
           ai_paused, ai_handoff_reason, funnel_stage, crm_funnel_id,
           is_crm_lead, is_group, group_name, config_id, assigned_to,
-          reminder_at, estimated_value, closed_value, custom_tags, tags,
+          reminder_at, reminder_created_by, estimated_value, closed_value, custom_tags, tags,
           origin, pinned, muted_until, broadcast_list_id, phone_invalid
         `)
         .or('is_group.is.null,is_group.eq.false')

@@ -251,7 +251,7 @@ export default function CRMKanban() {
           id, phone, name, avatar_url, status, notes,
           last_message_at, last_message_preview, unread_count,
           ai_paused, ai_handoff_reason, funnel_stage, crm_funnel_id,
-          is_crm_lead, is_group, assigned_to, reminder_at, estimated_value, closed_value,
+          is_crm_lead, is_group, assigned_to, reminder_at, reminder_created_by, estimated_value, closed_value,
           custom_tags, tags, lead_city, lead_state, contacted_by_instances,
           origin, broadcast_list_id, updated_at, pinned, video_sent, site_sent, created_at,
           broadcast_lists:broadcast_list_id (name)
