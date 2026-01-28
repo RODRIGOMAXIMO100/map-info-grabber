@@ -32,7 +32,7 @@ function isMobileNumber(phone: string): boolean {
   return false;
 }
 
-// Extract WhatsApp link from phone or enriched data
+// Extract WhatsApp link from phone or enriched data (includes landlines - WhatsApp Business supports them)
 function extractWhatsApp(phone: string | null, site: string | null): string {
   // First check if there's a wa.me link in the site
   if (site) {
@@ -42,13 +42,21 @@ function extractWhatsApp(phone: string | null, site: string | null): string {
     }
   }
   
-  // If phone is mobile, create WhatsApp link
-  if (phone && isMobileNumber(phone)) {
+  // Generate WhatsApp link for any valid phone (mobile or landline)
+  if (phone) {
     let digits = phone.replace(/\D/g, '');
+    
+    // Minimum length: DDD (2) + number (8) = 10 digits
+    if (digits.length < 10) return '';
+    
     // Add Brazil country code if not present
     if (!digits.startsWith('55')) {
       digits = '55' + digits;
     }
+    
+    // Final validation: 12-13 digits for Brazil
+    if (digits.length < 12 || digits.length > 13) return '';
+    
     return `https://wa.me/${digits}`;
   }
   

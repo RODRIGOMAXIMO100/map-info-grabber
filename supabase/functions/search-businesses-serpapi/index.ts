@@ -26,11 +26,22 @@ function isMobileNumber(phone: string): boolean {
   return false;
 }
 
-// Extract WhatsApp link from phone
+// Extract WhatsApp link from phone (includes landlines - WhatsApp Business supports them)
 function extractWhatsApp(phone: string | null): string {
-  if (!phone || !isMobileNumber(phone)) return '';
+  if (!phone) return '';
   let digits = phone.replace(/\D/g, '');
-  if (!digits.startsWith('55')) digits = '55' + digits;
+  
+  // Minimum length: DDD (2) + number (8) = 10 digits
+  if (digits.length < 10) return '';
+  
+  // Add Brazil country code if not present
+  if (!digits.startsWith('55')) {
+    digits = '55' + digits;
+  }
+  
+  // Final validation: 12-13 digits for Brazil (55 + DDD + 8-9 digit number)
+  if (digits.length < 12 || digits.length > 13) return '';
+  
   return `https://wa.me/${digits}`;
 }
 
