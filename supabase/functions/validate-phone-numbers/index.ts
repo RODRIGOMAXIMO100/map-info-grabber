@@ -155,22 +155,14 @@ serve(async (req) => {
       const batch = phones.slice(i, i + batchSize);
       
       const batchPromises = batch.map(async (phone: string) => {
+        // Check if it looks like a landline (for informational purposes only)
         const isLandline = isLikelyLandline(phone);
         
-        // If it's a landline, mark as invalid without API call
         if (isLandline) {
           landlinePhones.push(phone);
-          invalidPhones.push(phone);
-          return {
-            phone,
-            exists: false,
-            formattedNumber: null,
-            isLandline: true,
-            error: 'Número fixo (sem WhatsApp)',
-          };
         }
 
-        // Check on WhatsApp API
+        // Always verify on WhatsApp API - WhatsApp Business supports landlines
         const result = await checkNumberOnWhatsApp(config.server_url, config.instance_token, phone);
         
         if (result.exists) {
@@ -183,7 +175,7 @@ serve(async (req) => {
           phone,
           exists: result.exists,
           formattedNumber: result.formattedNumber,
-          isLandline: false,
+          isLandline, // Informational only - doesn't affect validation
           error: result.error,
         };
       });
