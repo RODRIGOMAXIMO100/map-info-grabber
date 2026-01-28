@@ -1,38 +1,41 @@
-# ✅ CONCLUÍDO: Corrigir Nome do Contato Sendo Sobrescrito
 
-## Problema Identificado
 
-Quando o sistema envia mensagens, a UAZAPI retorna dados onde `senderName` refere-se à **instância que enviou**, não ao contato de destino. Isso sobrescrevia o nome do contato com o nome da instância.
+# Plano: Corrigir Todos os Nomes Errados em Produção
 
-## Solução Implementada
+## Problema
 
-### 1. Atualização de Conversas Existentes (linhas 638-648)
+Existem **6 conversas** onde o nome do contato foi sobrescrito com "Grazi" (nome do perfil WhatsApp da instância de prospecção).
 
-```typescript
-// ANTES
-} else if (!isGroup && senderName) {
-  updateData.name = senderName;
-}
+## Conversas Afetadas
 
-// DEPOIS
-} else if (!isGroup && senderName && !isFromMe) {
-  // Só atualiza nome quando mensagem vem DO CONTATO
-  updateData.name = senderName;
-}
+| Telefone | ID Conversa | Status |
+|----------|-------------|--------|
+| 553199936060 | 10c88770-6504-4577-a533-22965eedc2cd | active |
+| 553199651487 | b896e5f2-58b5-4b83-bc70-b241d4217da6 | active |
+| 553298212506 | b6a80995-8ea1-4b05-a51b-ea6d065c2bf9 | active |
+| 553180213483 | 66483027-230e-4f21-944f-e242aa08edf8 | active |
+| 553196458273 | f1d42a13-afd2-4c2f-94b8-44db9b71d0ed | active |
+| 553299731207 | 3d951bc7-eee6-4bab-a410-9150f7868c95 | active |
+
+## Solucao
+
+Executar uma query UPDATE para resetar o nome dessas conversas para NULL. Quando cada contato enviar uma nova mensagem, o nome correto sera atualizado automaticamente pelo webhook (agora corrigido).
+
+```sql
+UPDATE whatsapp_conversations 
+SET name = NULL, updated_at = NOW()
+WHERE name ILIKE '%grazi%' OR name ILIKE '%grazy%';
 ```
 
-### 2. Criação de Novas Conversas (linhas 735-740)
+## Resultado Esperado
 
-```typescript
-// ANTES
-name: senderName || (isGroup ? 'Grupo' : null),
+- 6 conversas terao o nome resetado para NULL
+- O webhook corrigido garantira que futuros nomes sejam salvos corretamente
+- Quando cada contato enviar mensagem, o nome real aparecera
 
-// DEPOIS
-name: (!isFromMe && senderName) ? senderName : (isGroup ? 'Grupo' : null),
-```
+---
 
-## Resultado
+## Detalhes Tecnicos
 
-- ✅ Mensagens enviadas pelo sistema NÃO sobrescrevem o nome do contato
-- ✅ Nomes dos contatos são atualizados apenas quando ELES enviam mensagens
-- ✅ Contatos mantém seus nomes corretos (Victor, etc.)
+A correção do webhook (ja aplicada) previne este problema para novas mensagens. Esta limpeza resolve os registros historicos afetados.
+
