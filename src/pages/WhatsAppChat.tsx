@@ -57,7 +57,7 @@ interface ConversationWithInstance extends WhatsAppConversation {
 export default function WhatsAppChat() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, profile } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -581,6 +581,8 @@ export default function WhatsAppChat() {
 
   const handleSaveReminder = async (date: Date) => {
     if (!selectedConversation) return;
+
+    console.log('[Chat Reminder Save] User ID:', user?.id, 'Profile:', profile?.full_name, 'Lead:', selectedConversation.name);
     
     const { error } = await supabase
       .from('whatsapp_conversations')
