@@ -1,56 +1,65 @@
 
-# Plano: Corrigir Dados Zerados na Pagina de Equipe
+# Plano: Corrigir Visibilidade de Lembretes - Campo reminder_created_by Ausente
 
 ## Problema Identificado
 
-A pagina de desempenho da equipe mostra todos os dados zerados porque a query de mensagens esta filtrando pelo valor errado.
+O campo `reminder_created_by` nao esta sendo incluido nas queries de SELECT das conversas. Isso causa:
 
-| Valor na Query | Valor no Banco |
-|----------------|----------------|
-| `'out'` | `'outgoing'` |
+1. O hook `useReminderNotifications` recebe `reminder_created_by = undefined`
+2. A verificacao de criador falha: `conv.reminder_created_by === userId` sempre retorna `false`
+3. O fallback `!conv.reminder_created_by && conv.assigned_to === userId` sempre ativa para leads atribuidos
+4. Resultado: notificacoes aparecem para o usuario atribuido, nao para o criador
 
-A query busca por `direction = 'out'` mas o banco armazena `'outgoing'`. Resultado: **zero mensagens encontradas**.
+## Evidencias
 
-## Evidencias do Banco
+Dados do lembrete atual:
+- Lead: Euripedes Cavalcante
+- `reminder_created_by`: LUIZ OTAVIO (8c2d85a0-...)
+- `assigned_to`: RODRIGO POLITICA (1b9046d0-...)
 
-```text
-Mensagens existentes:
-- 923 mensagens 'outgoing'
-- 1917 mensagens 'incoming'
-
-Mensagens encontradas pela query atual:
-- 0 mensagens (porque busca por 'out')
+Queries atuais (sem o campo):
+```typescript
+// CRMKanban.tsx linha 250-258
+.select(`
+  id, phone, name, avatar_url, status, notes,
+  last_message_at, last_message_preview, unread_count,
+  ai_paused, ai_handoff_reason, funnel_stage, crm_funnel_id,
+  is_crm_lead, is_group, assigned_to, reminder_at, estimated_value, closed_value,
+  custom_tags, tags, lead_city, lead_state, contacted_by_instances,
+  origin, broadcast_list_id, updated_at, pinned, video_sent, site_sent, created_at,
+  broadcast_lists:broadcast_list_id (name)
+`)
 ```
-
-## Problema Secundario: sent_by_user_id
-
-Todas as mensagens enviadas tem `sent_by_user_id = NULL`. Isso acontece porque a edge function `whatsapp-send-message` nao recebe nem salva o ID do usuario que enviou. O codigo atual usa um fallback para `assigned_to` da conversa, o que funciona, mas nao e preciso.
 
 ---
 
 ## Solucao
 
-### 1. Corrigir Filtro de Direction (Correcao Principal)
+### 1. Adicionar `reminder_created_by` nas Queries de SELECT
 
-Alterar as duas queries em `TeamPerformance.tsx` de:
+Alterar os 3 arquivos que carregam conversas com lembretes:
 
+**CRMKanban.tsx (linha 254)**:
 ```typescript
-.eq('direction', 'out')
+.select(`
+  id, phone, name, avatar_url, status, notes,
+  last_message_at, last_message_preview, unread_count,
+  ai_paused, ai_handoff_reason, funnel_stage, crm_funnel_id,
+  is_crm_lead, is_group, assigned_to, reminder_at, reminder_created_by, estimated_value, closed_value,
+  ...
+`)
 ```
 
-Para:
-
+**WhatsAppChat.tsx (linha 300)**:
 ```typescript
-.eq('direction', 'outgoing')
+.select(`
+  ...
+  reminder_at, reminder_created_by, estimated_value, closed_value, custom_tags, tags,
+  ...
+`)
 ```
 
-**Linhas afetadas**: 139 e 147
-
-### 2. (Opcional) Rastrear sent_by_user_id
-
-Para metricas mais precisas no futuro, podemos:
-- Passar o `user_id` do frontend para a edge function `whatsapp-send-message`
-- Salvar na coluna `sent_by_user_id` da mensagem
+**Reminders.tsx** - Ja usa `select('*')` entao esta OK.
 
 ---
 
@@ -58,27 +67,42 @@ Para metricas mais precisas no futuro, podemos:
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/pages/TeamPerformance.tsx` | Trocar `'out'` por `'outgoing'` nas linhas 139 e 147 |
+| `src/pages/CRMKanban.tsx` | Adicionar `reminder_created_by` no select (linha 254) |
+| `src/pages/WhatsAppChat.tsx` | Adicionar `reminder_created_by` no select (linha 300) |
 
 ---
 
-## Impacto Esperado
+## Fluxo Corrigido
+
+```text
+Query carrega conversations com reminder_created_by
+       |
+       v
+useReminderNotifications recebe dados completos
+       |
+       v
+Verifica: reminder_created_by === userId?
+       |
+       +-- SIM --> Mostra notificacao
+       |
+       +-- NAO --> Verifica fallback (creator null AND assigned)
+                   |
+                   +-- SIM --> Mostra notificacao (dados legados)
+                   |
+                   +-- NAO --> Nao mostra
+```
+
+---
+
+## Resultado Esperado
 
 Apos a correcao:
-- 923 mensagens serao encontradas
-- Metricas de mensagens, tempo ativo e conversas aparecerao corretamente
-- Ranking de vendedores funcionara
+- Luiz Otavio vera notificacoes dos lembretes que criou
+- Rodrigo Politica NAO vera notificacoes de lembretes criados por outros
+- O fallback so ativara para lembretes antigos sem criador definido
 
 ---
 
-## Correcao Simples
+## Resumo Tecnico
 
-A correcao e uma mudanca de duas linhas:
-
-```typescript
-// Linha 139: Query de mensagens no periodo
-.eq('direction', 'outgoing')  // era 'out'
-
-// Linha 147: Query de mensagens de hoje
-.eq('direction', 'outgoing')  // era 'out'
-```
+O bug ocorreu porque o campo `reminder_created_by` foi adicionado a tabela e ao codigo de salvamento, mas nao foi incluido nas queries de SELECT. A correcao e simples: adicionar o campo nas 2 queries existentes.
