@@ -38,9 +38,20 @@ export function RegionGroupSelector({ currentLocations, onLoadGroup }: RegionGro
   const [editingName, setEditingName] = useState('');
   const { toast } = useToast();
 
-  // Load groups on mount
+  // Load groups on mount and sync with localStorage
   useEffect(() => {
     setGroups(getRegionGroups());
+  }, []);
+
+  // Sincronizar com localStorage entre abas
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'prospecting_region_groups') {
+        setGroups(getRegionGroups());
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   const handleCreateGroup = () => {
