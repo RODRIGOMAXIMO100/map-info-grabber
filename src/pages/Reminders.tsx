@@ -25,19 +25,23 @@ import { cn } from '@/lib/utils';
 import { useReminderNotifications } from '@/hooks/useReminderNotifications';
 import type { WhatsAppConversation } from '@/types/whatsapp';
 
+type ConversationWithCreator = WhatsAppConversation & {
+  creator_profile?: { full_name: string }[] | null;
+};
+
 type ReminderGroup = {
   label: string;
   icon: React.ReactNode;
   variant: 'destructive' | 'default' | 'secondary' | 'outline';
   className?: string;
-  reminders: WhatsAppConversation[];
+  reminders: ConversationWithCreator[];
 };
 
 export default function Reminders() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
-  const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
+  const [conversations, setConversations] = useState<ConversationWithCreator[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Enable notifications - filter by user for non-admins
@@ -45,7 +49,7 @@ export default function Reminders() {
     conversations,
     userId: user?.id,
     isAdmin,
-    onReminderTriggered: (conv) => {
+    onReminderTriggered: (conv: ConversationWithCreator) => {
       navigate(`/whatsapp/chat?lead=${conv.id}`);
     },
   });
@@ -61,6 +65,7 @@ export default function Reminders() {
 
   const loadReminders = async () => {
     try {
+      // First, get conversations with reminders
       let query = supabase
         .from('whatsapp_conversations')
         .select('*')
@@ -72,10 +77,40 @@ export default function Reminders() {
         query = query.or(`reminder_created_by.eq.${user.id},and(reminder_created_by.is.null,assigned_to.eq.${user.id})`);
       }
 
-      const { data, error } = await query;
+      const { data: conversationsData, error } = await query;
 
       if (error) throw error;
-      setConversations(data || []);
+
+      // Fetch creator profiles for conversations with reminder_created_by
+      const creatorIds = [...new Set(
+        (conversationsData || [])
+          .filter(c => c.reminder_created_by)
+          .map(c => c.reminder_created_by!)
+      )];
+
+      let profilesMap: Record<string, string> = {};
+      
+      if (creatorIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .in('user_id', creatorIds);
+        
+        profilesMap = (profiles || []).reduce((acc, p) => {
+          acc[p.user_id] = p.full_name;
+          return acc;
+        }, {} as Record<string, string>);
+      }
+
+      // Merge profiles into conversations
+      const conversationsWithCreator = (conversationsData || []).map(conv => ({
+        ...conv,
+        creator_profile: conv.reminder_created_by && profilesMap[conv.reminder_created_by] 
+          ? [{ full_name: profilesMap[conv.reminder_created_by] }]
+          : null
+      }));
+
+      setConversations(conversationsWithCreator);
     } catch (error) {
       console.error('Error loading reminders:', error);
     } finally {
@@ -83,7 +118,7 @@ export default function Reminders() {
     }
   };
 
-  const handleMarkDone = async (conv: WhatsAppConversation, e: React.MouseEvent) => {
+  const handleMarkDone = async (conv: ConversationWithCreator, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       await supabase
@@ -103,7 +138,7 @@ export default function Reminders() {
     }
   };
 
-  const handleOpenChat = (conv: WhatsAppConversation) => {
+  const handleOpenChat = (conv: ConversationWithCreator) => {
     navigate(`/whatsapp/chat?lead=${conv.id}`);
   };
 
@@ -263,13 +298,18 @@ export default function Reminders() {
                           </Avatar>
 
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-medium truncate">
                                 {conv.name || conv.phone}
                               </span>
                               {conv.estimated_value && (
                                 <Badge variant="outline" className="text-xs text-green-600">
                                   R$ {conv.estimated_value.toLocaleString('pt-BR')}
+                                </Badge>
+                              )}
+                              {conv.creator_profile?.[0]?.full_name && (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                  Criado por: {conv.creator_profile[0].full_name}
                                 </Badge>
                               )}
                             </div>
