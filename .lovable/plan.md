@@ -1,72 +1,83 @@
 
-# Plano: Investigar Bug de Atribuicao de Lembretes e Adicionar Transparencia
+# Plano: Corrigir Atribuicao Automatica de Leads do Broadcast
 
-## Problema Reportado
-O usuario afirma que Rodrigo Politica criou um lembrete, mas o banco de dados registrou `reminder_created_by` como Luiz Otavio.
+## Problema Identificado
 
-## Dados do Banco
-| Campo | Valor | Identificacao |
-|-------|-------|---------------|
-| `reminder_created_by` | `8c2d85a0-2390-4ee0-b108-82661d0b6057` | LUIZ OTAVIO |
-| `assigned_to` | `1b9046d0-b48f-47fd-a7bd-995ebd06e862` | RODRIGO POLITICA |
-| `updated_at` | 26/01/2026 17:26:42 | Data da criacao |
+Quando um lead responde a um disparo (broadcast), o sistema NAO esta atribuindo a conversa ao usuario responsavel configurado na lista de broadcast.
 
-## Possiveis Causas
+### Diagnostico
 
-1. **Sessao compartilhada**: Rodrigo estava usando o navegador com a conta do Luiz logada
-2. **Cache do AuthContext**: O estado `user?.id` estava desatualizado
-3. **Race condition**: O contexto de autenticacao nao estava pronto quando o lembrete foi salvo
+Analisando o codigo do webhook `whatsapp-receive-webhook/index.ts`:
 
-## Solucao Proposta
-
-### Fase 1: Adicionar Logs de Debug (Imediato)
-Adicionar console.logs no momento da criacao do lembrete para rastrear futuras ocorrencias:
-
-**Arquivo:** `src/pages/CRMKanban.tsx` e `src/pages/WhatsAppChat.tsx`
-- Ja existe um log basico: `console.log('[CRM Reminder Save] User ID:', user?.id, 'Profile:', profile?.full_name)`
-- Vou manter e garantir que esta funcionando
-
-### Fase 2: Adicionar Transparencia Visual
-Mostrar no card do lembrete quem criou vs quem esta atribuido, para evitar confusao:
-
-**Arquivo:** `src/pages/Reminders.tsx`
-- Adicionar join com `profiles` para buscar o nome do criador
-- Mostrar badge indicando "Criado por: [Nome]" quando o criador for diferente do usuario atual
-- Isso ajudara a identificar se o problema ocorrer novamente
-
-### Fase 3: Correcao do Lembrete Atual
-Corrigir o registro atual para atribuir o `reminder_created_by` ao Rodrigo Politica:
-
-```sql
-UPDATE whatsapp_conversations 
-SET reminder_created_by = '1b9046d0-b48f-47fd-a7bd-995ebd06e862' -- Rodrigo Politica
-WHERE id = '52f6ab3b-f136-4bb0-b829-c658599df238';
+1. Na linha 678, o sistema busca dados do broadcast:
+```typescript
+.select('broadcast_list_id, processed_at, phone')
 ```
 
-## Alteracoes nos Arquivos
+2. Na linha 736-759, ao criar a conversa, o sistema inclui `broadcast_list_id` mas NAO inclui `assigned_to`
 
-### 1. `src/pages/Reminders.tsx`
-- Modificar query para incluir join com `profiles` para buscar `creator_name`
-- Adicionar badge visual mostrando quem criou o lembrete
-- Ajudar a identificar discrepancias futuras
+**O `assigned_to` da lista de broadcast simplesmente nao e transferido para a conversa.**
 
-### 2. `src/components/crm/ReminderModal.tsx`
-- Mostrar informacao de quem criou o lembrete atual (quando existir)
+## Dados Confirmados
+
+| Lista de Broadcast | Responsavel Configurado | Status |
+|-------------------|------------------------|--------|
+| reprodução humana JF | **Grazi bailon** | assigned_to correto na lista |
+
+O problema esta que quando leads respondem, a conversa e criada SEM o `assigned_to`, fazendo com que caia no chat geral (visivel para admins e quem tem acesso).
+
+## Solucao
+
+### Modificar Edge Function: `whatsapp-receive-webhook/index.ts`
+
+**Mudanca 1:** Alterar a query que busca dados do broadcast para incluir `assigned_to`:
+
+```typescript
+// Linha ~678 - Adicionar join com broadcast_lists para pegar assigned_to
+const { data: queueItems } = await supabase
+  .from('whatsapp_queue')
+  .select('broadcast_list_id, processed_at, phone, broadcast_lists!inner(assigned_to)')
+  .in('status', ['sent', 'delivered'])
+  .order('processed_at', { ascending: false })
+  .limit(500);
+```
+
+**Mudanca 2:** Extrair e armazenar o `assigned_to`:
+
+```typescript
+let broadcastAssignedTo: string | null = null;
+
+if (matchedQueue) {
+  broadcastListId = matchedQueue.broadcast_list_id;
+  broadcastSentAt = matchedQueue.processed_at;
+  broadcastAssignedTo = matchedQueue.broadcast_lists?.assigned_to || null;
+  console.log(`[Broadcast] Found queue data: list_id=${broadcastListId}, assigned_to=${broadcastAssignedTo}`);
+}
+```
+
+**Mudanca 3:** Incluir `assigned_to` no upsert da conversa:
+
+```typescript
+const { data: newConv, error: createError } = await supabase
+  .from('whatsapp_conversations')
+  .upsert({
+    // ... campos existentes ...
+    assigned_to: broadcastAssignedTo,        // NOVO
+    assigned_at: broadcastAssignedTo ? new Date().toISOString() : null,  // NOVO
+  }, { ... })
+```
 
 ## Resultado Esperado
 
-1. Lembrete atual sera corrigido para mostrar Rodrigo Politica como criador
-2. A notificacao ira para Rodrigo (o criador correto)
-3. Interface mostrara visualmente quem criou cada lembrete
-4. Logs ajudarao a identificar se o bug ocorrer novamente no futuro
+1. Quando um lead responde a um broadcast, a conversa sera automaticamente atribuida ao usuario responsavel da lista
+2. O usuario responsavel vera a conversa na sua aba "Minhas Conversas"
+3. As notificacoes de nova mensagem irao para o responsavel correto (nao para outros usuarios)
 
----
+## Arquivos a Modificar
 
-## Detalhes Tecnicos
+1. `supabase/functions/whatsapp-receive-webhook/index.ts` - Edge function principal
 
-A lógica atual de atribuicao usa `user?.id` do contexto de autenticacao (`useAuth()`), que vem da sessao do usuario logado. Se o ID errado foi salvo, significa que:
+## Observacao Importante
 
-1. A sessao estava incorreta no momento da criacao, OU
-2. O usuario estava logado com outra conta
+Esta correcao afetara apenas NOVAS conversas criadas a partir de disparos. Para corrigir conversas JA CRIADAS sem atribuicao, sera necessario um update manual no banco de dados.
 
-A adicao de logs e transparencia visual ajudara a prevenir e diagnosticar ocorrencias futuras.
