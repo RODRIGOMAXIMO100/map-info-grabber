@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatMessagePreview } from '@/components/whatsapp/MessageContent';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 // Play custom cash register sound
 const playMoneySound = () => {
@@ -53,10 +54,10 @@ export function useNewMessageNotifications() {
     if (notifiedIds.current.has(message.id)) return;
     notifiedIds.current.add(message.id);
     
-    // Limit cache size
-    if (notifiedIds.current.size > 100) {
+  // Limit cache size - increased for active systems
+    if (notifiedIds.current.size > 500) {
       const entries = Array.from(notifiedIds.current);
-      entries.slice(0, 50).forEach(id => notifiedIds.current.delete(id));
+      entries.slice(0, 250).forEach(id => notifiedIds.current.delete(id));
     }
 
     // Get conversation info
@@ -102,6 +103,20 @@ export function useNewMessageNotifications() {
       }
     });
   }, [navigate, getConversationInfo, user, isAdmin]);
+
+  // Invalidate conversation cache when conversations are updated or deleted
+  useRealtimeSubscription(
+    'whatsapp_conversations',
+    useCallback((payload) => {
+      if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+        const record = (payload.old || payload.new) as { id?: string } | null;
+        if (record?.id) {
+          conversationCache.current.delete(record.id);
+        }
+      }
+    }, []),
+    { event: '*' }
+  );
 
   useEffect(() => {
     // Subscribe to new messages via realtime

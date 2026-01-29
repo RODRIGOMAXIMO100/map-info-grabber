@@ -167,12 +167,71 @@ export default function WhatsAppChat() {
     }
   }, [messages.length]);
 
-  // Centralized realtime subscription for conversations
+  // Centralized realtime subscription for conversations - incremental updates to prevent flicker
   useRealtimeSubscription(
     'whatsapp_conversations',
-    useCallback(() => {
-      loadConversations();
-    }, []),
+    useCallback((payload) => {
+      if (payload.eventType === 'UPDATE') {
+        const updated = payload.new as unknown as ConversationWithInstance;
+        
+        // Skip groups
+        if (updated.is_group || updated.phone?.includes('@g.us')) {
+          return;
+        }
+        
+        // Check permission for non-admin users
+        if (!isAdmin && user?.id) {
+          if (updated.assigned_to !== null && updated.assigned_to !== user.id) {
+            // Conversation no longer assigned to us - remove from list
+            setConversations(prev => prev.filter(c => c.id !== updated.id));
+            if (selectedConversation?.id === updated.id) {
+              setSelectedConversation(null);
+            }
+            return;
+          }
+        }
+        
+        // Preserve the instance reference from existing conversation
+        setConversations(prev => prev.map(conv => 
+          conv.id === updated.id ? { ...conv, ...updated, instance: conv.instance } : conv
+        ));
+        
+        // Update selected conversation if it's the same
+        if (selectedConversation?.id === updated.id) {
+          setSelectedConversation(prev => prev ? { ...prev, ...updated, instance: prev.instance } : null);
+        }
+      } else if (payload.eventType === 'INSERT') {
+        const newConv = payload.new as unknown as ConversationWithInstance;
+        
+        // Skip groups
+        if (newConv.is_group || newConv.phone?.includes('@g.us')) {
+          return;
+        }
+        
+        // Check permission for non-admin users
+        if (!isAdmin && user?.id) {
+          if (newConv.assigned_to !== null && newConv.assigned_to !== user.id) {
+            return;
+          }
+        }
+        
+        // Check if already exists (avoid duplicates)
+        setConversations(prev => {
+          if (prev.some(c => c.id === newConv.id)) {
+            return prev;
+          }
+          // Find and attach instance
+          const instance = instances.find(i => i.id === newConv.config_id);
+          return [{ ...newConv, instance }, ...prev];
+        });
+      } else if (payload.eventType === 'DELETE') {
+        const deleted = payload.old as { id: string };
+        setConversations(prev => prev.filter(c => c.id !== deleted.id));
+        if (selectedConversation?.id === deleted.id) {
+          setSelectedConversation(null);
+        }
+      }
+    }, [selectedConversation?.id, isAdmin, user?.id, instances]),
   );
 
   useEffect(() => {
