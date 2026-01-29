@@ -1,126 +1,136 @@
 
-# Plano: Corrigir Grupos de Cidades Zerando Apos Salvar
+# Plano: Corrigir Falha (Flicker) no Chat da Grazi
 
 ## Problema Identificado
 
-Quando o usuario cria um grupo de cidades e depois salva, as cidades do grupo estao "zerando" (ficando com array vazio).
+O chat esta apresentando "flicker" (falhas visuais) que parecem estar relacionados a cache desatualizado. A analise do codigo revelou dois problemas principais:
 
-## Diagnostico
+### Causa Raiz 1: Cache de Notificacoes Nunca Invalida
 
-Analisando o codigo, identifiquei o problema na funcao `saveRegionGroup` em `src/lib/regionGroups.ts`:
-
-```typescript
-const newGroup: RegionGroup = {
-  id: generateId(),
-  name: name.trim(),
-  locations,  // ⬅️ PROBLEMA: Referencia direta ao array
-  createdAt: now,
-  updatedAt: now,
-};
-```
-
-### Causa Raiz
-
-1. O array `locations` e passado por **referencia** do componente pai (`Index.tsx`)
-2. Quando o grupo e criado, ele salva essa referencia diretamente
-3. Embora `JSON.stringify` crie uma copia ao salvar no localStorage, o objeto `newGroup` retornado mantem a referencia original
-4. Quando o usuario limpa as cidades ou modifica a selecao, o array original muda
-5. Na proxima vez que `setGroups([...groups, newGroup])` executa ou quando o componente re-renderiza, o grupo mostra o array modificado (vazio)
-
-### Fluxo do Bug
-
-```text
-1. Usuario adiciona 10 cidades
-2. Usuario vai para aba "Grupos"
-3. Usuario cria grupo "Minha Regiao" → salva no localStorage ✓
-4. Usuario clica "Limpar todas" na area de cidades selecionadas
-5. O array `locations` original fica vazio → []
-6. O estado React do RegionGroupSelector ainda tem referencia ao mesmo array
-7. O grupo aparece com 0 cidades na interface
-8. Nota: O localStorage ainda tem os dados corretos! Mas o estado React nao
-```
-
-## Solucao
-
-### Arquivo: `src/lib/regionGroups.ts`
-
-Fazer uma copia profunda do array de locations antes de salvar:
+Em `src/hooks/useNewMessageNotifications.ts`, o `conversationCache` armazena informacoes sobre conversas (nome, telefone, assigned_to, etc.) mas **nunca e limpo ou atualizado** quando uma conversa muda:
 
 ```typescript
-export function saveRegionGroup(name: string, locations: Location[]): RegionGroup {
-  console.log('[regionGroups] saveRegionGroup chamado', { name, locationsCount: locations.length });
-  
-  const groups = getRegionGroups();
-  const now = new Date().toISOString();
-  
-  // CORRECAO: Criar copia profunda das locations
-  const locationsCopy = locations.map(loc => ({ ...loc }));
-  
-  const newGroup: RegionGroup = {
-    id: generateId(),
-    name: name.trim(),
-    locations: locationsCopy,  // Usar a copia, nao a referencia
-    createdAt: now,
-    updatedAt: now,
-  };
-  
-  groups.push(newGroup);
-  
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
-    console.log('[regionGroups] Grupo salvo no localStorage com sucesso:', newGroup.id);
-  } catch (error) {
-    console.error('[regionGroups] Erro ao salvar no localStorage:', error);
-  }
-  
-  return newGroup;
-}
+// Linha 23 - Cache que NUNCA e invalidado
+const conversationCache = useRef<Map<string, { 
+  name: string | null; 
+  phone: string; 
+  muted_until: string | null; 
+  assigned_to: string | null;  // ← Fica desatualizado!
+  is_group: boolean | null 
+}>>(new Map());
 ```
 
-### Arquivo: `src/components/prospecting/RegionGroupSelector.tsx`
+**Consequencia**: Quando uma conversa e atribuida a Grazi (assigned_to muda), o cache antigo pode fazer o sistema pensar que a conversa ainda nao esta atribuida ou esta atribuida a outro usuario, causando comportamento inconsistente nas notificacoes.
 
-Adicionar um listener para recarregar grupos quando necessario e garantir sincronizacao:
+### Causa Raiz 2: Realtime Recarrega Toda a Lista
+
+Em `src/pages/WhatsAppChat.tsx`, linhas 170-176:
 
 ```typescript
-// Adicionar sincronizacao com localStorage quando a aba fica visivel
-useEffect(() => {
-  // Recarregar grupos do localStorage sempre que o componente montar
-  // ou quando currentLocations mudar (para garantir sincronizacao)
-  const storedGroups = getRegionGroups();
-  setGroups(storedGroups);
-}, []);
+useRealtimeSubscription(
+  'whatsapp_conversations',
+  useCallback(() => {
+    loadConversations();  // ← Recarrega TODAS as conversas a cada mudanca
+  }, []),
+);
+```
 
-// Opcional: Adicionar evento de storage para sincronizar entre abas
-useEffect(() => {
-  const handleStorageChange = (e: StorageEvent) => {
-    if (e.key === 'prospecting_region_groups') {
-      setGroups(getRegionGroups());
+**Consequencia**: Qualquer update em qualquer conversa dispara um reload completo da lista, causando:
+- Flicker visual enquanto os dados sao substituidos
+- A conversa selecionada pode "piscar" ou perder estado visual temporariamente
+
+## Solucao Proposta
+
+### Modificacao 1: Invalidar Cache de Notificacoes
+
+Arquivo: `src/hooks/useNewMessageNotifications.ts`
+
+Adicionar uma subscricao realtime para limpar o cache quando conversas sao atualizadas:
+
+```typescript
+// Limpar cache quando conversas sao atualizadas
+useRealtimeSubscription(
+  'whatsapp_conversations',
+  useCallback((payload) => {
+    if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+      const record = payload.old || payload.new;
+      if (record?.id) {
+        conversationCache.current.delete(record.id as string);
+      }
     }
-  };
-  window.addEventListener('storage', handleStorageChange);
-  return () => window.removeEventListener('storage', handleStorageChange);
-}, []);
+  }, []),
+  { event: '*' }
+);
+```
+
+### Modificacao 2: Atualizar Conversa de Forma Incremental
+
+Arquivo: `src/pages/WhatsAppChat.tsx`
+
+Em vez de recarregar toda a lista, atualizar apenas a conversa que mudou:
+
+```typescript
+useRealtimeSubscription(
+  'whatsapp_conversations',
+  useCallback((payload) => {
+    if (payload.eventType === 'UPDATE') {
+      const updated = payload.new as ConversationWithInstance;
+      setConversations(prev => prev.map(conv => 
+        conv.id === updated.id ? { ...conv, ...updated } : conv
+      ));
+      // Atualizar conversa selecionada se for a mesma
+      if (selectedConversation?.id === updated.id) {
+        setSelectedConversation(prev => prev ? { ...prev, ...updated } : null);
+      }
+    } else if (payload.eventType === 'INSERT') {
+      // Nova conversa - adicionar ao inicio
+      const newConv = payload.new as ConversationWithInstance;
+      if (!isAdmin && user?.id) {
+        // Verificar permissao
+        if (newConv.assigned_to !== null && newConv.assigned_to !== user.id) {
+          return;
+        }
+      }
+      setConversations(prev => [newConv, ...prev]);
+    } else if (payload.eventType === 'DELETE') {
+      const deleted = payload.old as { id: string };
+      setConversations(prev => prev.filter(c => c.id !== deleted.id));
+    }
+  }, [selectedConversation?.id, isAdmin, user?.id]),
+);
+```
+
+### Modificacao 3: Limitar Tamanho do Cache de IDs Notificados
+
+Arquivo: `src/hooks/useNewMessageNotifications.ts`
+
+Melhorar a limpeza do cache de IDs ja notificados:
+
+```typescript
+// Limite atual de 100 e baixo para sistemas ativos
+// Aumentar para 500 e limpar 250 de cada vez
+if (notifiedIds.current.size > 500) {
+  const entries = Array.from(notifiedIds.current);
+  entries.slice(0, 250).forEach(id => notifiedIds.current.delete(id));
+}
 ```
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/lib/regionGroups.ts` | Fazer copia profunda do array locations antes de salvar |
-| `src/components/prospecting/RegionGroupSelector.tsx` | Melhorar sincronizacao do estado com localStorage |
+| `src/hooks/useNewMessageNotifications.ts` | Adicionar invalidacao de cache via realtime |
+| `src/pages/WhatsAppChat.tsx` | Substituir reload completo por update incremental |
 
 ## Resultado Esperado
 
-1. Grupos de cidades sao salvos com copias independentes das localizacoes
-2. Limpar a selecao de cidades nao afeta grupos ja salvos
-3. Os grupos permanecem com as cidades corretas mesmo apos recarregar a pagina ou mudar de aba
+1. **Sem flicker**: A lista de conversas atualiza de forma suave, apenas modificando a conversa afetada
+2. **Cache sincronizado**: Notificacoes usam dados atualizados sobre assigned_to
+3. **Melhor performance**: Menos requisicoes ao banco de dados
 
-## Teste de Verificacao
+## Beneficio para Grazi
 
-1. Adicionar 5+ cidades
-2. Ir para aba "Grupos"
-3. Criar um grupo com nome "Teste"
-4. Verificar que mostra "5 cidades" no grupo
-5. Clicar em "Limpar todas" na area de cidades selecionadas
-6. O grupo "Teste" deve continuar mostrando "5 cidades"
-7. Recarregar a pagina e verificar que o grupo ainda tem as cidades
+Apos a correcao, quando conversas forem atribuidas a ela:
+- O cache sera limpo e buscara os dados atualizados
+- A lista de chats nao vai "piscar" durante atualizacoes
+- As notificacoes funcionarao corretamente com os dados de atribuicao atualizados
