@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.receive-external-lead]
 verify_jwt = false
+
+[functions.list-user-emails]
+verify_jwt = false

@@ -74,6 +74,14 @@ const AdminPanel = () => {
   const [showKey, setShowKey] = useState<string | null>(null);
   const [deletingKeyId, setDeletingKeyId] = useState<string | null>(null);
 
+  // Estado para emails dos usuários
+  const [userEmails, setUserEmails] = useState<Record<string, string>>({});
+  
+  // Estado para senha padrão
+  const [settingDefaultPassword, setSettingDefaultPassword] = useState(false);
+  const [defaultPasswordSet, setDefaultPasswordSet] = useState(false);
+  const DEFAULT_PASSWORD = 'Acesso@2025!';
+
   // Permissões
   const { 
     permissionsByRoute, 
@@ -88,8 +96,21 @@ const AdminPanel = () => {
       loadUsers();
       loadApiKeys();
       loadFunnels();
+      loadUserEmails();
     }
   }, [isAdmin]);
+
+  const loadUserEmails = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('list-user-emails');
+      if (error) throw error;
+      if (data?.emails) {
+        setUserEmails(data.emails);
+      }
+    } catch (error) {
+      console.error('Error loading user emails:', error);
+    }
+  };
 
   const loadApiKeys = async () => {
     try {
@@ -304,7 +325,41 @@ const AdminPanel = () => {
     setEditEmail('');
     setEditPassword('');
     setShowPassword(false);
+    setDefaultPasswordSet(false);
     setEditModalOpen(true);
+  };
+
+  const handleSetDefaultPassword = async () => {
+    if (!editingUser) return;
+
+    try {
+      setSettingDefaultPassword(true);
+
+      const { data, error } = await supabase.functions.invoke('update-user', {
+        body: {
+          userId: editingUser.user_id,
+          newPassword: DEFAULT_PASSWORD,
+        }
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setDefaultPasswordSet(true);
+      toast.success('Senha padrão definida com sucesso!');
+    } catch (error: unknown) {
+      console.error('Error setting default password:', error);
+      const message = error instanceof Error ? error.message : 'Erro ao definir senha padrão';
+      toast.error(message);
+    } finally {
+      setSettingDefaultPassword(false);
+    }
+  };
+
+  const copyCredentials = (email: string) => {
+    const credentials = `Email: ${email}\nSenha: ${DEFAULT_PASSWORD}`;
+    navigator.clipboard.writeText(credentials);
+    toast.success('Email e senha copiados!');
   };
 
   const handleSaveEdit = async () => {
@@ -498,6 +553,7 @@ const AdminPanel = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nome</TableHead>
+                      <TableHead>Email</TableHead>
                       <TableHead>Papel Atual</TableHead>
                       <TableHead>Data de Cadastro</TableHead>
                       <TableHead>Alterar Papel</TableHead>
@@ -509,6 +565,26 @@ const AdminPanel = () => {
                       <TableRow key={user.id}>
                         <TableCell className="font-medium">
                           {user.full_name}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm text-muted-foreground">
+                              {userEmails[user.user_id] || '-'}
+                            </span>
+                            {userEmails[user.user_id] && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(userEmails[user.user_id]);
+                                  toast.success('Email copiado!');
+                                }}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {getRoleBadge(user.role)}
@@ -563,7 +639,7 @@ const AdminPanel = () => {
                     ))}
                     {users.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                           Nenhum usuário encontrado
                         </TableCell>
                       </TableRow>
@@ -955,6 +1031,27 @@ fetch('https://vorehtfxwvsbbivnskeq.supabase.co/functions/v1/receive-external-le
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* Email atual do usuário */}
+            {editingUser && userEmails[editingUser.user_id] && (
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <Label className="text-xs text-muted-foreground">Email atual</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="text-sm font-medium">{userEmails[editingUser.user_id]}</code>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => {
+                      navigator.clipboard.writeText(userEmails[editingUser.user_id]);
+                      toast.success('Email copiado!');
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            
             <div className="space-y-2">
               <Label htmlFor="editName">Nome</Label>
               <Input
@@ -1000,6 +1097,68 @@ fetch('https://vorehtfxwvsbbivnskeq.supabase.co/functions/v1/receive-external-le
               </div>
               <p className="text-xs text-muted-foreground">
                 Deixe em branco para manter a senha atual
+              </p>
+            </div>
+
+            {/* Seção de Senha Padrão */}
+            <div className="border-t pt-4 mt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Key className="h-4 w-4 text-primary" />
+                <Label className="text-sm font-medium">Acesso Rápido (Senha Padrão)</Label>
+              </div>
+              
+              {!defaultPasswordSet ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleSetDefaultPassword}
+                  disabled={settingDefaultPassword}
+                >
+                  {settingDefaultPassword ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Key className="h-4 w-4 mr-2" />
+                  )}
+                  Definir Senha Padrão
+                </Button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-green-500/10 border border-green-500/20 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Check className="h-4 w-4 text-green-500" />
+                      <span className="text-sm font-medium text-green-500">Senha definida!</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-background p-2 rounded">
+                      <code className="text-sm font-mono">{DEFAULT_PASSWORD}</code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(DEFAULT_PASSWORD);
+                          toast.success('Senha copiada!');
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-1" />
+                        Copiar
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {editingUser && userEmails[editingUser.user_id] && (
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => copyCredentials(userEmails[editingUser.user_id])}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copiar Email + Senha
+                    </Button>
+                  )}
+                </div>
+              )}
+              
+              <p className="text-xs text-muted-foreground mt-2">
+                Use para acessar a conta deste usuário quando necessário
               </p>
             </div>
           </div>
