@@ -34,10 +34,13 @@ export function saveRegionGroup(name: string, locations: Location[]): RegionGrou
   const groups = getRegionGroups();
   const now = new Date().toISOString();
   
+  // Criar cópia profunda das locations para evitar mutação por referência
+  const locationsCopy = locations.map(loc => ({ ...loc }));
+  
   const newGroup: RegionGroup = {
     id: generateId(),
     name: name.trim(),
-    locations,
+    locations: locationsCopy,
     createdAt: now,
     updatedAt: now,
   };
