@@ -1,41 +1,72 @@
 
+# Plano: Investigar Bug de Atribuicao de Lembretes e Adicionar Transparencia
 
-# Plano: Corrigir Todos os Nomes Errados em Produção
+## Problema Reportado
+O usuario afirma que Rodrigo Politica criou um lembrete, mas o banco de dados registrou `reminder_created_by` como Luiz Otavio.
 
-## Problema
+## Dados do Banco
+| Campo | Valor | Identificacao |
+|-------|-------|---------------|
+| `reminder_created_by` | `8c2d85a0-2390-4ee0-b108-82661d0b6057` | LUIZ OTAVIO |
+| `assigned_to` | `1b9046d0-b48f-47fd-a7bd-995ebd06e862` | RODRIGO POLITICA |
+| `updated_at` | 26/01/2026 17:26:42 | Data da criacao |
 
-Existem **6 conversas** onde o nome do contato foi sobrescrito com "Grazi" (nome do perfil WhatsApp da instância de prospecção).
+## Possiveis Causas
 
-## Conversas Afetadas
+1. **Sessao compartilhada**: Rodrigo estava usando o navegador com a conta do Luiz logada
+2. **Cache do AuthContext**: O estado `user?.id` estava desatualizado
+3. **Race condition**: O contexto de autenticacao nao estava pronto quando o lembrete foi salvo
 
-| Telefone | ID Conversa | Status |
-|----------|-------------|--------|
-| 553199936060 | 10c88770-6504-4577-a533-22965eedc2cd | active |
-| 553199651487 | b896e5f2-58b5-4b83-bc70-b241d4217da6 | active |
-| 553298212506 | b6a80995-8ea1-4b05-a51b-ea6d065c2bf9 | active |
-| 553180213483 | 66483027-230e-4f21-944f-e242aa08edf8 | active |
-| 553196458273 | f1d42a13-afd2-4c2f-94b8-44db9b71d0ed | active |
-| 553299731207 | 3d951bc7-eee6-4bab-a410-9150f7868c95 | active |
+## Solucao Proposta
 
-## Solucao
+### Fase 1: Adicionar Logs de Debug (Imediato)
+Adicionar console.logs no momento da criacao do lembrete para rastrear futuras ocorrencias:
 
-Executar uma query UPDATE para resetar o nome dessas conversas para NULL. Quando cada contato enviar uma nova mensagem, o nome correto sera atualizado automaticamente pelo webhook (agora corrigido).
+**Arquivo:** `src/pages/CRMKanban.tsx` e `src/pages/WhatsAppChat.tsx`
+- Ja existe um log basico: `console.log('[CRM Reminder Save] User ID:', user?.id, 'Profile:', profile?.full_name)`
+- Vou manter e garantir que esta funcionando
+
+### Fase 2: Adicionar Transparencia Visual
+Mostrar no card do lembrete quem criou vs quem esta atribuido, para evitar confusao:
+
+**Arquivo:** `src/pages/Reminders.tsx`
+- Adicionar join com `profiles` para buscar o nome do criador
+- Mostrar badge indicando "Criado por: [Nome]" quando o criador for diferente do usuario atual
+- Isso ajudara a identificar se o problema ocorrer novamente
+
+### Fase 3: Correcao do Lembrete Atual
+Corrigir o registro atual para atribuir o `reminder_created_by` ao Rodrigo Politica:
 
 ```sql
 UPDATE whatsapp_conversations 
-SET name = NULL, updated_at = NOW()
-WHERE name ILIKE '%grazi%' OR name ILIKE '%grazy%';
+SET reminder_created_by = '1b9046d0-b48f-47fd-a7bd-995ebd06e862' -- Rodrigo Politica
+WHERE id = '52f6ab3b-f136-4bb0-b829-c658599df238';
 ```
+
+## Alteracoes nos Arquivos
+
+### 1. `src/pages/Reminders.tsx`
+- Modificar query para incluir join com `profiles` para buscar `creator_name`
+- Adicionar badge visual mostrando quem criou o lembrete
+- Ajudar a identificar discrepancias futuras
+
+### 2. `src/components/crm/ReminderModal.tsx`
+- Mostrar informacao de quem criou o lembrete atual (quando existir)
 
 ## Resultado Esperado
 
-- 6 conversas terao o nome resetado para NULL
-- O webhook corrigido garantira que futuros nomes sejam salvos corretamente
-- Quando cada contato enviar mensagem, o nome real aparecera
+1. Lembrete atual sera corrigido para mostrar Rodrigo Politica como criador
+2. A notificacao ira para Rodrigo (o criador correto)
+3. Interface mostrara visualmente quem criou cada lembrete
+4. Logs ajudarao a identificar se o bug ocorrer novamente no futuro
 
 ---
 
 ## Detalhes Tecnicos
 
-A correção do webhook (ja aplicada) previne este problema para novas mensagens. Esta limpeza resolve os registros historicos afetados.
+A lógica atual de atribuicao usa `user?.id` do contexto de autenticacao (`useAuth()`), que vem da sessao do usuario logado. Se o ID errado foi salvo, significa que:
 
+1. A sessao estava incorreta no momento da criacao, OU
+2. O usuario estava logado com outra conta
+
+A adicao de logs e transparencia visual ajudara a prevenir e diagnosticar ocorrencias futuras.
