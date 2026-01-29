@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const { userId, newEmail, newName } = await req.json()
+    const { userId, newEmail, newName, newPassword } = await req.json()
 
     if (!userId) {
       return new Response(
@@ -73,6 +73,26 @@ Deno.serve(async (req) => {
         console.error('Error updating email:', emailError)
         return new Response(
           JSON.stringify({ error: emailError.message }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
+    // Atualizar senha no auth (se fornecida)
+    if (newPassword) {
+      if (newPassword.length < 6) {
+        return new Response(
+          JSON.stringify({ error: 'A senha deve ter pelo menos 6 caracteres' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        password: newPassword
+      })
+      if (passwordError) {
+        console.error('Error updating password:', passwordError)
+        return new Response(
+          JSON.stringify({ error: passwordError.message }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }

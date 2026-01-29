@@ -55,6 +55,8 @@ const AdminPanel = () => {
   const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   
   // Estado para modal de confirmação de exclusão
@@ -299,7 +301,9 @@ const AdminPanel = () => {
   const handleEditClick = (user: UserWithRole) => {
     setEditingUser(user);
     setEditName(user.full_name);
-    setEditEmail(''); // Email não é carregado do profile, usuário precisa digitar novo
+    setEditEmail('');
+    setEditPassword('');
+    setShowPassword(false);
     setEditModalOpen(true);
   };
 
@@ -309,11 +313,19 @@ const AdminPanel = () => {
     try {
       setSaving(true);
 
+      // Validar senha se fornecida
+      if (editPassword.trim() && editPassword.trim().length < 6) {
+        toast.error('A senha deve ter pelo menos 6 caracteres');
+        setSaving(false);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('update-user', {
         body: {
           userId: editingUser.user_id,
           newName: editName !== editingUser.full_name ? editName : undefined,
           newEmail: editEmail.trim() || undefined,
+          newPassword: editPassword.trim() || undefined,
         }
       });
 
@@ -939,7 +951,7 @@ fetch('https://vorehtfxwvsbbivnskeq.supabase.co/functions/v1/receive-external-le
           <DialogHeader>
             <DialogTitle>Editar Usuário</DialogTitle>
             <DialogDescription>
-              Atualize o nome ou email do usuário
+              Atualize o nome, email ou senha do usuário
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -963,6 +975,31 @@ fetch('https://vorehtfxwvsbbivnskeq.supabase.co/functions/v1/receive-external-le
               />
               <p className="text-xs text-muted-foreground">
                 Deixe em branco para manter o email atual
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editPassword">Nova Senha (opcional)</Label>
+              <div className="relative">
+                <Input
+                  id="editPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Deixe em branco para manter a senha atual
               </p>
             </div>
           </div>
