@@ -670,12 +670,14 @@ serve(async (req) => {
       // Buscar dados do broadcast se veio do broadcast
       let broadcastListId: string | null = null;
       let broadcastSentAt: string | null = null;
+      let broadcastAssignedTo: string | null = null;
       
       if (fromBroadcast) {
         const phoneCore = normalizePhoneForComparison(senderPhone);
+        // Buscar dados do broadcast incluindo o assigned_to da lista
         const { data: queueItems } = await supabase
           .from('whatsapp_queue')
-          .select('broadcast_list_id, processed_at, phone')
+          .select('broadcast_list_id, processed_at, phone, broadcast_lists(assigned_to)')
           .in('status', ['sent', 'delivered'])
           .order('processed_at', { ascending: false })
           .limit(500);
@@ -689,7 +691,12 @@ serve(async (req) => {
           if (matchedQueue) {
             broadcastListId = matchedQueue.broadcast_list_id;
             broadcastSentAt = matchedQueue.processed_at;
-            console.log(`[Broadcast] Found queue data: list_id=${broadcastListId}, sent_at=${broadcastSentAt}`);
+            // Extrair assigned_to da lista de broadcast (pode vir como array ou objeto)
+            const broadcastList = Array.isArray(matchedQueue.broadcast_lists) 
+              ? matchedQueue.broadcast_lists[0] 
+              : matchedQueue.broadcast_lists;
+            broadcastAssignedTo = broadcastList?.assigned_to || null;
+            console.log(`[Broadcast] Found queue data: list_id=${broadcastListId}, sent_at=${broadcastSentAt}, assigned_to=${broadcastAssignedTo}`);
           }
         }
       }
@@ -756,7 +763,10 @@ serve(async (req) => {
           config_id: configId,
           origin: fromBroadcast ? 'broadcast' : 'random',
           broadcast_list_id: broadcastListId,
-          broadcast_sent_at: broadcastSentAt
+          broadcast_sent_at: broadcastSentAt,
+          // Atribuir ao responsável da lista de broadcast automaticamente
+          assigned_to: broadcastAssignedTo,
+          assigned_at: broadcastAssignedTo ? new Date().toISOString() : null
         }, {
           onConflict: 'phone,config_id',
           ignoreDuplicates: false
