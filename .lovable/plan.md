@@ -1,36 +1,105 @@
 
-# Plano: Corrigir Atribuicao Automatica de Leads do Broadcast
+# Plano: Adicionar Funcionalidade de Alteracao de Senha pelo Admin
 
-## ✅ IMPLEMENTADO
+## Problema
+O usuario `rodrigo@maximoacelera.com.br` esta com problemas de senha e nao consegue fazer login. O administrador precisa de uma forma de redefinir senhas de usuarios pelo painel administrativo.
 
-### Problema Identificado
-Quando um lead responde a um disparo (broadcast), o sistema NAO estava atribuindo a conversa ao usuario responsavel configurado na lista de broadcast.
+## Diagnostico dos Logs
+Os auth-logs mostram tentativas de login falhando com "Invalid login credentials":
+- Timestamp: 13:22:55 - email: rodrigo@maximoacelera.com.br - Status 400 (invalid_credentials)
+- Timestamp: 13:23:29 - Outra tentativa falhou
 
-### Solucao Aplicada
+## Solucao
 
-**Arquivo Modificado:** `supabase/functions/whatsapp-receive-webhook/index.ts`
+### Arquitetura Atual
+O sistema ja possui:
+1. `AdminPanel.tsx` - Modal de edicao com campos para nome e email
+2. `update-user/index.ts` - Edge function que atualiza email e nome usando `supabaseAdmin.auth.admin.updateUserById()`
 
-1. ✅ Query alterada para incluir join com `broadcast_lists` e buscar `assigned_to`
-2. ✅ Nova variavel `broadcastAssignedTo` para armazenar o responsavel
-3. ✅ `assigned_to` e `assigned_at` incluidos no upsert da conversa
+### Modificacoes Necessarias
 
-### Resultado
+#### 1. Edge Function: `supabase/functions/update-user/index.ts`
+Adicionar suporte para alteracao de senha usando a mesma API admin:
 
-- Novas conversas de leads que respondem a broadcasts serao automaticamente atribuidas ao responsavel configurado na lista
-- O responsavel vera a conversa na aba "Minhas Conversas"
-- Notificacoes irao para o usuario correto
+```typescript
+const { userId, newEmail, newName, newPassword } = await req.json()
 
-### Observacao
+// ... codigo existente ...
 
-Esta correcao afeta apenas NOVAS conversas. Para corrigir conversas ja criadas sem atribuicao, execute manualmente:
-
-```sql
-UPDATE whatsapp_conversations wc
-SET 
-  assigned_to = bl.assigned_to,
-  assigned_at = NOW()
-FROM broadcast_lists bl
-WHERE wc.broadcast_list_id = bl.id
-  AND wc.assigned_to IS NULL
-  AND bl.assigned_to IS NOT NULL;
+// Atualizar senha no auth (se fornecida)
+if (newPassword) {
+  const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    password: newPassword
+  })
+  if (passwordError) {
+    console.error('Error updating password:', passwordError)
+    return new Response(
+      JSON.stringify({ error: passwordError.message }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+}
 ```
+
+#### 2. Frontend: `src/pages/AdminPanel.tsx`
+
+**Adicionar estados:**
+```typescript
+const [editPassword, setEditPassword] = useState('');
+const [showPassword, setShowPassword] = useState(false);
+```
+
+**Atualizar modal de edicao:**
+- Adicionar campo de senha com toggle de visibilidade
+- Adicionar validacao de tamanho minimo (6 caracteres)
+- Resetar campo ao fechar modal
+
+**Atualizar funcao handleSaveEdit:**
+```typescript
+const { data, error } = await supabase.functions.invoke('update-user', {
+  body: {
+    userId: editingUser.user_id,
+    newName: editName !== editingUser.full_name ? editName : undefined,
+    newEmail: editEmail.trim() || undefined,
+    newPassword: editPassword.trim() || undefined, // NOVO
+  }
+});
+```
+
+## UI do Modal Atualizado
+
+O modal tera 3 campos:
+1. **Nome** - campo texto (obrigatorio)
+2. **Novo Email** - campo email (opcional)
+3. **Nova Senha** - campo senha com botao de mostrar/ocultar (opcional, minimo 6 caracteres)
+
+## Seguranca
+
+1. A edge function ja verifica se o usuario logado e admin antes de permitir alteracoes
+2. Usa `SUPABASE_SERVICE_ROLE_KEY` para operacoes administrativas
+3. Senha e transmitida via HTTPS
+4. Nenhuma senha e logada no console
+
+## Arquivos a Modificar
+
+| Arquivo | Alteracao |
+|---------|-----------|
+| `supabase/functions/update-user/index.ts` | Adicionar campo `newPassword` e logica de atualizacao |
+| `src/pages/AdminPanel.tsx` | Adicionar campo de senha no modal de edicao |
+
+## Correcao Imediata para Rodrigo
+
+Apos implementar a funcionalidade, o administrador podera:
+1. Acessar o Painel de Administracao
+2. Clicar no icone de lapis (editar) do usuario Rodrigo
+3. Inserir uma nova senha no campo "Nova Senha"
+4. Clicar em Salvar
+
+A senha sera atualizada imediatamente e Rodrigo podera fazer login.
+
+## Resultado Esperado
+
+1. Administradores poderao redefinir senhas de qualquer usuario pelo painel
+2. Interface clara com campo de senha e toggle de visibilidade
+3. Validacao de tamanho minimo da senha
+4. Feedback visual de sucesso/erro
