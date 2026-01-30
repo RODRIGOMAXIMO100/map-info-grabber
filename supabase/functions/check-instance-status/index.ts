@@ -20,6 +20,9 @@ interface StatusResult {
   name: string;
   status: 'connected' | 'disconnected' | 'connecting' | 'error';
   rawState: string | null;
+  webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'error';
+  webhookUrl: string | null;
+  expectedWebhookUrl: string;
   details: Record<string, unknown>;
 }
 
@@ -72,6 +75,11 @@ serve(async (req) => {
       let status: 'connected' | 'disconnected' | 'connecting' | 'error' = 'error';
       let rawState: string | null = null;
       let details: Record<string, unknown> = {};
+
+      // Webhook verification variables
+      let webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'error' = 'error';
+      let currentWebhookUrl: string | null = null;
+      const expectedWebhookUrl = `${supabaseUrl}/functions/v1/whatsapp-receive-webhook?instance=${config.id}`;
 
       try {
         // Clean up server URL
@@ -190,6 +198,52 @@ serve(async (req) => {
             }
           }
           
+          console.log(`[Status Check] Final interpreted status: ${status}`);
+
+          // Now check webhook configuration
+          console.log(`[Webhook Check] Checking webhook configuration...`);
+          const webhookEndpoints = ['/webhook', '/config/webhook', '/instance/webhook'];
+          
+          for (const endpoint of webhookEndpoints) {
+            try {
+              const webhookResponse = await fetch(`${serverUrl}${endpoint}`, {
+                method: 'GET',
+                headers: {
+                  'token': config.instance_token,
+                  'Content-Type': 'application/json',
+                },
+              });
+
+              if (webhookResponse.ok) {
+                const webhookData = await webhookResponse.json();
+                console.log(`[Webhook Check] Got response from ${endpoint}:`, JSON.stringify(webhookData));
+                
+                // Extract webhook URL from various possible response formats
+                currentWebhookUrl = webhookData?.url || 
+                                   webhookData?.webhook?.url || 
+                                   webhookData?.webhookUrl ||
+                                   webhookData?.config?.url ||
+                                   null;
+                
+                if (currentWebhookUrl) {
+                  if (currentWebhookUrl === expectedWebhookUrl) {
+                    webhookStatus = 'configured';
+                    console.log(`[Webhook Check] ✓ Webhook correctly configured`);
+                  } else {
+                    webhookStatus = 'misconfigured';
+                    console.log(`[Webhook Check] ⚠ Webhook misconfigured. Expected: ${expectedWebhookUrl}, Got: ${currentWebhookUrl}`);
+                  }
+                } else {
+                  webhookStatus = 'not_configured';
+                  console.log(`[Webhook Check] ✗ No webhook URL found in response`);
+                }
+                break;
+              }
+            } catch (webhookError) {
+              console.log(`[Webhook Check] Error checking ${endpoint}:`, webhookError);
+            }
+          }
+
           details = {
             endpoint: usedEndpoint,
             rawState: instanceStatus || 'unknown',
@@ -198,25 +252,32 @@ serve(async (req) => {
             statusLoggedIn: isLoggedIn,
             lastDisconnect: instanceObj?.lastDisconnect as string | undefined,
             lastDisconnectReason: instanceObj?.lastDisconnectReason as string | undefined,
+            webhookStatus,
+            webhookUrl: currentWebhookUrl,
+            expectedWebhookUrl,
             rawResponse: responseData,
             checkedAt: new Date().toISOString(),
           };
-          
-          console.log(`[Status Check] Final interpreted status: ${status}`);
         } else {
-          status = 'error';
-          details = {
-            error: 'No valid response from any endpoint',
-            triedEndpoints: [primaryEndpoint, `${serverUrl}/status`],
-            statusCode: response?.status,
-            checkedAt: new Date().toISOString(),
-          };
-          console.log(`[Status Check] ERROR: No valid response from any endpoint`);
-        }
-      } catch (e) {
         status = 'error';
+        webhookStatus = 'error';
+        details = {
+          error: 'No valid response from any endpoint',
+          triedEndpoints: [primaryEndpoint, `${serverUrl}/status`],
+          statusCode: response?.status,
+          webhookStatus: 'error',
+          expectedWebhookUrl,
+          checkedAt: new Date().toISOString(),
+        };
+        console.log(`[Status Check] ERROR: No valid response from any endpoint`);
+      }
+    } catch (e) {
+        status = 'error';
+        webhookStatus = 'error';
         details = {
           error: e instanceof Error ? e.message : 'Unknown error',
+          webhookStatus: 'error',
+          expectedWebhookUrl,
           checkedAt: new Date().toISOString(),
         };
         console.error(`[Status Check] Exception:`, e);
@@ -229,6 +290,9 @@ serve(async (req) => {
         name: config.name || 'Instância',
         status,
         rawState,
+        webhookStatus,
+        webhookUrl: currentWebhookUrl,
+        expectedWebhookUrl,
         details,
       });
 
@@ -241,6 +305,9 @@ serve(async (req) => {
           details: {
             ...details,
             rawState,
+            webhookStatus,
+            webhookUrl: currentWebhookUrl,
+            expectedWebhookUrl,
           },
         });
     }
@@ -252,6 +319,12 @@ serve(async (req) => {
     const disconnected = results.filter(r => r.status !== 'connected');
     if (disconnected.length > 0) {
       console.warn(`⚠️ Disconnected/Error instances: ${disconnected.map(d => `${d.name} (${d.status}${d.rawState ? `: ${d.rawState}` : ''})`).join(', ')}`);
+    }
+
+    // Check for webhook problems and log warning
+    const webhookProblems = results.filter(r => r.webhookStatus !== 'configured');
+    if (webhookProblems.length > 0) {
+      console.warn(`⚠️ Webhook problems: ${webhookProblems.map(w => `${w.name} (${w.webhookStatus})`).join(', ')}`);
     }
 
     return new Response(

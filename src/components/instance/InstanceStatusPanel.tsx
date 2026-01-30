@@ -11,7 +11,10 @@ import {
   CheckCircle,
   Clock,
   Loader2,
-  Info
+  Info,
+  Link,
+  Link2Off,
+  Wrench
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,6 +29,8 @@ interface InstanceStatus {
   name: string;
   status: 'connected' | 'disconnected' | 'connecting' | 'error';
   rawState: string | null;
+  webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'error';
+  webhookUrl: string | null;
   lastCheck: string | null;
   color: string;
 }
@@ -38,6 +43,7 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
   const [instances, setInstances] = useState<InstanceStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
+  const [fixingWebhook, setFixingWebhook] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -64,15 +70,19 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
           .limit(1)
           .single();
 
-        // Extract rawState from details
+        // Extract rawState and webhookStatus from details
         const details = status?.details as Record<string, unknown> | null;
         const rawState = details?.rawState as string | null;
+        const webhookStatus = (details?.webhookStatus as 'configured' | 'misconfigured' | 'not_configured' | 'error') || 'error';
+        const webhookUrl = details?.webhookUrl as string | null;
 
         return {
           configId: config.id,
           name: config.name || 'Instância',
           status: (status?.status as 'connected' | 'disconnected' | 'connecting' | 'error') || 'error',
           rawState: rawState || null,
+          webhookStatus,
+          webhookUrl,
           lastCheck: status?.checked_at || null,
           color: config.color || '#10B981',
         };
@@ -119,6 +129,27 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
       toast.error('Erro ao verificar instâncias');
     } finally {
       setChecking(false);
+    }
+  };
+
+  const fixWebhook = async (configId: string) => {
+    setFixingWebhook(configId);
+    try {
+      const { error } = await supabase.functions.invoke('configure-webhook', {
+        body: { config_id: configId },
+      });
+
+      if (error) throw error;
+
+      toast.success('Webhook configurado com sucesso!');
+      
+      // Reload status after fixing
+      await loadStatus();
+    } catch (err) {
+      console.error('Error fixing webhook:', err);
+      toast.error('Erro ao configurar webhook');
+    } finally {
+      setFixingWebhook(null);
     }
   };
 
@@ -174,6 +205,32 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
     }
   };
 
+  const getWebhookIcon = (webhookStatus: string) => {
+    switch (webhookStatus) {
+      case 'configured':
+        return <Link className="h-3.5 w-3.5 text-green-500" />;
+      case 'misconfigured':
+        return <Link2Off className="h-3.5 w-3.5 text-yellow-500" />;
+      case 'not_configured':
+        return <Link2Off className="h-3.5 w-3.5 text-destructive" />;
+      default:
+        return <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground" />;
+    }
+  };
+
+  const getWebhookBadge = (webhookStatus: string) => {
+    switch (webhookStatus) {
+      case 'configured':
+        return <Badge variant="outline" className="text-xs border-green-500/50 text-green-600">Webhook OK</Badge>;
+      case 'misconfigured':
+        return <Badge variant="outline" className="text-xs border-yellow-500/50 text-yellow-600">Webhook Errado</Badge>;
+      case 'not_configured':
+        return <Badge variant="outline" className="text-xs border-destructive/50 text-destructive">Sem Webhook</Badge>;
+      default:
+        return <Badge variant="outline" className="text-xs">Webhook ?</Badge>;
+    }
+  };
+
   const formatLastCheck = (dateStr: string | null) => {
     if (!dateStr) return 'Nunca verificado';
     const date = new Date(dateStr);
@@ -205,6 +262,7 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
   }
 
   const connectedCount = instances.filter(i => i.status === 'connected').length;
+  const webhookOkCount = instances.filter(i => i.webhookStatus === 'configured').length;
   const totalCount = instances.length;
 
   return (
@@ -212,7 +270,7 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
-            {connectedCount === totalCount ? (
+            {connectedCount === totalCount && webhookOkCount === totalCount ? (
               <CheckCircle className="h-4 w-4 text-green-500" />
             ) : (
               <AlertTriangle className="h-4 w-4 text-yellow-500" />
@@ -225,8 +283,8 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
                   <p className="text-xs">
-                    Verifica o status real da sessão WhatsApp usando o endpoint <code>/instance/connectionState</code>.
-                    Estados: open (conectado), close (desconectado), connecting (conectando), refused (recusado).
+                    Verifica o status da sessão WhatsApp e a configuração do webhook.
+                    Conexão: open/close/connecting. Webhook: configurado/incorreto/ausente.
                   </p>
                 </TooltipContent>
               </Tooltip>
@@ -241,30 +299,58 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
             <RefreshCw className={`h-4 w-4 ${checking ? 'animate-spin' : ''}`} />
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {connectedCount}/{totalCount} conectadas
-        </p>
+        <div className="flex gap-3 text-xs text-muted-foreground">
+          <span>{connectedCount}/{totalCount} conectadas</span>
+          <span>•</span>
+          <span>{webhookOkCount}/{totalCount} webhooks OK</span>
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
         {instances.map((instance) => (
           <div 
             key={instance.configId}
-            className="flex items-center justify-between p-2 rounded-lg bg-muted/50"
+            className="flex flex-col gap-2 p-2 rounded-lg bg-muted/50"
           >
-            <div className="flex items-center gap-2">
-              <div 
-                className="h-2 w-2 rounded-full" 
-                style={{ backgroundColor: instance.color }}
-              />
-              <span className="text-sm font-medium">{instance.name}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                {formatLastCheck(instance.lastCheck)}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="h-2 w-2 rounded-full" 
+                  style={{ backgroundColor: instance.color }}
+                />
+                <span className="text-sm font-medium">{instance.name}</span>
               </div>
-              {getStatusIcon(instance.status)}
-              {getStatusBadge(instance.status, instance.rawState)}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  {formatLastCheck(instance.lastCheck)}
+                </div>
+                {getStatusIcon(instance.status)}
+                {getStatusBadge(instance.status, instance.rawState)}
+              </div>
+            </div>
+            
+            {/* Webhook status row */}
+            <div className="flex items-center justify-between pl-4">
+              <div className="flex items-center gap-2">
+                {getWebhookIcon(instance.webhookStatus)}
+                {getWebhookBadge(instance.webhookStatus)}
+              </div>
+              {instance.webhookStatus !== 'configured' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-xs gap-1"
+                  onClick={() => fixWebhook(instance.configId)}
+                  disabled={fixingWebhook === instance.configId}
+                >
+                  {fixingWebhook === instance.configId ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Wrench className="h-3 w-3" />
+                  )}
+                  Corrigir
+                </Button>
+              )}
             </div>
           </div>
         ))}
