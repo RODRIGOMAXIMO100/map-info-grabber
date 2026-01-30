@@ -9,14 +9,23 @@ import {
   AlertTriangle, 
   RefreshCw, 
   CheckCircle,
-  Clock
+  Clock,
+  Loader2,
+  Info
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface InstanceStatus {
   configId: string;
   name: string;
-  status: 'connected' | 'disconnected' | 'error';
+  status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  rawState: string | null;
   lastCheck: string | null;
   color: string;
 }
@@ -49,16 +58,21 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
       const statusPromises = configs.map(async (config) => {
         const { data: status } = await supabase
           .from('whatsapp_instance_status')
-          .select('status, checked_at')
+          .select('status, details, checked_at')
           .eq('config_id', config.id)
           .order('checked_at', { ascending: false })
           .limit(1)
           .single();
 
+        // Extract rawState from details
+        const details = status?.details as Record<string, unknown> | null;
+        const rawState = details?.rawState as string | null;
+
         return {
           configId: config.id,
           name: config.name || 'Instância',
-          status: (status?.status as 'connected' | 'disconnected' | 'error') || 'error',
+          status: (status?.status as 'connected' | 'disconnected' | 'connecting' | 'error') || 'error',
+          rawState: rawState || null,
           lastCheck: status?.checked_at || null,
           color: config.color || '#10B981',
         };
@@ -89,7 +103,9 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
         const disconnected = data.results.filter((r: { status: string }) => r.status !== 'connected');
         if (disconnected.length > 0) {
           toast.warning(`${disconnected.length} instância(s) desconectada(s)`, {
-            description: disconnected.map((d: { name: string }) => d.name).join(', '),
+            description: disconnected.map((d: { name: string; rawState?: string }) => 
+              `${d.name}${d.rawState ? ` (${d.rawState})` : ''}`
+            ).join(', '),
           });
         } else {
           toast.success('Todas as instâncias conectadas!');
@@ -134,6 +150,8 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
     switch (status) {
       case 'connected':
         return <Wifi className="h-4 w-4 text-green-500" />;
+      case 'connecting':
+        return <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />;
       case 'disconnected':
         return <WifiOff className="h-4 w-4 text-destructive" />;
       default:
@@ -141,14 +159,18 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, rawState: string | null) => {
+    const stateLabel = rawState ? ` (${rawState})` : '';
+    
     switch (status) {
       case 'connected':
-        return <Badge variant="default" className="bg-green-500 hover:bg-green-600">Conectado</Badge>;
+        return <Badge variant="default" className="bg-green-500 hover:bg-green-600">Conectado{stateLabel}</Badge>;
+      case 'connecting':
+        return <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600 hover:bg-yellow-500/30">Conectando{stateLabel}</Badge>;
       case 'disconnected':
-        return <Badge variant="destructive">Desconectado</Badge>;
+        return <Badge variant="destructive">Desconectado{stateLabel}</Badge>;
       default:
-        return <Badge variant="secondary">Erro</Badge>;
+        return <Badge variant="secondary">Erro{stateLabel}</Badge>;
     }
   };
 
@@ -196,6 +218,19 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
               <AlertTriangle className="h-4 w-4 text-yellow-500" />
             )}
             Status das Instâncias
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="text-xs">
+                    Verifica o status real da sessão WhatsApp usando o endpoint <code>/instance/connectionState</code>.
+                    Estados: open (conectado), close (desconectado), connecting (conectando), refused (recusado).
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </CardTitle>
           <Button 
             variant="ghost" 
@@ -229,7 +264,7 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
                 {formatLastCheck(instance.lastCheck)}
               </div>
               {getStatusIcon(instance.status)}
-              {getStatusBadge(instance.status)}
+              {getStatusBadge(instance.status, instance.rawState)}
             </div>
           </div>
         ))}
