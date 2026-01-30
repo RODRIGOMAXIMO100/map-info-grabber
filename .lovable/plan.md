@@ -1,143 +1,137 @@
 
 
-# Plano: Sistema de Verificacao de Conexao de Instancias Mais Eficiente
+# Plano: Verificacao Automatica de Webhook nas Instancias
 
-## Problema Identificado
+## Problema Atual
 
-O sistema atual de verificacao esta usando o endpoint **errado** da UAZAPI:
+A verificacao de webhook NAO e automatizada. Se o webhook parar de funcionar, as mensagens do WhatsApp nao chegam ao sistema, mesmo que a instancia mostre "conectado".
 
-- **Endpoint atual**: `/status` - Retorna o status do **servidor UAZAPI** (que sempre mostra "running")
-- **Endpoint correto**: `/instance/connectionState/{instance}` - Retorna o status real da **sessao WhatsApp**
+## Solucao
 
-Isso explica por que o painel mostra "conectado" mesmo quando as instancias estao desconectadas no UAZAPI - porque o servidor esta funcionando, mas as sessoes WhatsApp nao estao.
+Integrar a verificacao de webhook na mesma rotina de verificacao de instancias (`check-instance-status`), criando uma verificacao completa que valida:
+1. Conexao da sessao WhatsApp
+2. Configuracao correta do webhook
 
-## Analise da Resposta Atual
+## Modificacoes Tecnicas
 
-```json
-{
-  "status": {
-    "server_status": "running",      // <- SERVIDOR rodando, nao a sessao
-    "checked_instance": {
-      "connection_status": "connected" // <- Falso positivo!
+### 1. Edge Function `check-instance-status/index.ts`
+
+Adicionar verificacao de webhook apos verificar a conexao:
+
+```typescript
+// Apos verificar conexao da instancia, verificar webhook
+const expectedWebhookUrl = `${supabaseUrl}/functions/v1/whatsapp-receive-webhook?instance=${config.id}`;
+
+// Tentar buscar configuracao atual do webhook
+const webhookEndpoints = ['/webhook', '/config/webhook', '/instance/webhook'];
+let webhookConfig = null;
+let webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'error' = 'error';
+
+for (const endpoint of webhookEndpoints) {
+  try {
+    const webhookResponse = await fetch(`${serverUrl}${endpoint}`, {
+      method: 'GET',
+      headers: { 'token': config.instance_token },
+    });
+    if (webhookResponse.ok) {
+      webhookConfig = await webhookResponse.json();
+      break;
     }
+  } catch { /* continue */ }
+}
+
+if (webhookConfig) {
+  const currentUrl = webhookConfig?.url || webhookConfig?.webhook?.url;
+  if (currentUrl === expectedWebhookUrl) {
+    webhookStatus = 'configured';
+  } else if (currentUrl) {
+    webhookStatus = 'misconfigured';
+  } else {
+    webhookStatus = 'not_configured';
   }
 }
 ```
 
-O codigo interpreta `server_status: running` como "instancia conectada", o que e incorreto.
+### 2. Atualizar Interface de Resultado
 
-## Solucao
+Adicionar campos de webhook ao `StatusResult`:
 
-### 1. Usar o Endpoint Correto da UAZAPI
-
-Alterar de:
-```
-GET /status
-```
-
-Para:
-```
-GET /instance/connectionState/{instance_phone}
-```
-
-Exemplo: `https://pulsarai.uazapi.com/instance/connectionState/553199579600`
-
-### 2. Interpretar a Resposta Correta
-
-A UAZAPI retorna para o endpoint `connectionState`:
-
-```json
-{
-  "instance": "553199579600",
-  "state": "open"           // ou "close", "connecting", "refused"
+```typescript
+interface StatusResult {
+  configId: string;
+  name: string;
+  status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  rawState: string | null;
+  webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'error';
+  webhookUrl: string | null;
+  expectedWebhookUrl: string;
+  details: Record<string, unknown>;
 }
 ```
 
-Possiveis valores de `state`:
-- `open` = Conectado ao WhatsApp
-- `close` = Desconectado/Sessao encerrada  
-- `connecting` = Tentando conectar
-- `refused` = Conexao recusada
-
-### 3. Adicionar Fallback e Logs Detalhados
-
-Para debug, incluir:
-- Log da URL chamada
-- Log da resposta completa
-- Log do estado interpretado
-
-## Modificacoes
-
-### Arquivo: `supabase/functions/check-instance-status/index.ts`
-
-**Mudanca 1**: Usar o campo `instance_phone` para construir a URL correta
+### 3. Salvar Status do Webhook no Banco
 
 ```typescript
-// Buscar tambem o instance_phone
-.select('id, name, server_url, instance_token, instance_phone, is_active')
+await supabase
+  .from('whatsapp_instance_status')
+  .insert({
+    config_id: config.id,
+    status,
+    details: {
+      ...details,
+      rawState,
+      webhookStatus,
+      webhookUrl: currentWebhookUrl,
+      expectedWebhookUrl,
+    },
+  });
 ```
 
-**Mudanca 2**: Alterar os endpoints para incluir o correto
+### 4. Atualizar UI `InstanceStatusPanel.tsx`
+
+Mostrar status do webhook junto com status da conexao:
+
+- Icone verde: Webhook configurado corretamente
+- Icone amarelo: Webhook configurado mas URL diferente (misconfigured)  
+- Icone vermelho: Webhook nao configurado
+- Botao "Corrigir Webhook" quando misconfigured/not_configured
+
+### 5. Alertas de Problemas
+
+Adicionar log de warning quando webhook estiver errado:
 
 ```typescript
-const endpoints = [
-  // Endpoint principal correto da UAZAPI
-  `${serverUrl}/instance/connectionState/${config.instance_phone}`,
-  // Fallbacks
-  `${serverUrl}/status`,
-  `${serverUrl}/instance/status`,
-];
+const webhookProblems = results.filter(r => r.webhookStatus !== 'configured');
+if (webhookProblems.length > 0) {
+  console.warn(`⚠️ Webhook problems: ${webhookProblems.map(w => 
+    `${w.name} (${w.webhookStatus})`).join(', ')}`);
+}
 ```
-
-**Mudanca 3**: Melhorar a logica de interpretacao
-
-```typescript
-// UAZAPI connectionState retorna { state: "open" | "close" | "connecting" | "refused" }
-const isConnected = 
-  data.state === 'open' ||
-  data.connected === true ||
-  // Fallback para formato antigo do /status (menos confiavel)
-  (data.status?.checked_instance?.connection_status === 'connected' && 
-   data.status?.checked_instance?.is_healthy === true);
-```
-
-**Mudanca 4**: Adicionar logs detalhados
-
-```typescript
-console.log(`[Status Check] Instance: ${config.name}`);
-console.log(`[Status Check] Endpoint: ${usedEndpoint}`);
-console.log(`[Status Check] Response:`, JSON.stringify(data));
-console.log(`[Status Check] Interpreted state: ${status}`);
-```
-
-### 4. Melhorar UI com mais detalhes
-
-Mostrar no painel:
-- Estado detalhado (open/close/connecting/refused)
-- Resposta raw para debug
-- Botao para reconectar/escanear QR code
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `supabase/functions/check-instance-status/index.ts` | Usar endpoint correto + melhorar logs |
-| `src/components/instance/InstanceStatusPanel.tsx` | Mostrar mais detalhes do status |
+| `supabase/functions/check-instance-status/index.ts` | Adicionar verificacao de webhook |
+| `src/components/instance/InstanceStatusPanel.tsx` | Exibir status do webhook na UI |
 
-## Fluxo Apos Correcao
+## Fluxo Apos Implementacao
 
 ```text
-1. Edge function busca whatsapp_config incluindo instance_phone
-2. Para cada instancia, chama /instance/connectionState/{phone}
-3. Interpreta state: "open" = conectado, outros = desconectado
-4. Salva resultado na tabela whatsapp_instance_status
-5. Frontend exibe status correto com detalhes
+A cada 5 minutos (cron):
+1. Buscar instancias ativas
+2. Para cada instancia:
+   a. Verificar conexao WhatsApp (/instance/status)
+   b. Verificar configuracao webhook (/webhook)
+3. Salvar ambos status na tabela
+4. Log de warnings para problemas
+5. UI exibe status completo (conexao + webhook)
 ```
 
 ## Resultado Esperado
 
-1. Status mostrado no painel reflete a realidade da sessao WhatsApp
-2. Instancias desconectadas sao identificadas corretamente
-3. Logs detalhados para facilitar debug
-4. Possibilidade de ver o estado exato (open/close/connecting/refused)
+1. Dashboard mostra status da conexao E do webhook
+2. Alertas automaticos quando webhook estiver mal configurado
+3. Botao para corrigir webhook com um clique
+4. Visibilidade completa da saude de cada instancia
 
