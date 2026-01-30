@@ -1,27 +1,25 @@
 
-# Plano: Corrigir Mensagens de Broadcast que Nao Aparecem no Chat
+# Plano: Corrigir Atribuicao e Criacao de Leads no Broadcast
 
 ## Problema Identificado
 
-Quando uma mensagem de broadcast e enviada, ela **nao aparece no historico do chat** do lead. Apenas as respostas do cliente aparecem.
+As conversas de broadcast nao estao sendo criadas corretamente porque o codigo tenta inserir dados em uma coluna inexistente (`dna_id`).
 
 ### Causa Raiz
 
-No arquivo `supabase/functions/process-broadcast-queue/index.ts`, linha 906:
+O codigo em `process-broadcast-queue/index.ts` referencia a coluna `dna_id` em dois lugares:
 
-```typescript
-if (conversationId!) {
-  await supabase.from('whatsapp_messages').insert({...});
-}
-```
+1. **Linha 765**: Tenta buscar `dna_id` da tabela `broadcast_lists` (coluna nao existe)
+2. **Linha 826**: Tenta inserir `dna_id` na tabela `whatsapp_conversations` (coluna nao existe)
 
-**Problemas:**
+Quando o Supabase tenta inserir dados em uma coluna inexistente, a operacao falha e a conversa nao e criada. Por isso, das 10+ mensagens enviadas com sucesso, apenas 1 conversa foi criada (provavelmente em um cenario de race condition que usou outro caminho de codigo).
 
-1. **Checagem incorreta**: `conversationId!` e uma asseracao de tipo TypeScript (non-null assertion), NAO uma verificacao booleana. Isso significa que o codigo sempre tenta executar o insert, mesmo quando `conversationId` esta undefined.
+### Evidencia
 
-2. **Variavel nao inicializada**: Na linha 756, `conversationId` e declarada como `let conversationId: string;` sem valor inicial. Em cenarios de erro durante a criacao/atualizacao da conversa, a variavel pode permanecer sem valor.
-
-3. **Silenciamento de erros**: O insert da mensagem nao tem tratamento de erro, entao falhas passam despercebidas nos logs.
+- Lista de broadcast `Industrias - Vijay BH` tem `assigned_to: LUIZ OTAVIO`
+- 10+ mensagens foram enviadas com status `sent`
+- Apenas 1 conversa foi criada (Mantasul)
+- A coluna `dna_id` NAO existe nas tabelas `broadcast_lists` e `whatsapp_conversations`
 
 ## Solucao
 
@@ -29,62 +27,105 @@ if (conversationId!) {
 
 Arquivo: `supabase/functions/process-broadcast-queue/index.ts`
 
-**Mudanca 1**: Inicializar a variavel corretamente (linha 756)
+**Mudanca 1**: Remover referencia a `dna_id` na query (linha 765)
 
 ```typescript
 // Antes
-let conversationId: string;
+.select('dna_id, assigned_to')
 
 // Depois  
-let conversationId: string | undefined = undefined;
+.select('assigned_to')
 ```
 
-**Mudanca 2**: Corrigir a checagem antes do insert (linha 906)
+**Mudanca 2**: Remover `dna_id` do objeto de insercao (linha 826)
 
 ```typescript
 // Antes
-if (conversationId!) {
+const conversationData = {
+  ...
+  dna_id: dnaId,
+  assigned_to: assignedTo,
+  ...
+};
 
 // Depois
-if (conversationId) {
+const conversationData = {
+  ...
+  assigned_to: assignedTo,
+  ...
+};
 ```
 
-**Mudanca 3**: Adicionar tratamento de erro e log para o insert da mensagem
+**Mudanca 3**: Remover `dna_id` do objeto de update (linha 794)
 
 ```typescript
-// Register message in chat history
-if (conversationId) {
-  const { error: msgError } = await supabase
-    .from('whatsapp_messages')
-    .insert({
-      conversation_id: conversationId,
-      direction: 'outgoing',
-      message_type: queueItem.image_url ? 'image' : 'text',
-      content: processedMessage,
-      media_url: queueItem.image_url || null,
-      status: 'sent',
-      message_id_whatsapp: result.key?.id || null
-    });
-  
-  if (msgError) {
-    console.error(`[Broadcast] Erro ao salvar mensagem no chat:`, msgError.message);
-  } else {
-    console.log(`[Broadcast] Mensagem salva no historico do chat`);
-  }
-} else {
-  console.error(`[Broadcast] Conversa nao encontrada/criada - mensagem nao foi salva no chat`);
-}
+// Antes
+dna_id: dnaId || undefined,
+assigned_to: assignedTo || undefined,
+
+// Depois
+assigned_to: assignedTo || undefined,
+```
+
+**Mudanca 4**: Remover variavel `dnaId` nao utilizada (linha 760)
+
+```typescript
+// Antes
+let dnaId: string | null = null;
+let assignedTo: string | null = null;
+...
+dnaId = broadcastList?.dna_id || null;
+assignedTo = broadcastList?.assigned_to || null;
+
+// Depois
+let assignedTo: string | null = null;
+...
+assignedTo = broadcastList?.assigned_to || null;
+```
+
+**Mudanca 5**: Adicionar `assigned_to` no fallback de race condition (linha 864-875)
+
+```typescript
+// Antes (fallback NAO inclui assigned_to)
+const { error: fallbackUpdateError } = await supabase
+  .from('whatsapp_conversations')
+  .update({
+    is_crm_lead: true,
+    crm_funnel_id: defaultFunnelId,
+    funnel_stage: defaultStageId || 'new',
+    origin: 'broadcast',
+    broadcast_list_id: queueItem.broadcast_list_id,
+    broadcast_sent_at: new Date().toISOString(),
+    followup_count: 0
+  })
+  .eq('id', conversationId);
+
+// Depois (inclui assigned_to)
+const { error: fallbackUpdateError } = await supabase
+  .from('whatsapp_conversations')
+  .update({
+    is_crm_lead: true,
+    crm_funnel_id: defaultFunnelId,
+    funnel_stage: defaultStageId || 'new',
+    origin: 'broadcast',
+    broadcast_list_id: queueItem.broadcast_list_id,
+    broadcast_sent_at: new Date().toISOString(),
+    followup_count: 0,
+    assigned_to: assignedTo  // ADICIONAR ATRIBUICAO
+  })
+  .eq('id', conversationId);
 ```
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `supabase/functions/process-broadcast-queue/index.ts` | Corrigir inicializacao, checagem e adicionar logs |
+| `supabase/functions/process-broadcast-queue/index.ts` | Remover todas as referencias a `dna_id` e corrigir fallback |
 
 ## Resultado Esperado
 
 Apos a correcao:
-1. Todas as mensagens de broadcast serao salvas corretamente na tabela `whatsapp_messages`
-2. Quando o usuario abrir o chat de um lead, vera a mensagem inicial que foi enviada pelo broadcast
-3. Erros serao logados para facilitar debug futuro
+1. Todas as conversas de broadcast serao criadas corretamente
+2. O `assigned_to` sera atribuido corretamente a todos os leads
+3. O `broadcast_list_id` sera salvo nas conversas
+4. Mesmo em casos de race condition, o `assigned_to` sera aplicado
