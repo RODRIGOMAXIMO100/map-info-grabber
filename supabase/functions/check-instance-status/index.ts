@@ -218,12 +218,29 @@ serve(async (req) => {
                 const webhookData = await webhookResponse.json();
                 console.log(`[Webhook Check] Got response from ${endpoint}:`, JSON.stringify(webhookData));
                 
-                // Extract webhook URL from various possible response formats
-                currentWebhookUrl = webhookData?.url || 
-                                   webhookData?.webhook?.url || 
-                                   webhookData?.webhookUrl ||
-                                   webhookData?.config?.url ||
-                                   null;
+                // Handle both array and object response formats
+                let webhookConfig: Record<string, unknown> | null = null;
+                
+                if (Array.isArray(webhookData)) {
+                  // UAZAPI returns array of webhooks - find the one matching our URL or get first enabled
+                  console.log(`[Webhook Check] Response is an array with ${webhookData.length} webhook(s)`);
+                  webhookConfig = webhookData.find((w: Record<string, unknown>) => 
+                    (w.url as string)?.includes('whatsapp-receive-webhook')
+                  ) || webhookData.find((w: Record<string, unknown>) => w.enabled === true) || webhookData[0] || null;
+                } else if (webhookData && typeof webhookData === 'object') {
+                  webhookConfig = webhookData;
+                }
+                
+                if (webhookConfig) {
+                  // Extract URL from the webhook config object
+                  currentWebhookUrl = (webhookConfig.url as string) || 
+                                     (webhookConfig.webhook as Record<string, unknown>)?.url as string || 
+                                     (webhookConfig.webhookUrl as string) ||
+                                     (webhookConfig.config as Record<string, unknown>)?.url as string ||
+                                     null;
+                }
+                
+                console.log(`[Webhook Check] Extracted webhook URL: ${currentWebhookUrl}`);
                 
                 if (currentWebhookUrl) {
                   if (currentWebhookUrl === expectedWebhookUrl) {
