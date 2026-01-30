@@ -29,8 +29,10 @@ interface InstanceStatus {
   name: string;
   status: 'connected' | 'disconnected' | 'connecting' | 'error';
   rawState: string | null;
-  webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'error';
+  webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'events_missing' | 'disabled' | 'error';
   webhookUrl: string | null;
+  webhookEnabled: boolean | null;
+  webhookEvents: string[];
   lastCheck: string | null;
   color: string;
 }
@@ -73,8 +75,10 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
         // Extract rawState and webhookStatus from details
         const details = status?.details as Record<string, unknown> | null;
         const rawState = details?.rawState as string | null;
-        const webhookStatus = (details?.webhookStatus as 'configured' | 'misconfigured' | 'not_configured' | 'error') || 'error';
+        const webhookStatus = (details?.webhookStatus as 'configured' | 'misconfigured' | 'not_configured' | 'events_missing' | 'disabled' | 'error') || 'error';
         const webhookUrl = details?.webhookUrl as string | null;
+        const webhookEnabled = details?.webhookEnabled as boolean | null ?? null;
+        const webhookEvents = (details?.webhookEvents as string[]) || [];
 
         return {
           configId: config.id,
@@ -83,6 +87,8 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
           rawState: rawState || null,
           webhookStatus,
           webhookUrl,
+          webhookEnabled,
+          webhookEvents,
           lastCheck: status?.checked_at || null,
           color: config.color || '#10B981',
         };
@@ -209,6 +215,10 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
     switch (webhookStatus) {
       case 'configured':
         return <Link className="h-3.5 w-3.5 text-green-500" />;
+      case 'events_missing':
+        return <Link2Off className="h-3.5 w-3.5 text-orange-500" />;
+      case 'disabled':
+        return <Link2Off className="h-3.5 w-3.5 text-yellow-500" />;
       case 'misconfigured':
         return <Link2Off className="h-3.5 w-3.5 text-yellow-500" />;
       case 'not_configured':
@@ -222,6 +232,10 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
     switch (webhookStatus) {
       case 'configured':
         return <Badge variant="outline" className="text-xs border-green-500/50 text-green-600">Webhook OK</Badge>;
+      case 'events_missing':
+        return <Badge variant="outline" className="text-xs border-orange-500/50 text-orange-600">Eventos Vazios</Badge>;
+      case 'disabled':
+        return <Badge variant="outline" className="text-xs border-yellow-500/50 text-yellow-600">Webhook Desabilitado</Badge>;
       case 'misconfigured':
         return <Badge variant="outline" className="text-xs border-yellow-500/50 text-yellow-600">Webhook Errado</Badge>;
       case 'not_configured':

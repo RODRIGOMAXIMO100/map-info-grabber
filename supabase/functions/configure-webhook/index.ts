@@ -121,6 +121,7 @@ serve(async (req) => {
                 url: expectedWebhookUrl,
                 enabled: true,
                 events: [
+                  'messages',
                   'messages.upsert',
                   'messages.update', 
                   'messages.receipt',
@@ -131,6 +132,8 @@ serve(async (req) => {
                 // Some APIs use different property names
                 webhook_url: expectedWebhookUrl,
                 webhook_enabled: true,
+                // Prevent UAZAPI from clearing events
+                addUrlEvents: false,
               }),
             });
 
