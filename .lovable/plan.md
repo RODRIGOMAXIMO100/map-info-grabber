@@ -1,131 +1,143 @@
 
-# Plano: Corrigir Atribuicao e Criacao de Leads no Broadcast
+
+# Plano: Sistema de Verificacao de Conexao de Instancias Mais Eficiente
 
 ## Problema Identificado
 
-As conversas de broadcast nao estao sendo criadas corretamente porque o codigo tenta inserir dados em uma coluna inexistente (`dna_id`).
+O sistema atual de verificacao esta usando o endpoint **errado** da UAZAPI:
 
-### Causa Raiz
+- **Endpoint atual**: `/status` - Retorna o status do **servidor UAZAPI** (que sempre mostra "running")
+- **Endpoint correto**: `/instance/connectionState/{instance}` - Retorna o status real da **sessao WhatsApp**
 
-O codigo em `process-broadcast-queue/index.ts` referencia a coluna `dna_id` em dois lugares:
+Isso explica por que o painel mostra "conectado" mesmo quando as instancias estao desconectadas no UAZAPI - porque o servidor esta funcionando, mas as sessoes WhatsApp nao estao.
 
-1. **Linha 765**: Tenta buscar `dna_id` da tabela `broadcast_lists` (coluna nao existe)
-2. **Linha 826**: Tenta inserir `dna_id` na tabela `whatsapp_conversations` (coluna nao existe)
+## Analise da Resposta Atual
 
-Quando o Supabase tenta inserir dados em uma coluna inexistente, a operacao falha e a conversa nao e criada. Por isso, das 10+ mensagens enviadas com sucesso, apenas 1 conversa foi criada (provavelmente em um cenario de race condition que usou outro caminho de codigo).
+```json
+{
+  "status": {
+    "server_status": "running",      // <- SERVIDOR rodando, nao a sessao
+    "checked_instance": {
+      "connection_status": "connected" // <- Falso positivo!
+    }
+  }
+}
+```
 
-### Evidencia
-
-- Lista de broadcast `Industrias - Vijay BH` tem `assigned_to: LUIZ OTAVIO`
-- 10+ mensagens foram enviadas com status `sent`
-- Apenas 1 conversa foi criada (Mantasul)
-- A coluna `dna_id` NAO existe nas tabelas `broadcast_lists` e `whatsapp_conversations`
+O codigo interpreta `server_status: running` como "instancia conectada", o que e incorreto.
 
 ## Solucao
 
-### Modificacao no Edge Function
+### 1. Usar o Endpoint Correto da UAZAPI
 
-Arquivo: `supabase/functions/process-broadcast-queue/index.ts`
-
-**Mudanca 1**: Remover referencia a `dna_id` na query (linha 765)
-
-```typescript
-// Antes
-.select('dna_id, assigned_to')
-
-// Depois  
-.select('assigned_to')
+Alterar de:
+```
+GET /status
 ```
 
-**Mudanca 2**: Remover `dna_id` do objeto de insercao (linha 826)
-
-```typescript
-// Antes
-const conversationData = {
-  ...
-  dna_id: dnaId,
-  assigned_to: assignedTo,
-  ...
-};
-
-// Depois
-const conversationData = {
-  ...
-  assigned_to: assignedTo,
-  ...
-};
+Para:
+```
+GET /instance/connectionState/{instance_phone}
 ```
 
-**Mudanca 3**: Remover `dna_id` do objeto de update (linha 794)
+Exemplo: `https://pulsarai.uazapi.com/instance/connectionState/553199579600`
 
-```typescript
-// Antes
-dna_id: dnaId || undefined,
-assigned_to: assignedTo || undefined,
+### 2. Interpretar a Resposta Correta
 
-// Depois
-assigned_to: assignedTo || undefined,
+A UAZAPI retorna para o endpoint `connectionState`:
+
+```json
+{
+  "instance": "553199579600",
+  "state": "open"           // ou "close", "connecting", "refused"
+}
 ```
 
-**Mudanca 4**: Remover variavel `dnaId` nao utilizada (linha 760)
+Possiveis valores de `state`:
+- `open` = Conectado ao WhatsApp
+- `close` = Desconectado/Sessao encerrada  
+- `connecting` = Tentando conectar
+- `refused` = Conexao recusada
+
+### 3. Adicionar Fallback e Logs Detalhados
+
+Para debug, incluir:
+- Log da URL chamada
+- Log da resposta completa
+- Log do estado interpretado
+
+## Modificacoes
+
+### Arquivo: `supabase/functions/check-instance-status/index.ts`
+
+**Mudanca 1**: Usar o campo `instance_phone` para construir a URL correta
 
 ```typescript
-// Antes
-let dnaId: string | null = null;
-let assignedTo: string | null = null;
-...
-dnaId = broadcastList?.dna_id || null;
-assignedTo = broadcastList?.assigned_to || null;
-
-// Depois
-let assignedTo: string | null = null;
-...
-assignedTo = broadcastList?.assigned_to || null;
+// Buscar tambem o instance_phone
+.select('id, name, server_url, instance_token, instance_phone, is_active')
 ```
 
-**Mudanca 5**: Adicionar `assigned_to` no fallback de race condition (linha 864-875)
+**Mudanca 2**: Alterar os endpoints para incluir o correto
 
 ```typescript
-// Antes (fallback NAO inclui assigned_to)
-const { error: fallbackUpdateError } = await supabase
-  .from('whatsapp_conversations')
-  .update({
-    is_crm_lead: true,
-    crm_funnel_id: defaultFunnelId,
-    funnel_stage: defaultStageId || 'new',
-    origin: 'broadcast',
-    broadcast_list_id: queueItem.broadcast_list_id,
-    broadcast_sent_at: new Date().toISOString(),
-    followup_count: 0
-  })
-  .eq('id', conversationId);
-
-// Depois (inclui assigned_to)
-const { error: fallbackUpdateError } = await supabase
-  .from('whatsapp_conversations')
-  .update({
-    is_crm_lead: true,
-    crm_funnel_id: defaultFunnelId,
-    funnel_stage: defaultStageId || 'new',
-    origin: 'broadcast',
-    broadcast_list_id: queueItem.broadcast_list_id,
-    broadcast_sent_at: new Date().toISOString(),
-    followup_count: 0,
-    assigned_to: assignedTo  // ADICIONAR ATRIBUICAO
-  })
-  .eq('id', conversationId);
+const endpoints = [
+  // Endpoint principal correto da UAZAPI
+  `${serverUrl}/instance/connectionState/${config.instance_phone}`,
+  // Fallbacks
+  `${serverUrl}/status`,
+  `${serverUrl}/instance/status`,
+];
 ```
+
+**Mudanca 3**: Melhorar a logica de interpretacao
+
+```typescript
+// UAZAPI connectionState retorna { state: "open" | "close" | "connecting" | "refused" }
+const isConnected = 
+  data.state === 'open' ||
+  data.connected === true ||
+  // Fallback para formato antigo do /status (menos confiavel)
+  (data.status?.checked_instance?.connection_status === 'connected' && 
+   data.status?.checked_instance?.is_healthy === true);
+```
+
+**Mudanca 4**: Adicionar logs detalhados
+
+```typescript
+console.log(`[Status Check] Instance: ${config.name}`);
+console.log(`[Status Check] Endpoint: ${usedEndpoint}`);
+console.log(`[Status Check] Response:`, JSON.stringify(data));
+console.log(`[Status Check] Interpreted state: ${status}`);
+```
+
+### 4. Melhorar UI com mais detalhes
+
+Mostrar no painel:
+- Estado detalhado (open/close/connecting/refused)
+- Resposta raw para debug
+- Botao para reconectar/escanear QR code
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `supabase/functions/process-broadcast-queue/index.ts` | Remover todas as referencias a `dna_id` e corrigir fallback |
+| `supabase/functions/check-instance-status/index.ts` | Usar endpoint correto + melhorar logs |
+| `src/components/instance/InstanceStatusPanel.tsx` | Mostrar mais detalhes do status |
+
+## Fluxo Apos Correcao
+
+```text
+1. Edge function busca whatsapp_config incluindo instance_phone
+2. Para cada instancia, chama /instance/connectionState/{phone}
+3. Interpreta state: "open" = conectado, outros = desconectado
+4. Salva resultado na tabela whatsapp_instance_status
+5. Frontend exibe status correto com detalhes
+```
 
 ## Resultado Esperado
 
-Apos a correcao:
-1. Todas as conversas de broadcast serao criadas corretamente
-2. O `assigned_to` sera atribuido corretamente a todos os leads
-3. O `broadcast_list_id` sera salvo nas conversas
-4. Mesmo em casos de race condition, o `assigned_to` sera aplicado
+1. Status mostrado no painel reflete a realidade da sessao WhatsApp
+2. Instancias desconectadas sao identificadas corretamente
+3. Logs detalhados para facilitar debug
+4. Possibilidade de ver o estado exato (open/close/connecting/refused)
+
