@@ -136,7 +136,7 @@ export function InstanceStatusPanel({ onStatusChange }: InstanceStatusPanelProps
     setFixingWebhook(configId);
     try {
       const { error } = await supabase.functions.invoke('configure-webhook', {
-        body: { config_id: configId },
+        body: { instance_id: configId, action: 'configure' },
       });
 
       if (error) throw error;
