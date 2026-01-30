@@ -756,16 +756,14 @@ serve(async (req) => {
           let conversationId: string | undefined = undefined;
           const leadData = queueItem.lead_data as Record<string, unknown> | null;
 
-          // Buscar o dna_id e assigned_to da broadcast list se existir
-          let dnaId: string | null = null;
+          // Buscar o assigned_to da broadcast list se existir
           let assignedTo: string | null = null;
           if (queueItem.broadcast_list_id) {
             const { data: broadcastList } = await supabase
               .from('broadcast_lists')
-              .select('dna_id, assigned_to')
+              .select('assigned_to')
               .eq('id', queueItem.broadcast_list_id)
               .maybeSingle();
-            dnaId = broadcastList?.dna_id || null;
             assignedTo = broadcastList?.assigned_to || null;
           }
 
@@ -791,7 +789,6 @@ serve(async (req) => {
                 funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
                 origin: 'broadcast', // ORIGEM DO LEAD
                 tags: ['new'],
-                dna_id: dnaId || undefined,
                 assigned_to: assignedTo || undefined, // ATRIBUIR AO USUÁRIO SELECIONADO
                 // Dados do broadcast para follow-ups automáticos
                 broadcast_list_id: queueItem.broadcast_list_id,
@@ -823,7 +820,6 @@ serve(async (req) => {
               funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
               origin: 'broadcast', // ORIGEM DO LEAD
               tags: ['new'],
-              dna_id: dnaId,
               assigned_to: assignedTo, // ATRIBUIR AO USUÁRIO SELECIONADO
               last_message_at: new Date().toISOString(),
               last_message_preview: processedMessage.substring(0, 100),
@@ -870,7 +866,8 @@ serve(async (req) => {
                       origin: 'broadcast',
                       broadcast_list_id: queueItem.broadcast_list_id,
                       broadcast_sent_at: new Date().toISOString(),
-                      followup_count: 0
+                      followup_count: 0,
+                      assigned_to: assignedTo // ATRIBUIR AO USUÁRIO SELECIONADO
                     })
                     .eq('id', conversationId);
                   
