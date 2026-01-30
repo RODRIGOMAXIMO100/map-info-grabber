@@ -113,7 +113,7 @@ export function QuickAddLeadModal({
       // Check if conversation already exists
       const { data: existing } = await supabase
         .from('whatsapp_conversations')
-        .select('id, phone, name, phone_invalid')
+        .select('id, phone, name, phone_invalid, is_crm_lead, tags')
         .or(`phone.eq.${formattedPhone},phone.eq.${phoneDigits}`)
         .limit(1)
         .maybeSingle();
@@ -126,8 +126,36 @@ export function QuickAddLeadModal({
           return;
         }
         
-        toast.info('Contato já existe', {
-          description: `${existing.name || existing.phone} já está no CRM`,
+        // Se JÁ é lead do CRM, apenas informar
+        if (existing.is_crm_lead) {
+          toast.info('Contato já existe', {
+            description: `${existing.name || existing.phone} já está no CRM`,
+          });
+          onOpenChange(false);
+          return;
+        }
+        
+        // Se existe mas NÃO é lead, atualizar para ser lead
+        const existingTags = (existing.tags as string[]) || [];
+        const newTags = [...existingTags, '16'].filter((v, i, a) => a.indexOf(v) === i);
+        
+        const { error: updateError } = await supabase
+          .from('whatsapp_conversations')
+          .update({
+            is_crm_lead: true,
+            funnel_stage: stageId,
+            crm_funnel_id: defaultFunnel?.id,
+            name: name.trim() || existing.name || null,
+            config_id: configId,
+            tags: newTags,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+
+        if (updateError) throw updateError;
+
+        toast.success('Lead adicionado', {
+          description: `${existing.name || existing.phone} foi adicionado ao CRM`,
         });
         onOpenChange(false);
         return;
