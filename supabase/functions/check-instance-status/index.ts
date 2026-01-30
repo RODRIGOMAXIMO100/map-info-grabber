@@ -20,8 +20,10 @@ interface StatusResult {
   name: string;
   status: 'connected' | 'disconnected' | 'connecting' | 'error';
   rawState: string | null;
-  webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'error';
+  webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'events_missing' | 'disabled' | 'error';
   webhookUrl: string | null;
+  webhookEnabled: boolean | null;
+  webhookEvents: string[];
   expectedWebhookUrl: string;
   details: Record<string, unknown>;
 }
@@ -77,9 +79,14 @@ serve(async (req) => {
       let details: Record<string, unknown> = {};
 
       // Webhook verification variables
-      let webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'error' = 'error';
+      let webhookStatus: 'configured' | 'misconfigured' | 'not_configured' | 'events_missing' | 'disabled' | 'error' = 'error';
       let currentWebhookUrl: string | null = null;
+      let webhookEnabled: boolean | null = null;
+      let webhookEvents: string[] = [];
       const expectedWebhookUrl = `${supabaseUrl}/functions/v1/whatsapp-receive-webhook?instance=${config.id}`;
+      
+      // Required events that must be present for messages to arrive
+      const requiredEvents = ['messages', 'messages.upsert'];
 
       try {
         // Clean up server URL
@@ -238,14 +245,41 @@ serve(async (req) => {
                                      (webhookConfig.webhookUrl as string) ||
                                      (webhookConfig.config as Record<string, unknown>)?.url as string ||
                                      null;
+                  
+                  // Extract enabled status
+                  webhookEnabled = webhookConfig.enabled !== false && webhookConfig.enabled !== 'false';
+                  
+                  // Extract events array
+                  const rawEvents = webhookConfig.events || 
+                                   (webhookConfig.webhook as Record<string, unknown>)?.events ||
+                                   (webhookConfig.config as Record<string, unknown>)?.events;
+                  if (Array.isArray(rawEvents)) {
+                    webhookEvents = rawEvents.map(e => String(e));
+                  }
                 }
                 
                 console.log(`[Webhook Check] Extracted webhook URL: ${currentWebhookUrl}`);
+                console.log(`[Webhook Check] Webhook enabled: ${webhookEnabled}`);
+                console.log(`[Webhook Check] Webhook events: ${JSON.stringify(webhookEvents)}`);
                 
+                // Check if required events are present
+                const hasRequiredEvent = webhookEvents.length > 0 && webhookEvents.some(e => 
+                  requiredEvents.some(req => e.toLowerCase().includes(req.toLowerCase()))
+                );
+                
+                // Determine webhook status based on URL, enabled, and events
                 if (currentWebhookUrl) {
                   if (currentWebhookUrl === expectedWebhookUrl) {
-                    webhookStatus = 'configured';
-                    console.log(`[Webhook Check] ✓ Webhook correctly configured`);
+                    if (webhookEnabled === false) {
+                      webhookStatus = 'disabled';
+                      console.log(`[Webhook Check] ⚠ Webhook disabled (enabled=false)`);
+                    } else if (webhookEvents.length === 0 || !hasRequiredEvent) {
+                      webhookStatus = 'events_missing';
+                      console.log(`[Webhook Check] ⚠ Webhook events empty or missing required events. Events: ${JSON.stringify(webhookEvents)}`);
+                    } else {
+                      webhookStatus = 'configured';
+                      console.log(`[Webhook Check] ✓ Webhook correctly configured with events: ${JSON.stringify(webhookEvents)}`);
+                    }
                   } else {
                     webhookStatus = 'misconfigured';
                     console.log(`[Webhook Check] ⚠ Webhook misconfigured. Expected: ${expectedWebhookUrl}, Got: ${currentWebhookUrl}`);
@@ -271,6 +305,8 @@ serve(async (req) => {
             lastDisconnectReason: instanceObj?.lastDisconnectReason as string | undefined,
             webhookStatus,
             webhookUrl: currentWebhookUrl,
+            webhookEnabled,
+            webhookEvents,
             expectedWebhookUrl,
             rawResponse: responseData,
             checkedAt: new Date().toISOString(),
@@ -309,6 +345,8 @@ serve(async (req) => {
         rawState,
         webhookStatus,
         webhookUrl: currentWebhookUrl,
+        webhookEnabled,
+        webhookEvents,
         expectedWebhookUrl,
         details,
       });
@@ -324,6 +362,8 @@ serve(async (req) => {
             rawState,
             webhookStatus,
             webhookUrl: currentWebhookUrl,
+            webhookEnabled,
+            webhookEvents,
             expectedWebhookUrl,
           },
         });
