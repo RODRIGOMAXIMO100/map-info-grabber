@@ -753,7 +753,7 @@ serve(async (req) => {
             console.log(`[BROADCAST] Nenhuma conversa encontrada, criando nova com: ${formattedPhone}`);
           }
 
-          let conversationId: string;
+          let conversationId: string | undefined = undefined;
           const leadData = queueItem.lead_data as Record<string, unknown> | null;
 
           // Buscar o dna_id e assigned_to da broadcast list se existir
@@ -903,8 +903,8 @@ serve(async (req) => {
           }
 
           // Register message in chat history
-          if (conversationId!) {
-            await supabase
+          if (conversationId) {
+            const { error: msgError } = await supabase
               .from('whatsapp_messages')
               .insert({
                 conversation_id: conversationId,
@@ -915,6 +915,14 @@ serve(async (req) => {
                 status: 'sent',
                 message_id_whatsapp: result.key?.id || null
               });
+            
+            if (msgError) {
+              console.error(`[Broadcast] Erro ao salvar mensagem no chat:`, msgError.message);
+            } else {
+              console.log(`[Broadcast] Mensagem salva no historico do chat para conversa ${conversationId}`);
+            }
+          } else {
+            console.error(`[Broadcast] Conversa nao encontrada/criada - mensagem nao foi salva no chat para ${formattedPhone}`);
           }
 
           // Update broadcast list counters
