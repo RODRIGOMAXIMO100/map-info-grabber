@@ -43,6 +43,51 @@ interface MediaData {
   text?: string;
   key?: unknown;
   contextInfo?: unknown;
+  // Interactive message types (buttons, lists, etc.)
+  buttonsMessage?: {
+    contentText?: string;
+    footerText?: string;
+    headerType?: number;
+    buttons?: Array<{
+      buttonText?: { displayText?: string };
+      buttonID?: string;
+    }>;
+    Header?: unknown;
+  };
+  listMessage?: {
+    title?: string;
+    description?: string;
+    buttonText?: string;
+    footerText?: string;
+    listType?: number;
+    sections?: Array<{
+      title?: string;
+      rows?: Array<{
+        title?: string;
+        description?: string;
+        rowID?: string;
+      }>;
+    }>;
+  };
+  // Button/list response
+  Response?: {
+    SelectedDisplayText?: string;
+  };
+  selectedButtonID?: string;
+  selectedRowID?: string;
+  // List message with description/buttonText at root level
+  description?: string;
+  buttonText?: string;
+  sections?: Array<{
+    rows?: Array<{
+      title?: string;
+      description?: string;
+      rowID?: string;
+    }>;
+  }>;
+  listType?: number;
+  footerText?: string;
+  messageContextInfo?: unknown;
 }
 
 interface MessageContentProps {
@@ -122,6 +167,50 @@ function extractTextFromJson(data: MediaData | null): string | null {
   // If has 'text' field, it's a text message in JSON format
   if (typeof data.text === 'string' && data.text.trim()) {
     return data.text;
+  }
+  
+  // Buttons message response (user clicked a button)
+  if (data.Response?.SelectedDisplayText) {
+    return `✅ ${data.Response.SelectedDisplayText}`;
+  }
+  
+  // Buttons message (interactive with buttons)
+  if (data.buttonsMessage?.contentText) {
+    let text = data.buttonsMessage.contentText;
+    if (data.buttonsMessage.footerText) {
+      text += `\n\n${data.buttonsMessage.footerText}`;
+    }
+    if (data.buttonsMessage.buttons?.length) {
+      text += '\n\n' + data.buttonsMessage.buttons
+        .map(b => `🔘 ${b.buttonText?.displayText || 'Botão'}`)
+        .join('\n');
+    }
+    return text;
+  }
+  
+  // List message (interactive with list options)
+  if (data.listMessage?.description || data.description) {
+    const desc = data.listMessage?.description || data.description || '';
+    const footer = data.listMessage?.footerText || data.footerText || '';
+    const btnText = data.listMessage?.buttonText || data.buttonText || '';
+    
+    let text = desc;
+    if (footer) text += `\n\n${footer}`;
+    if (btnText) text += `\n\n📋 ${btnText}`;
+    
+    // Add list items if available
+    const sections = data.listMessage?.sections || data.sections;
+    if (sections?.length) {
+      sections.forEach(section => {
+        section.rows?.forEach(row => {
+          if (row.title) {
+            text += `\n• ${row.title}`;
+            if (row.description) text += ` - ${row.description}`;
+          }
+        });
+      });
+    }
+    return text;
   }
   
   return null;
@@ -972,6 +1061,15 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
     );
   }
   
+  // Check if it's a text message in JSON format (buttons, lists, etc.) FIRST
+  const jsonTextContent = extractTextFromJson(mediaData);
+  if (mediaData && jsonTextContent) {
+    // It's a text/interactive message wrapped in JSON - render normally
+    return (
+      <p className="text-sm whitespace-pre-wrap break-words">{jsonTextContent}</p>
+    );
+  }
+  
   // Default: text message or unrecognized JSON
   if (mediaData && hasEncryptedMedia) {
     // It's encrypted media we couldn't handle - show download option
@@ -989,24 +1087,27 @@ export function MessageContent({ content, messageType, mediaUrl, direction, mess
     );
   }
   
-  // Check if it's a text message in JSON format (e.g., {"text": "message"})
-  const jsonTextContent = extractTextFromJson(mediaData);
-  if (mediaData && jsonTextContent) {
-    // It's a text message wrapped in JSON - render normally
-    return (
-      <p className="text-sm whitespace-pre-wrap break-words">{jsonTextContent}</p>
-    );
-  }
-  
   if (mediaData) {
-    // It's JSON but unrecognized type - show placeholder
+    // It's JSON but unrecognized type - log for debugging and show content if available
+    console.log('[MessageContent] Unrecognized JSON type:', Object.keys(mediaData));
+    // Try to show something useful
+    const keys = Object.keys(mediaData);
+    if (keys.length > 0) {
+      // Try common patterns for text content
+      const possibleTextKeys = ['body', 'message', 'content', 'title', 'description'];
+      for (const key of possibleTextKeys) {
+        if (typeof (mediaData as Record<string, unknown>)[key] === 'string') {
+          return <p className="text-sm whitespace-pre-wrap break-words">{(mediaData as Record<string, unknown>)[key] as string}</p>;
+        }
+      }
+    }
     return (
       <div className={cn(
         "flex items-center gap-2 py-1",
         isOutgoing ? "text-primary-foreground/80" : "text-muted-foreground"
       )}>
         <FileText className="h-4 w-4" />
-        <span className="text-sm">Mídia não suportada</span>
+        <span className="text-sm">📎 Mensagem interativa</span>
       </div>
     );
   }
