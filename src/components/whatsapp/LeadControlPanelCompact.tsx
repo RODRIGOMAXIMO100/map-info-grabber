@@ -125,6 +125,23 @@ export function LeadControlPanelCompact({
   const isArchived = conversation.status === 'archived';
   const hasReminder = !!conversation.reminder_at;
   const hasNotes = !!notes?.trim();
+  
+  // Variável explícita para leads sem funil (orphan leads)
+  const hasNoFunnel = !conversation.crm_funnel_id;
+
+  // Debug temporário - remover depois
+  useEffect(() => {
+    console.log('[Definir Funil Debug]', {
+      phone: conversation.phone,
+      isCrmLead,
+      crm_funnel_id: conversation.crm_funnel_id,
+      currentFunnelId,
+      hasNoFunnel,
+      hasOnAddToCRM: !!onAddToCRM,
+      shouldShow: isCrmLead && hasNoFunnel && !!onAddToCRM && !!conversation.phone,
+      isMobile
+    });
+  }, [isCrmLead, currentFunnelId, hasNoFunnel, onAddToCRM, conversation.phone, conversation.crm_funnel_id, isMobile]);
 
   // Auto-save notes with debounce
   const saveNotes = useCallback(async (value: string) => {
@@ -449,7 +466,7 @@ export function LeadControlPanelCompact({
             )}
 
             {/* Define Funnel - for leads without funnel (orphan leads) */}
-            {isCrmLead && !currentFunnelId && onAddToCRM && conversation.phone && (
+            {isCrmLead && hasNoFunnel && onAddToCRM && conversation.phone && (
               <DropdownMenuItem 
                 onClick={() => onAddToCRM(conversation.phone!, conversation.name || undefined, conversation.config_id)} 
                 className="text-xs text-amber-600"
@@ -854,7 +871,7 @@ export function LeadControlPanelCompact({
             {(onAssignToMe || onTransferUser) && <DropdownMenuSeparator />}
 
             {/* Define Funnel - for leads without funnel (orphan leads) */}
-            {isCrmLead && !currentFunnelId && onAddToCRM && conversation.phone && (
+            {isCrmLead && hasNoFunnel && onAddToCRM && conversation.phone && (
               <DropdownMenuItem 
                 onClick={() => onAddToCRM(conversation.phone!, conversation.name || undefined, conversation.config_id)} 
                 className="text-xs text-amber-600"
