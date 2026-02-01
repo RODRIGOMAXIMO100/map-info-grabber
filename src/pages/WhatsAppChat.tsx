@@ -1013,6 +1013,9 @@ export default function WhatsAppChat() {
                 isMobile={true}
                 conversation={{
                   id: selectedConversation.id,
+                  phone: selectedConversation.phone,
+                  name: selectedConversation.name,
+                  config_id: selectedConversation.config_id,
                   ai_paused: selectedConversation.ai_paused,
                   ai_handoff_reason: selectedConversation.ai_handoff_reason,
                   is_group: selectedConversation.is_group,
@@ -1024,6 +1027,11 @@ export default function WhatsAppChat() {
                   status: selectedConversation.status,
                   reminder_at: selectedConversation.reminder_at,
                   assigned_to: selectedConversation.assigned_to,
+                }}
+                onAddToCRM={(phone, name, configId) => {
+                  setQuickAddLeadPhone(phone);
+                  setQuickAddLeadName(name);
+                  setQuickAddLeadOpen(true);
                 }}
                 onUpdate={() => {
                   loadConversations();
@@ -1608,6 +1616,9 @@ export default function WhatsAppChat() {
                         <LeadControlPanelCompact 
                           conversation={{
                             id: selectedConversation.id,
+                            phone: selectedConversation.phone,
+                            name: selectedConversation.name,
+                            config_id: selectedConversation.config_id,
                             ai_paused: selectedConversation.ai_paused,
                             ai_handoff_reason: selectedConversation.ai_handoff_reason,
                             is_group: selectedConversation.is_group,
@@ -1619,6 +1630,11 @@ export default function WhatsAppChat() {
                             status: selectedConversation.status,
                             reminder_at: selectedConversation.reminder_at,
                             assigned_to: selectedConversation.assigned_to,
+                          }}
+                          onAddToCRM={(phone, name, configId) => {
+                            setQuickAddLeadPhone(phone);
+                            setQuickAddLeadName(name);
+                            setQuickAddLeadOpen(true);
                           }}
                           onUpdate={() => {
                             loadConversations();
