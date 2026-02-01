@@ -131,7 +131,7 @@ export function QuickAddLeadModal({
 
       const { data: existing } = await supabase
         .from('whatsapp_conversations')
-        .select('id, phone, name, phone_invalid, is_crm_lead, tags')
+        .select('id, phone, name, phone_invalid, is_crm_lead, crm_funnel_id, tags')
         .or(`phone.eq.${formattedPhone},phone.eq.${phoneDigits}`)
         .limit(1)
         .maybeSingle();
@@ -144,6 +144,29 @@ export function QuickAddLeadModal({
         }
         
         if (existing.is_crm_lead) {
+          // Se já é lead MAS não tem funil, permite atribuir
+          if (!existing.crm_funnel_id) {
+            const { error: updateError } = await supabase
+              .from('whatsapp_conversations')
+              .update({
+                funnel_stage: stageId,
+                crm_funnel_id: funnelId,
+                name: name.trim() || existing.name || null,
+                config_id: configId,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existing.id);
+
+            if (updateError) throw updateError;
+
+            toast.success('Funil definido', {
+              description: `${existing.name || existing.phone} foi adicionado ao funil`,
+            });
+            onOpenChange(false);
+            return;
+          }
+          
+          // Se já tem funil, mostra que já existe
           toast.info('Contato já existe', {
             description: `${existing.name || existing.phone} já está no CRM`,
           });
