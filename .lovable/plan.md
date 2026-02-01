@@ -1,85 +1,110 @@
 
-## Objetivo (o que vai mudar)
-Hoje o modal **QuickAddLeadModal** só deixa escolher **Etapa** e sempre usa o **funil padrão** (`useDefaultFunnel`). Por isso você “não consegue escolher para qual funil ele vai” — a UI simplesmente não oferece essa escolha.
+# Plano: Diagnosticar e Corrigir "Definir Funil" Não Aparecendo
 
-Vamos atualizar o fluxo “Adicionar ao CRM” no chat para permitir:
-- Selecionar **Funil**
-- Selecionar **Etapa** (carregada dinamicamente conforme o funil escolhido)
-- Manter o comportamento atual de “assumir primeiro / depois escolher funil e etapa” (não vamos auto-promover contatos random no backend)
+## Problema Identificado
 
-## Causa raiz (confirmada no código)
-Arquivo `src/components/crm/QuickAddLeadModal.tsx`:
-- Usa `useDefaultFunnel()` e passa `defaultFunnel?.id` para `useStages()`
-- Na hora de salvar, faz `crm_funnel_id: defaultFunnel?.id`
-- Não existe estado/Select para `funnelId`
+O código para exibir "Definir Funil" foi adicionado, mas a opção não está aparecendo no menu. As condições são:
 
-Ou seja: mesmo abrindo o modal pelo chat, ele sempre joga para o funil default.
+```typescript
+{isCrmLead && !currentFunnelId && onAddToCRM && conversation.phone && (...)}
+```
 
-## Solução proposta (frontend)
-### 1) Adicionar seleção de Funil no QuickAddLeadModal
-**Arquivo:** `src/components/crm/QuickAddLeadModal.tsx`
+Dados do lead `555499574586`:
+- `is_crm_lead: true` ✅
+- `crm_funnel_id: null` → `currentFunnelId = ''` → `!currentFunnelId = true` ✅
+- `onAddToCRM`: passado no WhatsAppChat.tsx ✅
+- `conversation.phone: '555499574586'` ✅
 
-Mudanças:
-- Criar estado `funnelId`
-- Buscar lista de funis disponíveis com `useFunnels()` (não só default)
-- Mostrar um `<Select>` “Funil” acima de “Etapa”
-- Quando o usuário mudar o funil:
-  - atualizar `funnelId`
-  - recarregar `stages` com `useStages(funnelId)`
-  - resetar `stageId` para o **primeiro estágio** do novo funil (quando carregar)
-- Ao salvar:
-  - usar `crm_funnel_id: funnelId` (em vez de `defaultFunnel?.id`)
-  - manter `funnel_stage: stageId` como já está
+Teoricamente, todas as condições são satisfeitas. Possíveis causas:
+1. Build não foi aplicado / cache do navegador
+2. O menu renderiza mas está oculto por algum motivo
+3. Há outra condição que não está sendo satisfeita
 
-Validações:
-- Se não tiver `funnelId`: erro “Selecione um funil”
-- Se não tiver `stageId`: erro “Selecione um estágio”
-- Se não tiver `configId`: erro “Selecione uma instância de WhatsApp”
+## Solução Proposta
 
-Comportamento inteligente:
-- Se o usuário só tiver 1 funil disponível (pela permissão/atribuição), podemos:
-  - setar automaticamente
-  - opcionalmente esconder o Select de funil (para não poluir), mas manter a lógica funcionando
+### Passo 1: Adicionar console.log temporário para diagnóstico
 
-### 2) Ajustar inicialização do modal (ao abrir)
-Ainda em `QuickAddLeadModal.tsx`:
-- No `useEffect` que roda quando `open`:
-  - definir `funnelId` como:
-    1) `defaultFunnel?.id` se existir
-    2) senão o primeiro funil retornado por `useFunnels()`
-- Definir `stageId` com base no funil escolhido (primeiro estágio daquele funil)
+No `LeadControlPanelCompact.tsx`, adicionar um log para verificar os valores em tempo real:
 
-Isso evita ficar com “Etapa vazia” quando trocar funil ou quando o funil default não estiver disponível para o usuário.
+```typescript
+// Perto da linha 121-127, após definir as variáveis
+useEffect(() => {
+  console.log('[Definir Funil Debug]', {
+    isCrmLead,
+    currentFunnelId,
+    hasOnAddToCRM: !!onAddToCRM,
+    phone: conversation.phone,
+    shouldShowDefinirFunil: isCrmLead && !currentFunnelId && !!onAddToCRM && !!conversation.phone
+  });
+}, [isCrmLead, currentFunnelId, onAddToCRM, conversation.phone]);
+```
 
-### 3) Manter o fluxo do chat como está (só abrindo modal)
-**Arquivos:** já alterados
-- `src/components/whatsapp/LeadControlPanelCompact.tsx`
-- `src/pages/WhatsAppChat.tsx`
+### Passo 2: Verificar valor de `currentFunnelId`
 
-Não precisamos mexer de novo neles para suportar “escolher funil”, porque a seleção vai acontecer dentro do modal.
+O problema pode ser que `currentFunnelId` não está sendo avaliado como falsy corretamente. Vou alterar a lógica para ser mais explícita:
 
-## Observações importantes (por que pode “parecer que não mudou”)
-Mesmo com a UI do funil:
-- Se seu usuário só tem **1 funil permitido** (por regra de acesso), o Select pode mostrar só 1 opção. Ainda assim vai funcionar, mas “parece que não tem escolha”.
-- Se você espera ver vários funis e aparece só 1, isso é permissão/atribuição (quem pode ver qual funil). Aí precisamos checar se o usuário está atribuído a mais de um funil.
+```typescript
+// Linha 121 - antes
+const currentFunnelId = conversation.crm_funnel_id || '';
 
-## Plano de teste (passo a passo)
-1) Abrir o chat do `555499574586`
-2) Menu (3 pontinhos) → **Adicionar ao CRM**
-3) Confirmar que o modal agora mostra:
-   - Funil (Select)
-   - Etapa (Select)
-   - Instância
-4) Selecionar um funil diferente e confirmar que:
-   - a lista de etapas muda conforme o funil
-5) Clicar em “Adicionar”
-6) Confirmar que o lead aparece no CRM no funil/etapa escolhidos
+// Alterar para ser mais explícito na verificação
+const currentFunnelId = conversation.crm_funnel_id;
+const hasNoFunnel = !currentFunnelId || currentFunnelId === '';
+```
 
-## Arquivos que serão modificados
-- `src/components/crm/QuickAddLeadModal.tsx`
-- (possivelmente) `src/hooks/useFunnels.ts` apenas se precisarmos de um helper de “funil selecionável”, mas a princípio não.
+E na condição (linha 857):
+```typescript
+// Antes
+{isCrmLead && !currentFunnelId && onAddToCRM && conversation.phone && (...)}
 
-## Riscos / cuidados
-- Carregamento assíncrono: precisamos tomar cuidado para não setar `stageId` antes de `stages` carregar.
-- Se não houver funis disponíveis para o usuário (lista vazia), o modal deve mostrar erro claro (“Você não tem funis disponíveis”) em vez de falhar silenciosamente.
+// Depois
+{isCrmLead && hasNoFunnel && onAddToCRM && conversation.phone && (...)}
+```
 
+### Passo 3: Forçar visibilidade da opção para teste
+
+Temporariamente, mostrar a opção sempre (independente das condições) para confirmar que o menu está renderizando:
+
+```typescript
+{/* Sempre mostrar para teste - remover depois */}
+{onAddToCRM && conversation.phone && (
+  <DropdownMenuItem 
+    onClick={() => onAddToCRM(conversation.phone!, conversation.name || undefined, conversation.config_id)} 
+    className="text-xs text-amber-600"
+  >
+    <UserPlus className="h-3.5 w-3.5 mr-2" />
+    Definir Funil (DEBUG: funnel={currentFunnelId || 'null'} crm={String(isCrmLead)})
+  </DropdownMenuItem>
+)}
+```
+
+### Passo 4: Verificar e aplicar nos dois lugares (mobile e desktop)
+
+O arquivo tem duas renderizações do menu:
+- **Mobile** (linha ~452): Para `isMobile={true}`
+- **Desktop** (linha ~857): Para `isMobile={false}`
+
+Preciso garantir que ambas estão atualizadas corretamente.
+
+## Arquivos a Modificar
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/components/whatsapp/LeadControlPanelCompact.tsx` | Adicionar logging de diagnóstico e melhorar a lógica de verificação de `currentFunnelId` |
+
+## Plano de Teste
+
+1. Aplicar as alterações
+2. Pedir ao usuário para recarregar a página (Ctrl+Shift+R para limpar cache)
+3. Abrir o chat do `555499574586`
+4. Clicar no menu (3 pontinhos)
+5. Verificar se "Definir Funil" aparece
+6. Se não aparecer, verificar o console do navegador para ver os logs de debug
+7. Uma vez funcionando, remover os logs de debug
+
+## Próximos Passos Após Funcionar
+
+Uma vez que o problema for resolvido:
+1. Remover console.logs de debug
+2. Confirmar que o modal abre ao clicar em "Definir Funil"
+3. Confirmar que após selecionar funil/etapa, o lead é atualizado corretamente
