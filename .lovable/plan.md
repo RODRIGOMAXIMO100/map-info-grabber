@@ -1,101 +1,85 @@
 
+## Objetivo (o que vai mudar)
+Hoje o modal **QuickAddLeadModal** só deixa escolher **Etapa** e sempre usa o **funil padrão** (`useDefaultFunnel`). Por isso você “não consegue escolher para qual funil ele vai” — a UI simplesmente não oferece essa escolha.
 
-# Plano: Fluxo de Adicionar Contato Random ao CRM com Escolha de Etapa
+Vamos atualizar o fluxo “Adicionar ao CRM” no chat para permitir:
+- Selecionar **Funil**
+- Selecionar **Etapa** (carregada dinamicamente conforme o funil escolhido)
+- Manter o comportamento atual de “assumir primeiro / depois escolher funil e etapa” (não vamos auto-promover contatos random no backend)
 
-## Contexto
+## Causa raiz (confirmada no código)
+Arquivo `src/components/crm/QuickAddLeadModal.tsx`:
+- Usa `useDefaultFunnel()` e passa `defaultFunnel?.id` para `useStages()`
+- Na hora de salvar, faz `crm_funnel_id: defaultFunnel?.id`
+- Não existe estado/Select para `funnelId`
 
-Quando um contato "aleatório" manda mensagem:
-1. A conversa é criada com `is_crm_lead: false` (correto - atendente decide)
-2. A conversa aparece no chat (funcionando)
-3. O atendente precisa "assumir" e depois escolher em qual funil/etapa adicionar
+Ou seja: mesmo abrindo o modal pelo chat, ele sempre joga para o funil default.
 
-Atualmente:
-- O menu tem "Ativar Lead" que marca como lead automaticamente com etapa padrão
-- Para escolher etapa, tem que ativar primeiro e depois mudar a etapa pelo submenu
+## Solução proposta (frontend)
+### 1) Adicionar seleção de Funil no QuickAddLeadModal
+**Arquivo:** `src/components/crm/QuickAddLeadModal.tsx`
 
-O que você quer:
-- Poder escolher a etapa NO MOMENTO de adicionar ao CRM
+Mudanças:
+- Criar estado `funnelId`
+- Buscar lista de funis disponíveis com `useFunnels()` (não só default)
+- Mostrar um `<Select>` “Funil” acima de “Etapa”
+- Quando o usuário mudar o funil:
+  - atualizar `funnelId`
+  - recarregar `stages` com `useStages(funnelId)`
+  - resetar `stageId` para o **primeiro estágio** do novo funil (quando carregar)
+- Ao salvar:
+  - usar `crm_funnel_id: funnelId` (em vez de `defaultFunnel?.id`)
+  - manter `funnel_stage: stageId` como já está
 
-## Solucao
+Validações:
+- Se não tiver `funnelId`: erro “Selecione um funil”
+- Se não tiver `stageId`: erro “Selecione um estágio”
+- Se não tiver `configId`: erro “Selecione uma instância de WhatsApp”
 
-Adicionar um botão/menu "Adicionar ao CRM" no `LeadControlPanelCompact` que abre o `QuickAddLeadModal` (que já existe e permite escolher etapa) quando a conversa NÃO é lead.
+Comportamento inteligente:
+- Se o usuário só tiver 1 funil disponível (pela permissão/atribuição), podemos:
+  - setar automaticamente
+  - opcionalmente esconder o Select de funil (para não poluir), mas manter a lógica funcionando
 
-## Modificacoes Tecnicas
+### 2) Ajustar inicialização do modal (ao abrir)
+Ainda em `QuickAddLeadModal.tsx`:
+- No `useEffect` que roda quando `open`:
+  - definir `funnelId` como:
+    1) `defaultFunnel?.id` se existir
+    2) senão o primeiro funil retornado por `useFunnels()`
+- Definir `stageId` com base no funil escolhido (primeiro estágio daquele funil)
 
-### 1. Arquivo: `src/components/whatsapp/LeadControlPanelCompact.tsx`
+Isso evita ficar com “Etapa vazia” quando trocar funil ou quando o funil default não estiver disponível para o usuário.
 
-Adicionar prop callback para abrir o modal de adicionar ao CRM:
+### 3) Manter o fluxo do chat como está (só abrindo modal)
+**Arquivos:** já alterados
+- `src/components/whatsapp/LeadControlPanelCompact.tsx`
+- `src/pages/WhatsAppChat.tsx`
 
-```typescript
-interface LeadControlPanelCompactProps {
-  // ... props existentes
-  onAddToCRM?: (phone: string, name?: string) => void; // NOVA PROP
-}
-```
+Não precisamos mexer de novo neles para suportar “escolher funil”, porque a seleção vai acontecer dentro do modal.
 
-No menu dropdown, substituir "Ativar Lead" por lógica condicional:
+## Observações importantes (por que pode “parecer que não mudou”)
+Mesmo com a UI do funil:
+- Se seu usuário só tem **1 funil permitido** (por regra de acesso), o Select pode mostrar só 1 opção. Ainda assim vai funcionar, mas “parece que não tem escolha”.
+- Se você espera ver vários funis e aparece só 1, isso é permissão/atribuição (quem pode ver qual funil). Aí precisamos checar se o usuário está atribuído a mais de um funil.
 
-```typescript
-{/* Adicionar ao CRM - para não-leads */}
-{!isCrmLead && onAddToCRM && (
-  <DropdownMenuItem onClick={() => onAddToCRM(conversation.phone, conversation.name)} className="text-xs">
-    <UserPlus className="h-3.5 w-3.5 mr-2" />
-    Adicionar ao CRM
-  </DropdownMenuItem>
-)}
+## Plano de teste (passo a passo)
+1) Abrir o chat do `555499574586`
+2) Menu (3 pontinhos) → **Adicionar ao CRM**
+3) Confirmar que o modal agora mostra:
+   - Funil (Select)
+   - Etapa (Select)
+   - Instância
+4) Selecionar um funil diferente e confirmar que:
+   - a lista de etapas muda conforme o funil
+5) Clicar em “Adicionar”
+6) Confirmar que o lead aparece no CRM no funil/etapa escolhidos
 
-{/* Toggle Lead - manter para leads já existentes */}
-{isCrmLead && (
-  <DropdownMenuItem onClick={handleToggleLead} className="text-xs">
-    <UserX className="h-3.5 w-3.5 mr-2" />
-    Remover do CRM
-  </DropdownMenuItem>
-)}
-```
+## Arquivos que serão modificados
+- `src/components/crm/QuickAddLeadModal.tsx`
+- (possivelmente) `src/hooks/useFunnels.ts` apenas se precisarmos de um helper de “funil selecionável”, mas a princípio não.
 
-### 2. Arquivo: `src/pages/WhatsAppChat.tsx`
-
-Passar o callback `onAddToCRM` para o `LeadControlPanelCompact`:
-
-```typescript
-<LeadControlPanelCompact
-  conversation={selectedConversation}
-  onAddToCRM={(phone, name) => {
-    setQuickAddLeadPhone(phone);
-    setQuickAddLeadName(name);
-    setQuickAddLeadOpen(true);
-  }}
-  // ... outras props
-/>
-```
-
-### 3. Arquivo: `src/components/crm/QuickAddLeadModal.tsx`
-
-Já foi corrigido para atualizar conversas existentes que não são leads. Agora quando você abre o modal para um contato que já existe no banco (mas não é lead), ele vai atualizar corretamente.
-
-## Fluxo Final
-
-1. Contato "random" manda mensagem
-2. Conversa aparece no chat com `is_crm_lead: false`
-3. Atendente abre a conversa e clica no menu (tres pontinhos)
-4. Vê opcao "Adicionar ao CRM" (ao inves de "Ativar Lead")
-5. Clica e abre o modal `QuickAddLeadModal`
-6. Escolhe a etapa desejada
-7. Clica "Adicionar"
-8. Sistema atualiza a conversa: `is_crm_lead: true`, `funnel_stage: [escolhida]`, `crm_funnel_id: [padrao]`
-9. Lead aparece no CRM Kanban na etapa escolhida
-
-## Arquivos a Modificar
-
-| Arquivo | Alteracao |
-|---------|-----------|
-| `src/components/whatsapp/LeadControlPanelCompact.tsx` | Adicionar prop `onAddToCRM` e mostrar botao "Adicionar ao CRM" para nao-leads |
-| `src/pages/WhatsAppChat.tsx` | Passar callback `onAddToCRM` para o LeadControlPanelCompact |
-
-## Resultado Esperado
-
-- Contatos "random" aparecem no chat
-- Atendente pode adicionar ao CRM escolhendo a etapa
-- Modal permite escolher funil e etapa antes de confirmar
-- Conversa existente e atualizada corretamente (bug ja corrigido)
+## Riscos / cuidados
+- Carregamento assíncrono: precisamos tomar cuidado para não setar `stageId` antes de `stages` carregar.
+- Se não houver funis disponíveis para o usuário (lista vazia), o modal deve mostrar erro claro (“Você não tem funis disponíveis”) em vez de falhar silenciosamente.
 
