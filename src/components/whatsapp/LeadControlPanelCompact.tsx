@@ -448,6 +448,17 @@ export function LeadControlPanelCompact({
               </DropdownMenuItem>
             )}
 
+            {/* Define Funnel - for leads without funnel (orphan leads) */}
+            {isCrmLead && !currentFunnelId && onAddToCRM && conversation.phone && (
+              <DropdownMenuItem 
+                onClick={() => onAddToCRM(conversation.phone!, conversation.name || undefined, conversation.config_id)} 
+                className="text-xs text-amber-600"
+              >
+                <UserPlus className="h-3.5 w-3.5 mr-2" />
+                Definir Funil
+              </DropdownMenuItem>
+            )}
+
             {/* Toggle Lead - for existing leads (remove) or fallback when no onAddToCRM */}
             {(isCrmLead || !onAddToCRM) && (
               <DropdownMenuItem onClick={handleToggleLead} className="text-xs">
@@ -841,6 +852,17 @@ export function LeadControlPanelCompact({
               </DropdownMenuItem>
             )}
             {(onAssignToMe || onTransferUser) && <DropdownMenuSeparator />}
+
+            {/* Define Funnel - for leads without funnel (orphan leads) */}
+            {isCrmLead && !currentFunnelId && onAddToCRM && conversation.phone && (
+              <DropdownMenuItem 
+                onClick={() => onAddToCRM(conversation.phone!, conversation.name || undefined, conversation.config_id)} 
+                className="text-xs text-amber-600"
+              >
+                <UserPlus className="h-3.5 w-3.5 mr-2" />
+                Definir Funil
+              </DropdownMenuItem>
+            )}
             
             {/* Origin selector */}
             {isCrmLead && (
