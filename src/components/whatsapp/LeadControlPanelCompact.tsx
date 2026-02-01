@@ -57,6 +57,8 @@ interface Stage {
 interface LeadControlPanelCompactProps {
   conversation: {
     id: string;
+    phone?: string;
+    name?: string | null;
     ai_paused?: boolean;
     ai_handoff_reason?: string | null;
     is_group?: boolean;
@@ -68,6 +70,7 @@ interface LeadControlPanelCompactProps {
     status?: string;
     reminder_at?: string | null;
     assigned_to?: string | null;
+    config_id?: string;
   };
   onUpdate?: () => void;
   onArchive?: (archive: boolean) => void;
@@ -77,6 +80,7 @@ interface LeadControlPanelCompactProps {
   onTransferUser?: () => void;
   onTransferInstance?: () => void;
   onMarkUnread?: () => void;
+  onAddToCRM?: (phone: string, name?: string, configId?: string) => void;
   hasMultipleInstances?: boolean;
   instanceDisconnected?: boolean;
   initialNotes?: string | null;
@@ -93,6 +97,7 @@ export function LeadControlPanelCompact({
   onTransferUser,
   onTransferInstance,
   onMarkUnread,
+  onAddToCRM,
   hasMultipleInstances,
   instanceDisconnected,
   initialNotes,
@@ -432,11 +437,24 @@ export function LeadControlPanelCompact({
               </DropdownMenuItem>
             )}
 
-            {/* Toggle Lead */}
-            <DropdownMenuItem onClick={handleToggleLead} className="text-xs">
-              {isCrmLead ? <UserX className="h-3.5 w-3.5 mr-2" /> : <UserCheck className="h-3.5 w-3.5 mr-2" />}
-              {isCrmLead ? 'Desativar Lead' : 'Ativar Lead'}
-            </DropdownMenuItem>
+            {/* Add to CRM - for non-leads with modal */}
+            {!isCrmLead && onAddToCRM && conversation.phone && (
+              <DropdownMenuItem 
+                onClick={() => onAddToCRM(conversation.phone!, conversation.name || undefined, conversation.config_id)} 
+                className="text-xs"
+              >
+                <UserPlus className="h-3.5 w-3.5 mr-2" />
+                Adicionar ao CRM
+              </DropdownMenuItem>
+            )}
+
+            {/* Toggle Lead - for existing leads (remove) or fallback when no onAddToCRM */}
+            {(isCrmLead || !onAddToCRM) && (
+              <DropdownMenuItem onClick={handleToggleLead} className="text-xs">
+                {isCrmLead ? <UserX className="h-3.5 w-3.5 mr-2" /> : <UserCheck className="h-3.5 w-3.5 mr-2" />}
+                {isCrmLead ? 'Remover do CRM' : 'Ativar Lead'}
+              </DropdownMenuItem>
+            )}
 
             {/* Stage submenu */}
             {isCrmLead && stages.length > 0 && (
