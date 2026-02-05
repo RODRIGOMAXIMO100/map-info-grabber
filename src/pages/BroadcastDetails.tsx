@@ -28,6 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useFunnels } from '@/hooks/useFunnels';
+import { useStages } from '@/hooks/useStages';
 
 import {
   Dialog,
@@ -140,6 +142,14 @@ export default function BroadcastDetails() {
   const [users, setUsers] = useState<Array<{ user_id: string; name: string; role: string }>>([]);
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  
+  // CRM Funnel targeting state
+  const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(null);
+  const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
+  
+  // Hooks for funnels and stages
+  const { data: funnels, isLoading: funnelsLoading } = useFunnels();
+  const { data: stages, isLoading: stagesLoading } = useStages(selectedFunnelId);
 
   useEffect(() => {
     if (id) {
@@ -220,7 +230,28 @@ export default function BroadcastDetails() {
     setEditedMessage(data.message_template || DEFAULT_MESSAGE);
     setEditedImageUrl(data.image_url || '');
     setSelectedAssignee((data as any).assigned_to || null);
+    setSelectedFunnelId((data as any).crm_funnel_id || null);
+    setSelectedStageId((data as any).crm_funnel_stage_id || null);
   };
+  
+  // Set default funnel if none selected
+  useEffect(() => {
+    if (!selectedFunnelId && funnels && funnels.length > 0) {
+      const defaultFunnel = funnels.find(f => f.is_default) || funnels[0];
+      setSelectedFunnelId(defaultFunnel.id);
+    }
+  }, [funnels, selectedFunnelId]);
+  
+  // Set first stage when funnel changes
+  useEffect(() => {
+    if (stages && stages.length > 0 && selectedFunnelId) {
+      // Only auto-select if no stage is selected or if the current stage doesn't belong to this funnel
+      const currentStageInFunnel = stages.find(s => s.id === selectedStageId);
+      if (!selectedStageId || !currentStageInFunnel) {
+        setSelectedStageId(stages[0].id);
+      }
+    }
+  }, [stages, selectedFunnelId]);
 
   const loadQueue = async () => {
     if (!id) return;
@@ -250,6 +281,8 @@ export default function BroadcastDetails() {
           message_template: editedMessage,
           image_url: editedImageUrl || null,
           assigned_to: selectedAssignee || null,
+          crm_funnel_id: selectedFunnelId || null,
+          crm_funnel_stage_id: selectedStageId || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', list.id);
@@ -360,6 +393,8 @@ export default function BroadcastDetails() {
           message_template: messageToUse,
           image_url: imageToUse || null,
           assigned_to: selectedAssignee || null,
+          crm_funnel_id: selectedFunnelId || null,
+          crm_funnel_stage_id: selectedStageId || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', list.id);
@@ -920,39 +955,98 @@ export default function BroadcastDetails() {
                   </div>
                 )}
 
-                {/* User Assignment Selector */}
-                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-3">
-                  <Label className="flex items-center gap-2 text-sm font-medium">
+                {/* CRM Configuration Section */}
+                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium">
                     <UserCheck className="h-4 w-4 text-primary" />
-                    Atribuir leads para
-                  </Label>
-                  <Select
-                    value={selectedAssignee || "none"}
-                    onValueChange={(value) => setSelectedAssignee(value === "none" ? null : value)}
-                    disabled={list.status === 'sending' || loadingUsers}
-                  >
-                    <SelectTrigger className="w-full md:w-72">
-                      <SelectValue placeholder="Selecione um usuário..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        <span className="text-muted-foreground">Não atribuir (aparece para todos)</span>
-                      </SelectItem>
-                      {users.map((user) => (
-                        <SelectItem key={user.user_id} value={user.user_id}>
-                          <div className="flex items-center gap-2">
-                            <span>{user.name}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {user.role === 'admin' ? 'Admin' : user.role === 'sdr' ? 'SDR' : 'Closer'}
-                            </Badge>
-                          </div>
+                    Configuração do CRM
+                  </div>
+                  
+                  {/* User Assignment Selector */}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Atribuir leads para</Label>
+                    <Select
+                      value={selectedAssignee || "none"}
+                      onValueChange={(value) => setSelectedAssignee(value === "none" ? null : value)}
+                      disabled={list.status === 'sending' || loadingUsers}
+                    >
+                      <SelectTrigger className="w-full md:w-72">
+                        <SelectValue placeholder="Selecione um usuário..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          <span className="text-muted-foreground">Não atribuir (aparece para todos)</span>
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                        {users.map((user) => (
+                          <SelectItem key={user.user_id} value={user.user_id}>
+                            <div className="flex items-center gap-2">
+                              <span>{user.name}</span>
+                              <Badge variant="outline" className="text-xs">
+                                {user.role === 'admin' ? 'Admin' : user.role === 'sdr' ? 'SDR' : 'Closer'}
+                              </Badge>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {/* Funnel and Stage Selectors */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm">Funil</Label>
+                      <Select
+                        value={selectedFunnelId || ""}
+                        onValueChange={(value) => {
+                          setSelectedFunnelId(value);
+                          setSelectedStageId(null); // Reset stage when funnel changes
+                        }}
+                        disabled={list.status === 'sending' || funnelsLoading}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={funnelsLoading ? "Carregando..." : "Selecione o funil"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {funnels?.map((funnel) => (
+                            <SelectItem key={funnel.id} value={funnel.id}>
+                              {funnel.name}
+                              {funnel.is_default && ' (padrão)'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-sm">Etapa inicial</Label>
+                      <Select
+                        value={selectedStageId || ""}
+                        onValueChange={setSelectedStageId}
+                        disabled={list.status === 'sending' || stagesLoading || !selectedFunnelId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={stagesLoading ? "Carregando..." : "Selecione a etapa"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {stages?.map((stage) => (
+                            <SelectItem key={stage.id} value={stage.id}>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: stage.color }}
+                                />
+                                {stage.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
                   <p className="text-xs text-muted-foreground">
-                    Os leads gerados por este disparo serão atribuídos automaticamente ao usuário selecionado.
-                    Se não atribuir, os chats aparecerão para todos os usuários.
+                    Os leads deste disparo serão inseridos automaticamente no funil e etapa selecionados,
+                    atribuídos ao usuário escolhido.
                   </p>
                 </div>
 

@@ -140,6 +140,10 @@ export interface BroadcastList {
   failed_count: number;
   created_at: string;
   updated_at: string;
+  // CRM targeting
+  crm_funnel_id?: string | null;
+  crm_funnel_stage_id?: string | null;
+  assigned_to?: string | null;
 }
 
 export interface LeadData {

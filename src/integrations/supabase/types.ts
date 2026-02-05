@@ -96,6 +96,8 @@ export type Database = {
         Row: {
           assigned_to: string | null
           created_at: string | null
+          crm_funnel_id: string | null
+          crm_funnel_stage_id: string | null
           description: string | null
           failed_count: number | null
           id: string
@@ -115,6 +117,8 @@ export type Database = {
         Insert: {
           assigned_to?: string | null
           created_at?: string | null
+          crm_funnel_id?: string | null
+          crm_funnel_stage_id?: string | null
           description?: string | null
           failed_count?: number | null
           id?: string
@@ -134,6 +138,8 @@ export type Database = {
         Update: {
           assigned_to?: string | null
           created_at?: string | null
+          crm_funnel_id?: string | null
+          crm_funnel_stage_id?: string | null
           description?: string | null
           failed_count?: number | null
           id?: string
@@ -157,6 +163,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "broadcast_lists_crm_funnel_id_fkey"
+            columns: ["crm_funnel_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_lists_crm_funnel_stage_id_fkey"
+            columns: ["crm_funnel_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel_stages"
+            referencedColumns: ["id"]
           },
         ]
       }
