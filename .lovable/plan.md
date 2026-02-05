@@ -1,84 +1,141 @@
 
-## Problema Identificado
+# Plano: Seleção de Funil, Etapa e Usuário no Disparo
 
-O contato `555499574586` está em um estado "órfão":
-- `is_crm_lead: true` → O sistema entende que é lead
-- `crm_funnel_id: null` → Não tem funil atribuído
-- `funnel_stage: null` → Não tem etapa atribuída
+## Contexto Atual
+O sistema já possui o seletor de **Responsável** (usuário) na tela de configuração do disparo. Vamos adicionar os seletores de **Funil** e **Etapa** para que o usuário possa definir exatamente onde os leads serão inseridos no CRM.
 
-**Resultado:** O modal diz "já está no CRM" e fecha, mas o lead não aparece em lugar nenhum do Kanban porque não tem funil.
+## Mudanças Necessárias
 
-## Solução Proposta
+### 1. Banco de Dados (Migração SQL)
 
-### Mudança no `QuickAddLeadModal.tsx`
+Adicionar duas colunas na tabela `broadcast_lists`:
 
-Quando detectar um contato que `is_crm_lead = true` **mas não tem funil**, em vez de apenas mostrar "já está no CRM" e fechar, vou:
+```sql
+ALTER TABLE broadcast_lists 
+ADD COLUMN crm_funnel_id UUID REFERENCES crm_funnels(id),
+ADD COLUMN crm_funnel_stage_id UUID REFERENCES crm_funnel_stages(id);
+```
 
-1. **Atualizar o funil/etapa** do lead existente com os valores selecionados no modal
-2. Mostrar mensagem "Lead atualizado" (não "já existe")
+### 2. Interface de Tipos
 
-**Antes (código atual):**
+Atualizar `src/types/whatsapp.ts` para incluir os novos campos na interface `BroadcastList`:
+
 ```typescript
-if (existing.is_crm_lead) {
-  toast.info('Contato já existe', {
-    description: `${existing.name || existing.phone} já está no CRM`,
-  });
-  onOpenChange(false);  // ❌ Fecha sem fazer nada
-  return;
+export interface BroadcastList {
+  // ... campos existentes ...
+  crm_funnel_id?: string | null;
+  crm_funnel_stage_id?: string | null;
 }
 ```
 
-**Depois (código novo):**
+### 3. Frontend - Tela de Configuração do Disparo
+
+Modificar `src/pages/BroadcastDetails.tsx`:
+
+**Novos imports:**
 ```typescript
-if (existing.is_crm_lead) {
-  // Se já é lead mas não tem funil, permite atribuir
-  if (!existing.crm_funnel_id) {
-    const { error: updateError } = await supabase
-      .from('whatsapp_conversations')
-      .update({
-        funnel_stage: stageId,
-        crm_funnel_id: funnelId,
-        name: name.trim() || existing.name || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', existing.id);
-
-    if (updateError) throw updateError;
-
-    toast.success('Funil definido', {
-      description: `${existing.name || existing.phone} foi adicionado ao funil`,
-    });
-    onOpenChange(false);
-    return;
-  }
-  
-  // Se já tem funil, mostra onde está
-  toast.info('Contato já existe', {
-    description: `${existing.name || existing.phone} já está no CRM`,
-  });
-  onOpenChange(false);
-  return;
-}
+import { useFunnels } from '@/hooks/useFunnels';
+import { useStages } from '@/hooks/useStages';
 ```
 
-## Arquivos a Modificar
+**Novos estados:**
+```typescript
+const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(null);
+const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
+```
+
+**Layout da seção de configuração CRM** (após o seletor de mídia, junto com o seletor de usuário existente):
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│ 📋 Configuração do CRM                                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ Atribuir leads para:  [▼ Selecione um usuário...            ]  │
+│                                                                 │
+│ Funil:                [▼ FUNIL AQUISIÇÃO                    ]  │
+│ Etapa inicial:        [▼ Lead Novo                          ]  │
+│                                                                 │
+│ ⓘ Os leads deste disparo serão inseridos automaticamente no   │
+│   funil e etapa selecionados, atribuídos ao usuário escolhido. │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Comportamento:**
+- Ao selecionar um funil, carregar as etapas daquele funil
+- Ao mudar o funil, resetar a etapa para a primeira disponível
+- Valor padrão: funil com `is_default = true` e primeira etapa
+- Ao salvar, persistir `crm_funnel_id` e `crm_funnel_stage_id`
+
+### 4. Função saveMessage
+
+Atualizar para incluir os novos campos:
+
+```typescript
+const { error } = await supabase
+  .from('broadcast_lists')
+  .update({ 
+    message_template: editedMessage,
+    image_url: editedImageUrl || null,
+    assigned_to: selectedAssignee || null,
+    crm_funnel_id: selectedFunnelId || null,      // NOVO
+    crm_funnel_stage_id: selectedStageId || null, // NOVO
+    updated_at: new Date().toISOString()
+  })
+  .eq('id', list.id);
+```
+
+### 5. Edge Function - Processamento do Disparo
+
+Modificar `supabase/functions/process-broadcast-queue/index.ts`:
+
+**Atualizar query que busca dados da lista:**
+```typescript
+const { data: broadcastList } = await supabase
+  .from('broadcast_lists')
+  .select('assigned_to, crm_funnel_id, crm_funnel_stage_id')
+  .eq('id', queueItem.broadcast_list_id)
+  .maybeSingle();
+```
+
+**Usar valores da lista na criação/atualização de conversas:**
+```typescript
+// Se a lista tem funil/etapa configurados, usar esses valores
+// Senão, usar o funil padrão
+const funnelId = broadcastList?.crm_funnel_id || defaultFunnelId;
+const stageId = broadcastList?.crm_funnel_stage_id || defaultFirstStageId;
+
+// Na criação/atualização da conversa:
+crm_funnel_id: funnelId,
+funnel_stage: stageId,
+```
+
+## Resumo das Alterações
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/components/crm/QuickAddLeadModal.tsx` | Permitir atribuir funil a leads órfãos (is_crm_lead=true mas crm_funnel_id=null) |
+| Migração SQL | Adicionar `crm_funnel_id` e `crm_funnel_stage_id` |
+| `src/types/whatsapp.ts` | Adicionar campos na interface |
+| `src/pages/BroadcastDetails.tsx` | Adicionar seletores de Funil e Etapa |
+| `supabase/functions/process-broadcast-queue/index.ts` | Usar funil/etapa da lista |
 
-## Fluxo Após a Correção
+## Fluxo Final
 
-1. Usuário abre o modal "Adicionar ao CRM"
-2. Sistema detecta que o contato já é lead mas não tem funil
-3. Usuário seleciona o funil e etapa desejados
-4. Clica em "Adicionar"
-5. Sistema atualiza o `crm_funnel_id` e `funnel_stage`
-6. Lead aparece no Kanban na etapa correta
+```text
+Usuário configura disparo:
+  → Seleciona Responsável: "João Silva"
+  → Seleciona Funil: "FUNIL POLÍTICA"  
+  → Seleciona Etapa: "Interesse"
+  → Clica "Iniciar Disparo"
 
-## Plano de Teste
+Processamento (Edge Function):
+  → Busca config: assigned_to, crm_funnel_id, crm_funnel_stage_id
+  → Para cada lead que recebe mensagem:
+     - crm_funnel_id = "FUNIL POLÍTICA"
+     - funnel_stage = "Interesse"
+     - assigned_to = "João Silva"
 
-1. Abrir o modal para o contato `555499574586`
-2. Selecionar "FUNIL POLÍTICA" e a primeira etapa
-3. Clicar em "Adicionar"
-4. Verificar que o lead aparece no Kanban do funil selecionado
+Resultado:
+  → Lead aparece no Kanban "FUNIL POLÍTICA" na etapa "Interesse"
+  → Lead está atribuído ao "João Silva"
+```
