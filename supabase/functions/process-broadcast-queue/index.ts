@@ -756,16 +756,25 @@ serve(async (req) => {
           let conversationId: string | undefined = undefined;
           const leadData = queueItem.lead_data as Record<string, unknown> | null;
 
-          // Buscar o assigned_to da broadcast list se existir
+          // Buscar o assigned_to e configuração de funil da broadcast list se existir
           let assignedTo: string | null = null;
+          let broadcastFunnelId: string | null = null;
+          let broadcastStageId: string | null = null;
+          
           if (queueItem.broadcast_list_id) {
             const { data: broadcastList } = await supabase
               .from('broadcast_lists')
-              .select('assigned_to')
+              .select('assigned_to, crm_funnel_id, crm_funnel_stage_id')
               .eq('id', queueItem.broadcast_list_id)
               .maybeSingle();
             assignedTo = broadcastList?.assigned_to || null;
+            broadcastFunnelId = broadcastList?.crm_funnel_id || null;
+            broadcastStageId = broadcastList?.crm_funnel_stage_id || null;
           }
+          
+          // Priorizar funil/etapa do broadcast, senão usar default
+          const targetFunnelId = broadcastFunnelId || defaultFunnelId;
+          const targetStageId = broadcastStageId || defaultStageId;
 
           if (existingConv) {
             conversationId = existingConv.id;
@@ -785,8 +794,8 @@ serve(async (req) => {
                 last_message_preview: processedMessage.substring(0, 100),
                 config_id: selectedConfig.id,
                 is_crm_lead: true, // MARCA COMO CRM LEAD
-                crm_funnel_id: defaultFunnelId, // ADICIONA AO FUNIL PADRÃO
-                funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
+                crm_funnel_id: targetFunnelId, // USA FUNIL DO BROADCAST OU PADRÃO
+                funnel_stage: targetStageId || 'new', // ESTÁGIO DO BROADCAST OU PADRÃO
                 origin: 'broadcast', // ORIGEM DO LEAD
                 tags: ['new'],
                 assigned_to: assignedTo || undefined, // ATRIBUIR AO USUÁRIO SELECIONADO
@@ -816,8 +825,8 @@ serve(async (req) => {
               name: leadData?.name ? String(leadData.name) : null,
               config_id: selectedConfig.id,
               is_crm_lead: true, // MARCA COMO CRM LEAD
-              crm_funnel_id: defaultFunnelId, // ADICIONA AO FUNIL PADRÃO
-              funnel_stage: defaultStageId || 'new', // ESTÁGIO REAL DO FUNIL
+              crm_funnel_id: targetFunnelId, // USA FUNIL DO BROADCAST OU PADRÃO
+              funnel_stage: targetStageId || 'new', // ESTÁGIO DO BROADCAST OU PADRÃO
               origin: 'broadcast', // ORIGEM DO LEAD
               tags: ['new'],
               assigned_to: assignedTo, // ATRIBUIR AO USUÁRIO SELECIONADO
@@ -861,8 +870,8 @@ serve(async (req) => {
                     .from('whatsapp_conversations')
                     .update({
                       is_crm_lead: true,
-                      crm_funnel_id: defaultFunnelId,
-                      funnel_stage: defaultStageId || 'new',
+                      crm_funnel_id: targetFunnelId,
+                      funnel_stage: targetStageId || 'new',
                       origin: 'broadcast',
                       broadcast_list_id: queueItem.broadcast_list_id,
                       broadcast_sent_at: new Date().toISOString(),
