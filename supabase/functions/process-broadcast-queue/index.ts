@@ -308,11 +308,13 @@ serve(async (req) => {
             assignedTo = broadcastList?.assigned_to || null;
             broadcastFunnelId = broadcastList?.crm_funnel_id || null;
             broadcastStageId = broadcastList?.crm_funnel_stage_id || null;
+            console.log('[Broadcast] Using funnel from list:', broadcastFunnelId, 'stage:', broadcastStageId);
           }
 
           // PRIORIZAR funil/etapa do broadcast, senão usar default
           const targetFunnelId = broadcastFunnelId || defaultFunnelId;
           const targetStageId = broadcastStageId || defaultStageId;
+          console.log('[Broadcast] Final target funnel:', targetFunnelId, 'stage:', targetStageId);
 
           const leadData = queueItem.lead_data as Record<string, unknown> | null;
           let conversationId: string | undefined;
