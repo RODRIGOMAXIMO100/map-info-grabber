@@ -6,53 +6,34 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Invisible characters for message variation
-const INVISIBLE_CHARS = [
-  '\u200B', // Zero-width space
-  '\u200C', // Zero-width non-joiner
-  '\u200D', // Zero-width joiner
-  '\uFEFF', // Zero-width no-break space
-];
+const INVISIBLE_CHARS = ['\u200B', '\u200C', '\u200D', '\uFEFF'];
 
-// Add invisible character variation to message
 const addInvisibleVariation = (message: string): string => {
   const randomChar = INVISIBLE_CHARS[Math.floor(Math.random() * INVISIBLE_CHARS.length)];
   const position = Math.random();
-  
-  if (position < 0.33) {
-    return randomChar + message;
-  } else if (position < 0.66) {
-    return message + randomChar;
-  } else {
-    const insertPoint = message.indexOf('. ');
-    if (insertPoint > 0) {
-      return message.slice(0, insertPoint + 2) + randomChar + message.slice(insertPoint + 2);
-    }
-    return message + randomChar;
-  }
+  if (position < 0.33) return randomChar + message;
+  if (position < 0.66) return message + randomChar;
+  const insertPoint = message.indexOf('. ');
+  return insertPoint > 0 ? message.slice(0, insertPoint + 2) + randomChar + message.slice(insertPoint + 2) : message + randomChar;
 };
 
-// Process spintax: {option1|option2|option3} -> randomly selected option
 const processSpintax = (text: string): string => {
-  return text.replace(/\{([^{}]*\|[^{}]*)\}/g, (match, group) => {
+  return text.replace(/\{([^{}]*\|[^{}]*)\}/g, (_, group) => {
     const options = group.split('|');
     return options[Math.floor(Math.random() * options.length)];
   });
 };
 
-// Replace dynamic variables in message with lead data
 const replaceVariables = (message: string, leadData: Record<string, unknown> | null): string => {
   if (!leadData) return message;
-  let result = message;
-  result = result.replace(/{nome_empresa}/g, String(leadData.name || 'sua empresa'));
-  result = result.replace(/{cidade}/g, String(leadData.city || ''));
-  result = result.replace(/{estado}/g, String(leadData.state || ''));
-  result = result.replace(/{rating}/g, String(leadData.rating || ''));
-  result = result.replace(/{website}/g, String(leadData.website || ''));
-  return result;
+  return message
+    .replace(/{nome_empresa}/g, String(leadData.name || 'sua empresa'))
+    .replace(/{cidade}/g, String(leadData.city || ''))
+    .replace(/{estado}/g, String(leadData.state || ''))
+    .replace(/{rating}/g, String(leadData.rating || ''))
+    .replace(/{website}/g, String(leadData.website || ''));
 };
 
-// WhatsApp config interface
 interface WhatsAppConfig {
   id: string;
   server_url: string;
@@ -92,1008 +73,344 @@ interface InstanceLimit {
   pause_reason: string | null;
 }
 
-// Check if current time is within business hours (using Brasília time UTC-3)
 const isWithinBusinessHours = (settings: ProtectionSettings): boolean => {
   if (!settings.business_hours_enabled) return true;
-  
-  // Get current time in Brasília (UTC-3)
   const now = new Date();
-  const brasiliaOffset = -3 * 60; // UTC-3 in minutes
+  const brasiliaOffset = -3 * 60;
   const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
   const brasiliaTime = new Date(utcTime + (brasiliaOffset * 60000));
-  
-  const currentHour = brasiliaTime.getHours();
-  const currentMinute = brasiliaTime.getMinutes();
-  const currentTimeMinutes = currentHour * 60 + currentMinute;
-  
-  // Parse business hours
+  const currentTimeMinutes = brasiliaTime.getHours() * 60 + brasiliaTime.getMinutes();
   const [startHour, startMin] = settings.business_hours_start.slice(0, 5).split(':').map(Number);
   const [endHour, endMin] = settings.business_hours_end.slice(0, 5).split(':').map(Number);
-  const startTimeMinutes = startHour * 60 + startMin;
-  const endTimeMinutes = endHour * 60 + endMin;
-  
-  console.log(`[Broadcast] Brasília time: ${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}, Business hours: ${settings.business_hours_start.slice(0, 5)} - ${settings.business_hours_end.slice(0, 5)}`);
-  
-  return currentTimeMinutes >= startTimeMinutes && currentTimeMinutes <= endTimeMinutes;
+  return currentTimeMinutes >= (startHour * 60 + startMin) && currentTimeMinutes <= (endHour * 60 + endMin);
 };
 
-// Check if instance is in warmup period
 const isInWarmup = (config: WhatsAppConfig, settings: ProtectionSettings): boolean => {
-  // If warmup_started_at is NULL, treat as warmed up (legacy instances)
-  // New instances will always have warmup_started_at set to NOW() on creation
   if (!config.warmup_started_at) return false;
-  
-  const warmupStart = new Date(config.warmup_started_at);
-  const now = new Date();
-  const daysSinceStart = Math.floor((now.getTime() - warmupStart.getTime()) / (1000 * 60 * 60 * 24));
-  
+  const daysSinceStart = Math.floor((Date.now() - new Date(config.warmup_started_at).getTime()) / (1000 * 60 * 60 * 24));
   return daysSinceStart < settings.warmup_days;
 };
 
-// Get daily limit for an instance
 const getDailyLimit = (config: WhatsAppConfig, settings: ProtectionSettings): number => {
   return isInWarmup(config, settings) ? settings.daily_limit_warmup : settings.daily_limit_normal;
 };
 
-// Generate random delay between min and max
 const getRandomDelay = (settings: ProtectionSettings): number => {
-  const minMs = settings.min_delay_seconds * 1000;
-  const maxMs = settings.max_delay_seconds * 1000;
-  return minMs + Math.random() * (maxMs - minMs);
+  return settings.min_delay_seconds * 1000 + Math.random() * (settings.max_delay_seconds - settings.min_delay_seconds) * 1000;
 };
 
-// Check if error indicates blocking
 const isBlockingError = (errorMessage: string): boolean => {
-  const blockKeywords = [
-    'blocked', 'banned', 'suspended', 'rate limit',
-    'too many requests', 'spam', 'temporary ban'
-  ];
-  const lowerError = errorMessage.toLowerCase();
-  return blockKeywords.some(keyword => lowerError.includes(keyword));
+  const keywords = ['blocked', 'banned', 'suspended', 'rate limit', 'too many requests', 'spam', 'temporary ban'];
+  return keywords.some(k => errorMessage.toLowerCase().includes(k));
 };
 
-// Check if error is "innocent" (problem with the number, not the instance)
 const isInnocentError = (errorMessage: string): boolean => {
-  const innocentKeywords = [
-    'not on whatsapp', 'not registered', 'invalid phone',
-    'phone number not found', 'number not found', 'not a valid',
-    'número não encontrado', 'não está no whatsapp',
-    'invalid number', 'does not exist', 'not exist',
-    // UAZAPI specific patterns
-    'jid not valid', 'número inválido', 'not a valid phone',
-    '401', 'unauthorized', 'true' // "true" = erro genérico boolean
-  ];
-  const lowerError = errorMessage.toLowerCase();
-  return innocentKeywords.some(keyword => lowerError.includes(keyword));
+  const keywords = ['not on whatsapp', 'not registered', 'invalid phone', 'phone number not found', 'number not found', 
+    'not a valid', 'número não encontrado', 'não está no whatsapp', 'invalid number', 'does not exist', 'jid not valid', 
+    'número inválido', '401', 'unauthorized', 'true'];
+  return keywords.some(k => errorMessage.toLowerCase().includes(k));
 };
 
-// Check if a phone number exists on WhatsApp using UAZAPI
-const checkNumberOnWhatsApp = async (
-  serverUrl: string,
-  token: string,
-  phone: string
-): Promise<{ exists: boolean; formattedNumber: string | null }> => {
+const checkNumberOnWhatsApp = async (serverUrl: string, token: string, phone: string): Promise<{ exists: boolean; formattedNumber: string | null }> => {
   try {
-    // Format phone for checking
     let formattedPhone = phone.replace(/\D/g, '');
     if (!formattedPhone.startsWith('55') && (formattedPhone.length === 10 || formattedPhone.length === 11)) {
       formattedPhone = '55' + formattedPhone;
     }
-
-    // Quick validation: landline numbers typically have 10 digits (with DDD) and don't start with 9 in the local part
-    // Mobile numbers in Brazil have 11 digits (with DDD) and local part starts with 9
     const localNumber = formattedPhone.startsWith('55') ? formattedPhone.slice(4) : formattedPhone.slice(2);
     if (localNumber.length === 8 && !localNumber.startsWith('9')) {
-      console.log(`[NumberCheck] ${phone} appears to be a landline (8 digits, no 9 prefix)`);
       return { exists: false, formattedNumber: null };
     }
-
-    // Call UAZAPI to check if number exists
-    const checkUrl = `${serverUrl}/contact/check`;
-    const response = await fetch(checkUrl, {
+    const response = await fetch(`${serverUrl}/contact/check`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'token': token
-      },
+      headers: { 'Content-Type': 'application/json', 'token': token },
       body: JSON.stringify({ number: formattedPhone })
     });
-
-    if (!response.ok) {
-      console.log(`[NumberCheck] API error for ${phone}: ${response.status}`);
-      // If API fails, assume number exists to avoid false negatives
-      return { exists: true, formattedNumber: formattedPhone };
-    }
-
+    if (!response.ok) return { exists: true, formattedNumber: formattedPhone };
     const result = await response.json();
-    
-    // UAZAPI returns { exists: true/false, jid: "number@s.whatsapp.net" }
     const exists = result.exists === true || result.numberExists === true || result.onWhatsApp === true;
-    
-    console.log(`[NumberCheck] ${phone} -> exists: ${exists}`);
-    return { 
-      exists, 
-      formattedNumber: exists ? (result.jid?.split('@')[0] || formattedPhone) : null 
-    };
-  } catch (error) {
-    console.error(`[NumberCheck] Error checking ${phone}:`, error);
-    // On error, assume exists to avoid false negatives
+    return { exists, formattedNumber: exists ? (result.jid?.split('@')[0] || formattedPhone) : null };
+  } catch {
     return { exists: true, formattedNumber: phone.replace(/\D/g, '') };
   }
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-    // ============= RECOVERY: Reset stuck messages =============
-    // Messages stuck in 'processing' for more than 5 minutes are orphaned
-    // Reset them back to 'pending' so they can be retried
+    // Recovery: Reset stuck messages
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: stuckMessages, error: stuckError } = await supabase
-      .from('whatsapp_queue')
-      .update({ 
-        status: 'pending',
-        updated_at: new Date().toISOString()
-      })
-      .eq('status', 'processing')
-      .lt('updated_at', fiveMinutesAgo)
-      .select('id, attempts');
+    const { data: stuckMessages } = await supabase.from('whatsapp_queue')
+      .update({ status: 'pending', updated_at: new Date().toISOString() })
+      .eq('status', 'processing').lt('updated_at', fiveMinutesAgo).select('id, attempts');
 
-    if (stuckError) {
-      console.error('[Broadcast] Error recovering stuck messages:', stuckError);
-    } else if (stuckMessages && stuckMessages.length > 0) {
-      console.log(`[Broadcast] ♻️ Recovered ${stuckMessages.length} stuck messages`);
-      
-      // Check for messages that have been stuck too many times (3+) and mark as failed
+    if (stuckMessages?.length) {
       for (const stuck of stuckMessages) {
-        const currentAttempts = (stuck.attempts || 0) + 1;
-        if (currentAttempts >= 3) {
-          await supabase
-            .from('whatsapp_queue')
-            .update({ 
-              status: 'failed', 
-              error_message: 'Mensagem travou múltiplas vezes (timeout)',
-              attempts: currentAttempts
-            })
-            .eq('id', stuck.id);
-          console.log(`[Broadcast] ❌ Message ${stuck.id} failed after ${currentAttempts} stuck attempts`);
+        const attempts = (stuck.attempts || 0) + 1;
+        if (attempts >= 3) {
+          await supabase.from('whatsapp_queue').update({ status: 'failed', error_message: 'Timeout múltiplo', attempts }).eq('id', stuck.id);
         } else {
-          // Increment attempts counter
-          await supabase
-            .from('whatsapp_queue')
-            .update({ attempts: currentAttempts })
-            .eq('id', stuck.id);
+          await supabase.from('whatsapp_queue').update({ attempts }).eq('id', stuck.id);
         }
       }
     }
-    // ============= END RECOVERY =============
 
-    // Load protection settings
-    const { data: settingsData } = await supabase
-      .from('whatsapp_protection_settings')
-      .select('*')
-      .limit(1)
-      .single();
-
+    const { data: settingsData } = await supabase.from('whatsapp_protection_settings').select('*').limit(1).single();
     const settings: ProtectionSettings = settingsData || {
-      daily_limit_warmup: 30,
-      daily_limit_normal: 200,
-      warmup_days: 7,
-      batch_size: 40,
-      pause_after_batch_minutes: 45,
-      min_delay_seconds: 15,
-      max_delay_seconds: 45,
-      business_hours_enabled: true,
-      business_hours_start: '08:00:00',
-      business_hours_end: '20:00:00',
-      auto_blacklist_enabled: true,
-      block_detection_enabled: true,
-      max_consecutive_errors: 5
+      daily_limit_warmup: 30, daily_limit_normal: 200, warmup_days: 7, batch_size: 40, pause_after_batch_minutes: 45,
+      min_delay_seconds: 15, max_delay_seconds: 45, business_hours_enabled: true, business_hours_start: '08:00:00',
+      business_hours_end: '20:00:00', auto_blacklist_enabled: true, block_detection_enabled: true, max_consecutive_errors: 5
     };
 
-    // ============= FETCH DEFAULT FUNNEL AND FIRST STAGE =============
-    // Get default CRM funnel and its first stage for new leads
+    // Default funnel and stage
     let defaultFunnelId: string | null = null;
     let defaultStageId: string | null = null;
-
-    const { data: defaultFunnel } = await supabase
-      .from('crm_funnels')
-      .select('id')
-      .eq('is_default', true)
-      .maybeSingle();
-
+    const { data: defaultFunnel } = await supabase.from('crm_funnels').select('id').eq('is_default', true).maybeSingle();
     if (defaultFunnel?.id) {
       defaultFunnelId = defaultFunnel.id;
-      
-      const { data: firstStage } = await supabase
-        .from('crm_funnel_stages')
-        .select('id')
-        .eq('funnel_id', defaultFunnelId)
-        .order('stage_order', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      
-      if (firstStage?.id) {
-        defaultStageId = firstStage.id;
-      }
+      const { data: firstStage } = await supabase.from('crm_funnel_stages').select('id').eq('funnel_id', defaultFunnelId).order('stage_order').limit(1).maybeSingle();
+      if (firstStage?.id) defaultStageId = firstStage.id;
     }
-    
-    console.log(`[Broadcast] Default funnel: ${defaultFunnelId}, first stage: ${defaultStageId}`);
-    // ============= END FETCH DEFAULT FUNNEL =============
 
-    // Check business hours
     if (!isWithinBusinessHours(settings)) {
-      console.log('[Broadcast] Outside business hours, skipping');
-      return new Response(
-        JSON.stringify({ success: true, message: 'Outside business hours', sent: 0, failed: 0 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ success: true, message: 'Outside business hours', sent: 0, failed: 0 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Get today's date for limit tracking
     const today = new Date().toISOString().split('T')[0];
-
-    // Get ALL active WhatsApp configurations that are enabled for broadcast
-    const { data: activeConfigs, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('id, server_url, instance_token, instance_phone, name, is_active, broadcast_enabled, warmup_started_at')
-      .eq('is_active', true)
-      .eq('broadcast_enabled', true);
-
-    if (configError) throw configError;
-
-    if (!activeConfigs || activeConfigs.length === 0) {
-      console.log('[Broadcast] No active WhatsApp configurations found');
-      return new Response(
-        JSON.stringify({ success: false, error: 'No active WhatsApp configurations' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const { data: activeConfigs } = await supabase.from('whatsapp_config').select('*').eq('is_active', true).eq('broadcast_enabled', true);
+    if (!activeConfigs?.length) {
+      return new Response(JSON.stringify({ success: false, error: 'No active WhatsApp configurations' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    console.log(`[Broadcast] Found ${activeConfigs.length} active WhatsApp instances`);
-
-    // Get/create today's limits for each instance
     const instanceLimits: Map<string, InstanceLimit> = new Map();
-    
     for (const config of activeConfigs) {
-      const { data: existingLimit } = await supabase
-        .from('whatsapp_instance_limits')
-        .select('*')
-        .eq('config_id', config.id)
-        .eq('date', today)
-        .maybeSingle();
-
+      const { data: existingLimit } = await supabase.from('whatsapp_instance_limits').select('*').eq('config_id', config.id).eq('date', today).maybeSingle();
       if (existingLimit) {
         instanceLimits.set(config.id, existingLimit);
       } else {
-        // Create new limit record for today
-        const { data: newLimit } = await supabase
-          .from('whatsapp_instance_limits')
-          .insert({
-            config_id: config.id,
-            date: today,
-            messages_sent: 0
-          })
-          .select()
-          .single();
-        
-        if (newLimit) {
-          instanceLimits.set(config.id, newLimit);
-        }
+        const { data: newLimit } = await supabase.from('whatsapp_instance_limits').insert({ config_id: config.id, date: today, messages_sent: 0 }).select().single();
+        if (newLimit) instanceLimits.set(config.id, newLimit);
       }
     }
 
-    // Filter available instances (not paused, not at limit)
     const availableConfigs = activeConfigs.filter(config => {
       const limit = instanceLimits.get(config.id);
       if (!limit) return false;
-      
-      // Check if paused
       if (limit.is_paused) {
-        if (limit.pause_until) {
-          const pauseUntil = new Date(limit.pause_until);
-          if (pauseUntil > new Date()) {
-            console.log(`[Broadcast] Instance ${config.name} is paused until ${limit.pause_until}`);
-            return false;
-          }
-          // Unpause if time has passed
-          supabase
-            .from('whatsapp_instance_limits')
-            .update({ is_paused: false, pause_until: null, pause_reason: null })
-            .eq('id', limit.id);
-        } else {
-          return false;
-        }
+        if (limit.pause_until && new Date(limit.pause_until) > new Date()) return false;
+        if (!limit.pause_until) return false;
+        supabase.from('whatsapp_instance_limits').update({ is_paused: false, pause_until: null, pause_reason: null }).eq('id', limit.id);
       }
-      
-      // Check daily limit
       const dailyLimit = getDailyLimit(config as WhatsAppConfig, settings);
-      if (limit.messages_sent >= dailyLimit) {
-        console.log(`[Broadcast] Instance ${config.name} reached daily limit (${limit.messages_sent}/${dailyLimit})`);
-        return false;
+      if (limit.messages_sent >= dailyLimit) return false;
+      if (limit.messages_sent > 0 && limit.messages_sent % settings.batch_size === 0 && limit.last_message_at) {
+        const pauseEndTime = new Date(new Date(limit.last_message_at).getTime() + settings.pause_after_batch_minutes * 60 * 1000);
+        if (pauseEndTime > new Date()) return false;
       }
-      
-      // Check if needs batch pause (every batch_size messages, pause for pause_after_batch_minutes)
-      if (limit.messages_sent > 0 && limit.messages_sent % settings.batch_size === 0) {
-        const lastMsgTime = limit.last_message_at ? new Date(limit.last_message_at) : null;
-        if (lastMsgTime) {
-          const pauseEndTime = new Date(lastMsgTime.getTime() + settings.pause_after_batch_minutes * 60 * 1000);
-          if (pauseEndTime > new Date()) {
-            console.log(`[Broadcast] Instance ${config.name} in batch pause until ${pauseEndTime.toISOString()}`);
-            return false;
-          }
-        }
-      }
-      
       return true;
     }) as WhatsAppConfig[];
 
-    if (availableConfigs.length === 0) {
-      console.log('[Broadcast] No available instances (all paused or at limit)');
-      return new Response(
-        JSON.stringify({ success: true, message: 'All instances paused or at limit', sent: 0, failed: 0 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!availableConfigs.length) {
+      return new Response(JSON.stringify({ success: true, message: 'All instances paused or at limit', sent: 0, failed: 0 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    console.log(`[Broadcast] ${availableConfigs.length} instances available for sending`);
-
-    // Get blacklisted phones
-    const { data: blacklist } = await supabase
-      .from('whatsapp_blacklist')
-      .select('phone');
-    
+    const { data: blacklist } = await supabase.from('whatsapp_blacklist').select('phone');
     const blacklistedPhones = new Set(blacklist?.map(b => b.phone.replace(/\D/g, '')) || []);
-    console.log(`[Broadcast] Loaded ${blacklistedPhones.size} blacklisted phones`);
 
-    // ============= LOAD PAUSED BROADCASTS =============
-    // Cache all paused/draft broadcasts to check before sending each message
-    const { data: pausedBroadcasts } = await supabase
-      .from('broadcast_lists')
-      .select('id')
-      .in('status', ['paused', 'draft']);
-    
+    const { data: pausedBroadcasts } = await supabase.from('broadcast_lists').select('id').in('status', ['paused', 'draft']);
     const pausedBroadcastIds = new Set((pausedBroadcasts || []).map(b => b.id));
-    console.log(`[Broadcast] Found ${pausedBroadcastIds.size} paused/draft broadcasts`);
-    // ============= END LOAD PAUSED BROADCASTS =============
 
-    // Get pending messages atomically using FOR UPDATE SKIP LOCKED to prevent race conditions
-    // This function atomically selects AND updates status to 'processing' in a single transaction
-    const { data: pendingMessages, error: fetchError } = await supabase
-      .rpc('get_pending_broadcast_messages', { batch_limit: settings.batch_size });
+    const { data: pendingMessages, error: fetchError } = await supabase.rpc('get_pending_broadcast_messages', { batch_limit: settings.batch_size });
+    if (fetchError) throw fetchError;
 
-    if (fetchError) {
-      console.error('[Broadcast] Error fetching pending messages:', fetchError);
-      throw fetchError;
-    }
-
-    console.log('[Broadcast] Found pending messages:', pendingMessages?.length || 0);
-
-    let sentCount = 0;
-    let failedCount = 0;
-    let skippedBlacklist = 0;
-    let skippedInvalidNumber = 0;
-    let skippedPaused = 0;
-    let configIndex = 0;
+    let sentCount = 0, failedCount = 0, skippedBlacklist = 0, skippedInvalidNumber = 0, skippedPaused = 0, configIndex = 0;
 
     for (const queueItem of pendingMessages || []) {
-      // ============= CHECK IF BROADCAST IS PAUSED =============
       if (queueItem.broadcast_list_id && pausedBroadcastIds.has(queueItem.broadcast_list_id)) {
-        console.log(`[Broadcast] ⏸️ Broadcast ${queueItem.broadcast_list_id} is paused, reverting message ${queueItem.id} to pending`);
-        await supabase
-          .from('whatsapp_queue')
-          .update({ status: 'pending', updated_at: new Date().toISOString() })
-          .eq('id', queueItem.id);
+        await supabase.from('whatsapp_queue').update({ status: 'pending', updated_at: new Date().toISOString() }).eq('id', queueItem.id);
         skippedPaused++;
         continue;
       }
-      // ============= END CHECK IF BROADCAST IS PAUSED =============
 
-      // Check blacklist
       const normalizedPhone = queueItem.phone.replace(/\D/g, '');
       if (blacklistedPhones.has(normalizedPhone)) {
-        console.log(`[Broadcast] Skipping blacklisted phone: ${queueItem.phone}`);
-        await supabase
-          .from('whatsapp_queue')
-          .update({ status: 'failed', error_message: 'Número na blacklist' })
-          .eq('id', queueItem.id);
+        await supabase.from('whatsapp_queue').update({ status: 'failed', error_message: 'Blacklist' }).eq('id', queueItem.id);
         skippedBlacklist++;
         continue;
       }
 
-      // ============= GLOBAL DUPLICATE CHECK =============
-      // Check if this phone EVER received ANY broadcast message
-      // This prevents the same number from receiving multiple broadcasts
+      // Global duplicate check
       if (queueItem.broadcast_list_id) {
-        const normalizedPhone = queueItem.phone.replace(/\D/g, '');
-        
-        // Get all sent broadcast messages to check for duplicates
-        const { data: existingSent } = await supabase
-          .from('whatsapp_queue')
-          .select('id, broadcast_list_id, phone')
-          .eq('status', 'sent')
-          .neq('id', queueItem.id)
-          .not('broadcast_list_id', 'is', null)
-          .limit(500);
-
-        // Check if any sent message matches this phone (normalized comparison)
+        const { data: existingSent } = await supabase.from('whatsapp_queue').select('id, broadcast_list_id, phone').eq('status', 'sent').neq('id', queueItem.id).not('broadcast_list_id', 'is', null).limit(500);
         const alreadySent = existingSent?.find(item => {
           const existingPhone = (item.phone || '').replace(/\D/g, '');
-          return existingPhone === normalizedPhone || 
-                 existingPhone.endsWith(normalizedPhone) || 
-                 normalizedPhone.endsWith(existingPhone);
+          return existingPhone === normalizedPhone || existingPhone.endsWith(normalizedPhone) || normalizedPhone.endsWith(existingPhone);
         });
-
         if (alreadySent) {
-          console.log(`[Broadcast] ⛔ GLOBAL DUPLICATE: phone ${queueItem.phone} already received broadcast ${alreadySent.broadcast_list_id}`);
-          await supabase
-            .from('whatsapp_queue')
-            .update({ 
-              status: 'failed', 
-              error_message: `Duplicata global: já recebeu broadcast anterior (${alreadySent.broadcast_list_id?.slice(0, 8)})` 
-            })
-            .eq('id', queueItem.id);
+          await supabase.from('whatsapp_queue').update({ status: 'failed', error_message: `Duplicata global` }).eq('id', queueItem.id);
           continue;
         }
       }
-      // ============= END GLOBAL DUPLICATE CHECK =============
 
-      // ============= INSTANCE SELECTION WITH FALLBACK =============
-      // Try to use the original assigned instance, but fallback to any available active instance
-      let selectedConfig: WhatsAppConfig | null = null;
-      
-      if (queueItem.config_id) {
-        // Check if original instance is available
-        selectedConfig = availableConfigs.find(c => c.id === queueItem.config_id) || null;
-        
-        if (!selectedConfig) {
-          // Original instance is not available (inactive or paused), use any available one
-          console.log(`[Broadcast] Instância original ${queueItem.config_id} inativa, redirecionando para instância ativa`);
-          selectedConfig = availableConfigs[configIndex % availableConfigs.length];
-          configIndex++;
-        }
-      } else {
-        // No assigned instance, use round-robin
-        selectedConfig = availableConfigs[configIndex % availableConfigs.length];
-        configIndex++;
-      }
-
-      if (!selectedConfig) {
-        console.log(`[Broadcast] No available instance for message ${queueItem.id}`);
-        continue;
-      }
+      let selectedConfig = queueItem.config_id ? availableConfigs.find(c => c.id === queueItem.config_id) || availableConfigs[configIndex++ % availableConfigs.length] : availableConfigs[configIndex++ % availableConfigs.length];
+      if (!selectedConfig) continue;
 
       const limit = instanceLimits.get(selectedConfig.id);
       if (!limit) continue;
-
-      // Check if this instance can still send
       const dailyLimit = getDailyLimit(selectedConfig, settings);
-      if (limit.messages_sent >= dailyLimit) {
-        console.log(`[Broadcast] Instance ${selectedConfig.name} hit limit during batch, skipping`);
-        continue;
-      }
-      // ============= END INSTANCE SELECTION =============
+      if (limit.messages_sent >= dailyLimit) continue;
 
-      // ============= NUMBER VERIFICATION =============
-      // Check if number exists on WhatsApp BEFORE sending
-      const numberCheck = await checkNumberOnWhatsApp(
-        selectedConfig.server_url,
-        selectedConfig.instance_token,
-        queueItem.phone
-      );
-
+      const numberCheck = await checkNumberOnWhatsApp(selectedConfig.server_url, selectedConfig.instance_token, queueItem.phone);
       if (!numberCheck.exists) {
-        console.log(`[Broadcast] ⚠️ Skipping ${queueItem.phone} - number not on WhatsApp`);
-        
-        // Mark queue item as failed
-        await supabase
-          .from('whatsapp_queue')
-          .update({ 
-            status: 'failed', 
-            error_message: 'Número não encontrado no WhatsApp',
-            processed_at: new Date().toISOString()
-          })
-          .eq('id', queueItem.id);
-        
-        // Mark existing conversation as phone_invalid if exists
+        await supabase.from('whatsapp_queue').update({ status: 'failed', error_message: 'Número não encontrado no WhatsApp', processed_at: new Date().toISOString() }).eq('id', queueItem.id);
         const phoneCore = queueItem.phone.replace(/\D/g, '').slice(-8);
-        const { data: existingConv } = await supabase
-          .from('whatsapp_conversations')
-          .select('id')
-          .ilike('phone', `%${phoneCore}`)
-          .limit(1)
-          .maybeSingle();
-        
-        if (existingConv) {
-          await supabase
-            .from('whatsapp_conversations')
-            .update({ phone_invalid: true })
-            .eq('id', existingConv.id);
-          console.log(`[Broadcast] Marked conversation ${existingConv.id} as phone_invalid`);
-        }
-        
-        // Update broadcast list counter
+        const { data: existingConv } = await supabase.from('whatsapp_conversations').select('id').ilike('phone', `%${phoneCore}`).limit(1).maybeSingle();
+        if (existingConv) await supabase.from('whatsapp_conversations').update({ phone_invalid: true }).eq('id', existingConv.id);
         if (queueItem.broadcast_list_id) {
-          const { data: list } = await supabase
-            .from('broadcast_lists')
-            .select('failed_count')
-            .eq('id', queueItem.broadcast_list_id)
-            .single();
-          
-          await supabase
-            .from('broadcast_lists')
-            .update({ failed_count: (list?.failed_count || 0) + 1 })
-            .eq('id', queueItem.broadcast_list_id);
+          const { data: list } = await supabase.from('broadcast_lists').select('failed_count').eq('id', queueItem.broadcast_list_id).single();
+          await supabase.from('broadcast_lists').update({ failed_count: (list?.failed_count || 0) + 1 }).eq('id', queueItem.broadcast_list_id);
         }
-
         skippedInvalidNumber++;
         continue;
       }
-      // ============= END NUMBER VERIFICATION =============
-
-      console.log(`[Broadcast] Sending via ${selectedConfig.name || selectedConfig.instance_phone} (${limit.messages_sent + 1}/${dailyLimit})`);
 
       try {
-        // Update attempts and config_id (status already set to 'processing' by RPC)
-        await supabase
-          .from('whatsapp_queue')
-          .update({ 
-            attempts: (queueItem.attempts || 0) + 1,
-            config_id: selectedConfig.id
-          })
-          .eq('id', queueItem.id);
+        await supabase.from('whatsapp_queue').update({ attempts: (queueItem.attempts || 0) + 1, config_id: selectedConfig.id }).eq('id', queueItem.id);
 
-        // Process message with anti-blocking techniques
-        let processedMessage = queueItem.message;
-        processedMessage = replaceVariables(processedMessage, queueItem.lead_data as Record<string, unknown> | null);
-        processedMessage = processSpintax(processedMessage);
-        processedMessage = addInvisibleVariation(processedMessage);
-
-        // Format phone number - normalize to always have 55 prefix
+        let processedMessage = addInvisibleVariation(processSpintax(replaceVariables(queueItem.message, queueItem.lead_data as Record<string, unknown> | null)));
         let formattedPhone = queueItem.phone.replace(/\D/g, '');
-        // Brazilian numbers: 10 digits (landline) or 11 digits (mobile) without country code
-        if (!formattedPhone.startsWith('55') && (formattedPhone.length === 10 || formattedPhone.length === 11)) {
-          formattedPhone = '55' + formattedPhone;
-        }
+        if (!formattedPhone.startsWith('55') && (formattedPhone.length === 10 || formattedPhone.length === 11)) formattedPhone = '55' + formattedPhone;
 
-        // Build the API URL and payload
-        let apiUrl: string;
-        let payload: Record<string, unknown>;
+        const apiUrl = queueItem.image_url ? `${selectedConfig.server_url}/send/media` : `${selectedConfig.server_url}/send/text`;
+        const payload = queueItem.image_url ? { number: formattedPhone, type: 'image', file: queueItem.image_url, text: processedMessage } : { number: formattedPhone, text: processedMessage };
 
-        if (queueItem.image_url) {
-          apiUrl = `${selectedConfig.server_url}/send/media`;
-          payload = {
-            number: formattedPhone,
-            type: 'image',
-            file: queueItem.image_url,
-            text: processedMessage
-          };
-        } else {
-          apiUrl = `${selectedConfig.server_url}/send/text`;
-          payload = {
-            number: formattedPhone,
-            text: processedMessage
-          };
-        }
-
-        const sendResponse = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'token': selectedConfig.instance_token
-          },
-          body: JSON.stringify(payload)
-        });
-
+        const sendResponse = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'token': selectedConfig.instance_token }, body: JSON.stringify(payload) });
         const result = await sendResponse.json();
 
-        if (sendResponse.ok && (result.success !== false)) {
-          // Success - update queue and limits
-          await supabase
-            .from('whatsapp_queue')
-            .update({ status: 'sent', processed_at: new Date().toISOString() })
-            .eq('id', queueItem.id);
-
-          // Update instance limits
-          await supabase
-            .from('whatsapp_instance_limits')
-            .update({ 
-              messages_sent: limit.messages_sent + 1,
-              last_message_at: new Date().toISOString(),
-              consecutive_errors: 0
-            })
-            .eq('id', limit.id);
-
+        if (sendResponse.ok && result.success !== false) {
+          await supabase.from('whatsapp_queue').update({ status: 'sent', processed_at: new Date().toISOString() }).eq('id', queueItem.id);
+          await supabase.from('whatsapp_instance_limits').update({ messages_sent: limit.messages_sent + 1, last_message_at: new Date().toISOString(), consecutive_errors: 0 }).eq('id', limit.id);
           limit.messages_sent++;
           limit.consecutive_errors = 0;
 
-          // Log success
-          await supabase
-            .from('whatsapp_logs')
-            .insert({
-              schedule_id: queueItem.schedule_id,
-              phone: queueItem.phone,
-              status: 'sent',
-              config_id: selectedConfig.id
-            });
+          await supabase.from('whatsapp_logs').insert({ schedule_id: queueItem.schedule_id, phone: queueItem.phone, status: 'sent', config_id: selectedConfig.id });
 
-          // Create/update conversation - MARCA COMO CRM LEAD
-          // Busca flexível: usa últimos 8 dígitos para encontrar conversa
-          // (resolve problema de nono dígito: 553499595399 vs 5534999595399)
           const phoneCore = formattedPhone.slice(-8);
-          console.log(`[BROADCAST] Buscando conversa com phoneCore: %${phoneCore} (original: ${formattedPhone})`);
-          
-          const { data: existingConvs } = await supabase
-            .from('whatsapp_conversations')
-            .select('id, is_crm_lead, phone, contacted_by_instances')
-            .ilike('phone', `%${phoneCore}`);
-          
+          const { data: existingConvs } = await supabase.from('whatsapp_conversations').select('id, is_crm_lead, phone, contacted_by_instances').ilike('phone', `%${phoneCore}`);
           const existingConv = existingConvs?.[0] || null;
-          if (existingConv) {
-            console.log(`[BROADCAST] Conversa encontrada: ${existingConv.phone} (ID: ${existingConv.id})`);
-            
-            // Check for cross-instance contact
-            const existingInstances = (existingConv.contacted_by_instances || []) as string[];
-            if (existingInstances.length > 0 && !existingInstances.includes(selectedConfig.id)) {
-              console.log(`[Broadcast] ⚠️ ALERTA: ${queueItem.phone} já foi contatado por ${existingInstances.length} instância(s) diferente(s)`);
-              // Add warning to queue item
-              await supabase
-                .from('whatsapp_queue')
-                .update({ warning_message: `Contato já abordado por outra(s) instância(s)` })
-                .eq('id', queueItem.id);
-            }
-          } else {
-            console.log(`[BROADCAST] Nenhuma conversa encontrada, criando nova com: ${formattedPhone}`);
-          }
 
-          let conversationId: string | undefined = undefined;
-          const leadData = queueItem.lead_data as Record<string, unknown> | null;
-
-          // Buscar o assigned_to e configuração de funil da broadcast list se existir
-          let assignedTo: string | null = null;
-          let broadcastFunnelId: string | null = null;
-          let broadcastStageId: string | null = null;
-          
+          let assignedTo: string | null = null, broadcastFunnelId: string | null = null, broadcastStageId: string | null = null;
           if (queueItem.broadcast_list_id) {
-            const { data: broadcastList } = await supabase
-              .from('broadcast_lists')
-              .select('assigned_to, crm_funnel_id, crm_funnel_stage_id')
-              .eq('id', queueItem.broadcast_list_id)
-              .maybeSingle();
+            const { data: broadcastList } = await supabase.from('broadcast_lists').select('assigned_to, crm_funnel_id, crm_funnel_stage_id').eq('id', queueItem.broadcast_list_id).maybeSingle();
             assignedTo = broadcastList?.assigned_to || null;
             broadcastFunnelId = broadcastList?.crm_funnel_id || null;
             broadcastStageId = broadcastList?.crm_funnel_stage_id || null;
           }
-          
-          // Priorizar funil/etapa do broadcast, senão usar default
+
+          // PRIORIZAR funil/etapa do broadcast, senão usar default
           const targetFunnelId = broadcastFunnelId || defaultFunnelId;
           const targetStageId = broadcastStageId || defaultStageId;
 
+          const leadData = queueItem.lead_data as Record<string, unknown> | null;
+          let conversationId: string | undefined;
+
           if (existingConv) {
             conversationId = existingConv.id;
-            // Se já existe, marca como CRM lead e atualiza
-            // Reset followup_count e salva dados do broadcast
-            
-            // Update contacted_by_instances array
             const existingInstances = (existingConv.contacted_by_instances || []) as string[];
             const updatedInstances = Array.from(new Set([...existingInstances, selectedConfig.id]));
-            
-            console.log(`[Broadcast] Atualizando conversa existente ${conversationId} para ${formattedPhone}`);
-            
-            const { error: updateError } = await supabase
-              .from('whatsapp_conversations')
-              .update({
-                last_message_at: new Date().toISOString(),
-                last_message_preview: processedMessage.substring(0, 100),
-                config_id: selectedConfig.id,
-                is_crm_lead: true, // MARCA COMO CRM LEAD
-                crm_funnel_id: targetFunnelId, // USA FUNIL DO BROADCAST OU PADRÃO
-                funnel_stage: targetStageId || 'new', // ESTÁGIO DO BROADCAST OU PADRÃO
-                origin: 'broadcast', // ORIGEM DO LEAD
-                tags: ['new'],
-                assigned_to: assignedTo || undefined, // ATRIBUIR AO USUÁRIO SELECIONADO
-                // Dados do broadcast para follow-ups automáticos
-                broadcast_list_id: queueItem.broadcast_list_id,
-                broadcast_sent_at: new Date().toISOString(),
-                followup_count: 0,
-                contacted_by_instances: updatedInstances,
-                // Dados de origem do lead
-                lead_city: leadData?.city ? String(leadData.city) : undefined,
-                lead_state: leadData?.state ? String(leadData.state) : undefined,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', conversationId);
-            
-            if (updateError) {
-              console.error(`[Broadcast] ❌ ERRO ao atualizar conversa ${conversationId}:`, updateError.message);
-            } else {
-              console.log(`[Broadcast] ✓ Conversa ${conversationId} atualizada como lead`);
+            if (existingInstances.length > 0 && !existingInstances.includes(selectedConfig.id)) {
+              await supabase.from('whatsapp_queue').update({ warning_message: `Contato já abordado por outra(s) instância(s)` }).eq('id', queueItem.id);
             }
+            await supabase.from('whatsapp_conversations').update({
+              last_message_at: new Date().toISOString(), last_message_preview: processedMessage.substring(0, 100), config_id: selectedConfig.id,
+              is_crm_lead: true, crm_funnel_id: targetFunnelId, funnel_stage: targetStageId || 'new', origin: 'broadcast', tags: ['new'],
+              assigned_to: assignedTo || undefined, broadcast_list_id: queueItem.broadcast_list_id, broadcast_sent_at: new Date().toISOString(),
+              followup_count: 0, contacted_by_instances: updatedInstances, lead_city: leadData?.city ? String(leadData.city) : undefined,
+              lead_state: leadData?.state ? String(leadData.state) : undefined, updated_at: new Date().toISOString()
+            }).eq('id', conversationId);
           } else {
-            // Nova conversa do broadcast = é CRM lead
-            console.log(`[Broadcast] Criando nova conversa para ${formattedPhone}`);
-            
-            const conversationData = {
-              phone: formattedPhone,
-              name: leadData?.name ? String(leadData.name) : null,
-              config_id: selectedConfig.id,
-              is_crm_lead: true, // MARCA COMO CRM LEAD
-              crm_funnel_id: targetFunnelId, // USA FUNIL DO BROADCAST OU PADRÃO
-              funnel_stage: targetStageId || 'new', // ESTÁGIO DO BROADCAST OU PADRÃO
-              origin: 'broadcast', // ORIGEM DO LEAD
-              tags: ['new'],
-              assigned_to: assignedTo, // ATRIBUIR AO USUÁRIO SELECIONADO
-              last_message_at: new Date().toISOString(),
-              last_message_preview: processedMessage.substring(0, 100),
-              status: 'active',
-              // Dados do broadcast para follow-ups automáticos
-              broadcast_list_id: queueItem.broadcast_list_id,
-              broadcast_sent_at: new Date().toISOString(),
-              followup_count: 0,
-              contacted_by_instances: [selectedConfig.id],
-              // Dados de origem do lead
-              lead_city: leadData?.city ? String(leadData.city) : null,
-              lead_state: leadData?.state ? String(leadData.state) : null
-            };
-            
-            const { data: newConv, error: insertError } = await supabase
-              .from('whatsapp_conversations')
-              .insert(conversationData)
-              .select('id')
-              .single();
-            
-            if (insertError) {
-              console.error(`[Broadcast] ❌ ERRO ao criar conversa para ${formattedPhone}:`, insertError.message, insertError.code);
-              
-              // Se for erro de duplicata (race condition com webhook), buscar e atualizar
-              if (insertError.code === '23505') {
-                console.log(`[Broadcast] Conversa já existe (race condition), buscando e atualizando...`);
-                const { data: existingByPhone } = await supabase
-                  .from('whatsapp_conversations')
-                  .select('id')
-                  .eq('phone', formattedPhone)
-                  .eq('config_id', selectedConfig.id)
-                  .single();
-                
-                if (existingByPhone) {
-                  conversationId = existingByPhone.id;
-                  console.log(`[Broadcast] Conversa encontrada: ${conversationId}, atualizando como lead...`);
-                  
-                  const { error: fallbackUpdateError } = await supabase
-                    .from('whatsapp_conversations')
-                    .update({
-                      is_crm_lead: true,
-                      crm_funnel_id: targetFunnelId,
-                      funnel_stage: targetStageId || 'new',
-                      origin: 'broadcast',
-                      broadcast_list_id: queueItem.broadcast_list_id,
-                      broadcast_sent_at: new Date().toISOString(),
-                      followup_count: 0,
-                      assigned_to: assignedTo // ATRIBUIR AO USUÁRIO SELECIONADO
-                    })
-                    .eq('id', conversationId);
-                  
-                  if (fallbackUpdateError) {
-                    console.error(`[Broadcast] ❌ Fallback update falhou:`, fallbackUpdateError.message);
-                  } else {
-                    console.log(`[Broadcast] ✓ Fallback: Conversa ${conversationId} atualizada como lead`);
-                  }
-                }
-              } else {
-                // Tentar novamente uma vez para outros erros
-                console.log(`[Broadcast] Tentando criar conversa novamente...`);
-                const { data: retryConv, error: retryError } = await supabase
-                  .from('whatsapp_conversations')
-                  .insert(conversationData)
-                  .select('id')
-                  .single();
-                
-                if (retryError) {
-                  console.error(`[Broadcast] ❌ RETRY FALHOU para ${formattedPhone}:`, retryError.message);
-                } else if (retryConv) {
-                  conversationId = retryConv.id;
-                  console.log(`[Broadcast] ✓ RETRY OK - Conversa criada: ${retryConv.id}`);
-                }
+            const { data: newConv, error: insertError } = await supabase.from('whatsapp_conversations').insert({
+              phone: formattedPhone, name: leadData?.name ? String(leadData.name) : null, config_id: selectedConfig.id, is_crm_lead: true,
+              crm_funnel_id: targetFunnelId, funnel_stage: targetStageId || 'new', origin: 'broadcast', tags: ['new'], assigned_to: assignedTo,
+              last_message_at: new Date().toISOString(), last_message_preview: processedMessage.substring(0, 100), status: 'active',
+              broadcast_list_id: queueItem.broadcast_list_id, broadcast_sent_at: new Date().toISOString(), followup_count: 0,
+              contacted_by_instances: [selectedConfig.id], lead_city: leadData?.city ? String(leadData.city) : null, lead_state: leadData?.state ? String(leadData.state) : null
+            }).select('id').single();
+
+            if (insertError?.code === '23505') {
+              const { data: existingByPhone } = await supabase.from('whatsapp_conversations').select('id').eq('phone', formattedPhone).eq('config_id', selectedConfig.id).single();
+              if (existingByPhone) {
+                conversationId = existingByPhone.id;
+                await supabase.from('whatsapp_conversations').update({ is_crm_lead: true, crm_funnel_id: targetFunnelId, funnel_stage: targetStageId || 'new', origin: 'broadcast', broadcast_list_id: queueItem.broadcast_list_id, broadcast_sent_at: new Date().toISOString(), followup_count: 0, assigned_to: assignedTo }).eq('id', conversationId);
               }
             } else if (newConv) {
               conversationId = newConv.id;
-              console.log(`[Broadcast] ✓ Nova conversa criada: ${newConv.id} para ${formattedPhone}`);
             }
           }
 
-          // Register message in chat history
           if (conversationId) {
-            const { error: msgError } = await supabase
-              .from('whatsapp_messages')
-              .insert({
-                conversation_id: conversationId,
-                direction: 'outgoing',
-                message_type: queueItem.image_url ? 'image' : 'text',
-                content: processedMessage,
-                media_url: queueItem.image_url || null,
-                status: 'sent',
-                message_id_whatsapp: result.key?.id || null
-              });
-            
-            if (msgError) {
-              console.error(`[Broadcast] Erro ao salvar mensagem no chat:`, msgError.message);
-            } else {
-              console.log(`[Broadcast] Mensagem salva no historico do chat para conversa ${conversationId}`);
-            }
-          } else {
-            console.error(`[Broadcast] Conversa nao encontrada/criada - mensagem nao foi salva no chat para ${formattedPhone}`);
+            await supabase.from('whatsapp_messages').insert({ conversation_id: conversationId, direction: 'outgoing', message_type: queueItem.image_url ? 'image' : 'text', content: processedMessage, media_url: queueItem.image_url || null, status: 'sent', message_id_whatsapp: result.key?.id || null });
           }
 
-          // Update broadcast list counters
           if (queueItem.broadcast_list_id) {
-            const { data: list } = await supabase
-              .from('broadcast_lists')
-              .select('sent_count')
-              .eq('id', queueItem.broadcast_list_id)
-              .single();
-            
-            await supabase
-              .from('broadcast_lists')
-              .update({ sent_count: (list?.sent_count || 0) + 1 })
-              .eq('id', queueItem.broadcast_list_id);
+            const { data: list } = await supabase.from('broadcast_lists').select('sent_count').eq('id', queueItem.broadcast_list_id).single();
+            await supabase.from('broadcast_lists').update({ sent_count: (list?.sent_count || 0) + 1 }).eq('id', queueItem.broadcast_list_id);
           }
 
           sentCount++;
-          console.log(`[Broadcast] ✓ Sent to ${queueItem.phone} via ${selectedConfig.name}`);
-
         } else {
           throw new Error(result.error || result.message || 'Failed to send');
         }
 
-        // Random delay between messages
-        const delay = getRandomDelay(settings);
-        console.log(`[Broadcast] Waiting ${Math.round(delay / 1000)}s before next message...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, getRandomDelay(settings)));
 
       } catch (sendError) {
         const errorMessage = sendError instanceof Error ? sendError.message : 'Unknown error';
-        
-        // Check if this is an "innocent" error (problem with the number, not the instance)
         const isInnocent = isInnocentError(errorMessage);
-        
-        console.log(`[Broadcast] Error details - Message: "${errorMessage}" | Is innocent: ${isInnocent}`);
-        
-        if (isInnocent) {
-          // Innocent error: Don't increment consecutive_errors, don't pause instance
-          console.log(`[Broadcast] ⓘ Innocent error (invalid number) for ${queueItem.phone}: ${errorMessage}`);
-          // Don't update consecutive_errors - keep it as is
-        } else {
-          // Real error: Update consecutive errors and potentially pause
-          console.error('[Broadcast] ✗ Real error sending to', queueItem.phone, ':', errorMessage);
-          
-          const newErrorCount = limit.consecutive_errors + 1;
-          
-          // Check for blocking
-          if (settings.block_detection_enabled && isBlockingError(errorMessage)) {
-            console.log(`[Broadcast] ⚠️ Blocking detected for ${selectedConfig.name}, pausing instance`);
-            await supabase
-              .from('whatsapp_instance_limits')
-              .update({ 
-                is_paused: true, 
-                pause_reason: `Blocking detected: ${errorMessage}`,
-                consecutive_errors: newErrorCount
-              })
-              .eq('id', limit.id);
-          } else if (newErrorCount >= settings.max_consecutive_errors) {
-            // Pause after too many consecutive errors
-            const pauseUntil = new Date(Date.now() + 30 * 60 * 1000); // 30 min pause
-            console.log(`[Broadcast] ⚠️ Too many errors for ${selectedConfig.name}, pausing until ${pauseUntil.toISOString()}`);
-            await supabase
-              .from('whatsapp_instance_limits')
-              .update({ 
-                is_paused: true, 
-                pause_until: pauseUntil.toISOString(),
-                pause_reason: `${newErrorCount} consecutive errors`,
-                consecutive_errors: newErrorCount
-              })
-              .eq('id', limit.id);
-          } else {
-            await supabase
-              .from('whatsapp_instance_limits')
-              .update({ consecutive_errors: newErrorCount })
-              .eq('id', limit.id);
-          }
 
+        if (!isInnocent) {
+          const newErrorCount = limit.consecutive_errors + 1;
+          if (settings.block_detection_enabled && isBlockingError(errorMessage)) {
+            await supabase.from('whatsapp_instance_limits').update({ is_paused: true, pause_reason: `Blocking: ${errorMessage}`, consecutive_errors: newErrorCount }).eq('id', limit.id);
+          } else if (newErrorCount >= settings.max_consecutive_errors) {
+            const pauseUntil = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+            await supabase.from('whatsapp_instance_limits').update({ is_paused: true, pause_until: pauseUntil, pause_reason: `${newErrorCount} errors`, consecutive_errors: newErrorCount }).eq('id', limit.id);
+          } else {
+            await supabase.from('whatsapp_instance_limits').update({ consecutive_errors: newErrorCount }).eq('id', limit.id);
+          }
           limit.consecutive_errors = newErrorCount;
         }
 
-        // Mark as failed if max attempts reached
         const newStatus = queueItem.attempts >= 2 ? 'failed' : 'pending';
-        
-        await supabase
-          .from('whatsapp_queue')
-          .update({ 
-            status: newStatus,
-            error_message: errorMessage,
-            processed_at: newStatus === 'failed' ? new Date().toISOString() : null
-          })
-          .eq('id', queueItem.id);
+        await supabase.from('whatsapp_queue').update({ status: newStatus, error_message: errorMessage, processed_at: newStatus === 'failed' ? new Date().toISOString() : null }).eq('id', queueItem.id);
 
         if (newStatus === 'failed') {
-          await supabase
-            .from('whatsapp_logs')
-            .insert({
-              schedule_id: queueItem.schedule_id,
-              phone: queueItem.phone,
-              status: 'failed',
-              error_message: errorMessage,
-              config_id: selectedConfig.id
-            });
-
+          await supabase.from('whatsapp_logs').insert({ schedule_id: queueItem.schedule_id, phone: queueItem.phone, status: 'failed', error_message: errorMessage, config_id: selectedConfig.id });
           if (queueItem.broadcast_list_id) {
-            const { data: list } = await supabase
-              .from('broadcast_lists')
-              .select('failed_count')
-              .eq('id', queueItem.broadcast_list_id)
-              .single();
-            
-            await supabase
-              .from('broadcast_lists')
-              .update({ failed_count: (list?.failed_count || 0) + 1 })
-              .eq('id', queueItem.broadcast_list_id);
+            const { data: list } = await supabase.from('broadcast_lists').select('failed_count').eq('id', queueItem.broadcast_list_id).single();
+            await supabase.from('broadcast_lists').update({ failed_count: (list?.failed_count || 0) + 1 }).eq('id', queueItem.broadcast_list_id);
           }
-
           failedCount++;
         }
       }
     }
 
-    // Check for completed broadcast lists
-    const { data: sendingLists } = await supabase
-      .from('broadcast_lists')
-      .select('id')
-      .eq('status', 'sending');
-
+    // Mark completed broadcasts
+    const { data: sendingLists } = await supabase.from('broadcast_lists').select('id').eq('status', 'sending');
     for (const list of sendingLists || []) {
-      const { count: pendingCount } = await supabase
-        .from('whatsapp_queue')
-        .select('*', { count: 'exact', head: true })
-        .eq('broadcast_list_id', list.id)
-        .in('status', ['pending', 'processing']);
-
+      const { count: pendingCount } = await supabase.from('whatsapp_queue').select('*', { count: 'exact', head: true }).eq('broadcast_list_id', list.id).in('status', ['pending', 'processing']);
       if (pendingCount === 0) {
-        await supabase
-          .from('broadcast_lists')
-          .update({ status: 'completed', updated_at: new Date().toISOString() })
-          .eq('id', list.id);
-        
-        console.log('[Broadcast] List completed:', list.id);
+        await supabase.from('broadcast_lists').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', list.id);
       }
     }
 
-    console.log(`[Broadcast] Summary: ${sentCount} sent, ${failedCount} failed, ${skippedBlacklist} blacklisted, ${skippedInvalidNumber} invalid numbers, ${skippedPaused} paused`);
-
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        sent: sentCount, 
-        failed: failedCount,
-        skipped_blacklist: skippedBlacklist,
-        skipped_invalid_number: skippedInvalidNumber,
-        skipped_paused: skippedPaused,
-        instances_used: availableConfigs.length
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: true, sent: sentCount, failed: failedCount, skipped_blacklist: skippedBlacklist, skipped_invalid_number: skippedInvalidNumber, skipped_paused: skippedPaused, instances_used: availableConfigs.length }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
-    console.error('[Broadcast] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: false, error: errorMessage }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
